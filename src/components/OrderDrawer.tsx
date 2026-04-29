@@ -1,6 +1,6 @@
-import { Order, Priority } from '../types';
+import { Order, Priority, TeamMember, Anexo } from '../types';
 import { StatusBadge, cn } from './StatusBadge';
-import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useState } from 'react';
@@ -11,23 +11,42 @@ interface OrderDrawerProps {
   onClose: () => void;
   onToggleTask: (orderId: string, taskId: string) => void;
   onChangePriority: (orderId: string, priority: Priority) => void;
-  onAddTask: (orderId: string, title: string) => void;
+  onAddTask: (orderId: string, title: string, assignee: TeamMember, dueDate?: string) => void;
+  onDeleteTask: (orderId: string, taskId: string) => void;
   onDeleteOrder: (orderId: string) => void;
   onAddAtividade: (orderId: string, descricao: string) => void;
+  onDeleteAtividade: (orderId: string, atividadeId: string) => void;
+  onEditOrderField?: (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => Promise<void>;
+  onUploadFiles?: (orderId: string, stagedFiles: { file: File, legenda: string }[]) => Promise<void>;
+  onDeleteAnexo?: (orderId: string, anexoId: string, url: string) => Promise<void>;
   today?: Date;
+  currentUser: TeamMember;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onDeleteOrder, onAddAtividade, today = new Date('2026-04-29') }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, today = new Date('2026-04-29'), currentUser }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember>('Thomás');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [newAtividade, setNewAtividade] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState('');
+  
+  const [stagedFiles, setStagedFiles] = useState<{ file: File, legenda: string }[]>([]);
+  
+  const [editingOrderField, setEditingOrderField] = useState<'orderNumber' | 'title' | 'client' | 'address' | null>(null);
+  const [editingOrderValue, setEditingOrderValue] = useState('');
 
   // Reset input when order changes
   useEffect(() => {
     setNewTaskTitle('');
+    setNewTaskDueDate('');
     setNewAtividade('');
     setIsDeleting(false);
+    setStagedFiles([]);
+    setEditingOrderField(null);
   }, [order?.id]);
   
   // Close on Escape key
@@ -75,13 +94,15 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Detalhes do Pedido</h2>
               <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setIsDeleting(true)}
-                  className="p-2 rounded-full hover:bg-red-50 text-red-500 transition-colors"
-                  title="Deletar pedido"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+                {currentUser === 'Thomás' && (
+                  <button 
+                    onClick={() => setIsDeleting(true)}
+                    className="p-2 rounded-full hover:bg-red-50 text-red-500 transition-colors"
+                    title="Deletar pedido"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
                 <button 
                   onClick={onClose}
                   className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
@@ -123,9 +144,33 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
               {/* Title & Status section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500 font-medium tracking-wide uppercase">
-                    ID: {order.orderNumber}
-                  </span>
+                  {editingOrderField === 'orderNumber' ? (
+                    <input
+                      type="text"
+                      value={editingOrderValue}
+                      onChange={(e) => setEditingOrderValue(e.target.value)}
+                      onBlur={() => {
+                        if (editingOrderValue.trim() && editingOrderValue !== order.orderNumber && onEditOrderField) {
+                          onEditOrderField(order.id, 'orderNumber', editingOrderValue.trim());
+                        }
+                        setEditingOrderField(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setEditingOrderField(null);
+                      }}
+                      autoFocus
+                      className="text-xs font-medium tracking-wide uppercase border-b border-blue-500 focus:outline-none bg-transparent w-32"
+                    />
+                  ) : (
+                    <span 
+                      className="text-xs text-gray-500 font-medium tracking-wide uppercase cursor-pointer hover:text-blue-600 transition-colors"
+                      onClick={() => { setEditingOrderField('orderNumber'); setEditingOrderValue(order.orderNumber); }}
+                      title="Editar ID"
+                    >
+                      ID: {order.orderNumber}
+                    </span>
+                  )}
                   <select 
                     value={order.priority}
                     onChange={(e) => onChangePriority(order.id, e.target.value as Priority)}
@@ -141,10 +186,36 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     <option value="Alta">Prioridade Alta</option>
                   </select>
                 </div>
-                
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-                  {order.title}
-                </h1>
+                {editingOrderField === 'title' ? (
+                  <textarea
+                    value={editingOrderValue}
+                    onChange={(e) => setEditingOrderValue(e.target.value)}
+                    onBlur={() => {
+                      if (editingOrderValue.trim() && editingOrderValue !== order.title && onEditOrderField) {
+                        onEditOrderField(order.id, 'title', editingOrderValue.trim());
+                      }
+                      setEditingOrderField(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                      if (e.key === 'Escape') setEditingOrderField(null);
+                    }}
+                    autoFocus
+                    rows={2}
+                    className="w-full text-2xl font-bold text-gray-900 leading-tight border-b-2 border-blue-500 focus:outline-none bg-transparent resize-none overflow-hidden"
+                  />
+                ) : (
+                  <h1 
+                    className="text-2xl font-bold text-gray-900 leading-tight cursor-pointer hover:text-blue-600 transition-colors"
+                    onClick={() => { setEditingOrderField('title'); setEditingOrderValue(order.title); }}
+                    title="Editar Título do Projeto"
+                  >
+                    {order.title}
+                  </h1>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge order={order} today={today} />
@@ -155,18 +226,70 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
               <div className="bg-gray-50 rounded-xl p-4 space-y-4 border border-gray-100">
                 <div className="flex items-start gap-3">
                   <Building2 className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium mb-0.5">Cliente</p>
-                    <p className="text-sm font-medium text-gray-900">{order.client}</p>
-                  </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium mb-0.5">Cliente</p>
+                      {editingOrderField === 'client' ? (
+                        <input
+                          type="text"
+                          value={editingOrderValue}
+                          onChange={(e) => setEditingOrderValue(e.target.value)}
+                          onBlur={() => {
+                            if (editingOrderValue.trim() && editingOrderValue !== order.client && onEditOrderField) {
+                              onEditOrderField(order.id, 'client', editingOrderValue.trim());
+                            }
+                            setEditingOrderField(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                            if (e.key === 'Escape') setEditingOrderField(null);
+                          }}
+                          autoFocus
+                          className="w-full text-sm font-medium text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent"
+                        />
+                      ) : (
+                        <p 
+                          className="text-sm font-medium text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                          onClick={() => { setEditingOrderField('client'); setEditingOrderValue(order.client); }}
+                          title="Editar Cliente"
+                        >
+                          {order.client}
+                        </p>
+                      )}
+                    </div>
                 </div>
 
                 <div className="flex items-start gap-3">
                   <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium mb-0.5">Endereço da Obra</p>
-                    <p className="text-sm font-medium text-gray-900">{order.address}</p>
-                  </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium mb-0.5">Endereço da Obra</p>
+                      {editingOrderField === 'address' ? (
+                        <input
+                          type="text"
+                          value={editingOrderValue}
+                          onChange={(e) => setEditingOrderValue(e.target.value)}
+                          onBlur={() => {
+                            if (editingOrderValue.trim() && editingOrderValue !== order.address && onEditOrderField) {
+                              onEditOrderField(order.id, 'address', editingOrderValue.trim());
+                            }
+                            setEditingOrderField(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                            if (e.key === 'Escape') setEditingOrderField(null);
+                          }}
+                          autoFocus
+                          className="w-full text-sm font-medium text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent"
+                        />
+                      ) : (
+                        <p 
+                          className="text-sm font-medium text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                          onClick={() => { setEditingOrderField('address'); setEditingOrderValue(order.address); }}
+                          title="Editar Endereço"
+                        >
+                          {order.address}
+                        </p>
+                      )}
+                    </div>
                 </div>
 
                 <div className="flex items-start gap-3">
@@ -189,58 +312,145 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 
                 <div className="space-y-2">
                   {order.tasks.map(task => (
-                    <label 
+                    <div 
                       key={task.id}
                       className={cn(
-                        "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                        "group flex items-start gap-3 p-3 rounded-lg border transition-colors",
                         task.completed ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/30"
                       )}
                     >
-                      <input 
-                        type="checkbox" 
-                        className="sr-only"
-                        checked={task.completed}
-                        onChange={() => onToggleTask(order.id, task.id)}
-                      />
-                      <div className="mt-0.5 flex-shrink-0">
-                        {task.completed ? (
-                          <CheckSquare className="w-5 h-5 text-blue-600" />
-                        ) : (
-                          <Square className="w-5 h-5 text-gray-300" />
-                        )}
-                      </div>
-                      <span className={cn(
-                        "text-sm font-medium",
-                        task.completed ? "text-gray-400 line-through" : "text-gray-700"
-                      )}>
-                        {task.title}
-                      </span>
-                    </label>
+                      <label className="flex items-start gap-3 flex-1 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only"
+                          checked={task.completed}
+                          onChange={() => onToggleTask(order.id, task.id)}
+                        />
+                        <div className="mt-0.5 flex-shrink-0">
+                          {task.completed ? (
+                            <CheckSquare className="w-5 h-5 text-blue-600" />
+                          ) : (
+                            <Square className="w-5 h-5 text-gray-300" />
+                          )}
+                        </div>
+                        <div className="flex flex-col flex-1">
+                          {editingTaskId === task.id ? (
+                            <input
+                              type="text"
+                              value={editingTaskTitle}
+                              onChange={(e) => setEditingTaskTitle(e.target.value)}
+                              onBlur={() => {
+                                if (editingTaskTitle.trim() && editingTaskTitle !== task.title) {
+                                  onEditTaskTitle(order.id, task.id, editingTaskTitle.trim());
+                                }
+                                setEditingTaskId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingTaskId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="w-full text-sm font-medium text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent py-0.5"
+                            />
+                          ) : (
+                            <span 
+                              className={cn(
+                                "text-sm font-medium transition-colors hover:text-blue-600",
+                                task.completed ? "text-gray-400 line-through" : "text-gray-700"
+                              )}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setEditingTaskId(task.id);
+                                setEditingTaskTitle(task.title);
+                              }}
+                              title="Clique para editar"
+                            >
+                              {task.title}
+                            </span>
+                          )}
+                          {task.assignee && (
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-blue-500/70 mt-1">
+                              {task.assignee}
+                            </span>
+                          )}
+                          {task.dueDate && !task.completed && (
+                            <span className={cn(
+                              "text-[10px] uppercase font-bold tracking-wider mt-1 px-1.5 py-0.5 rounded-full w-fit",
+                              new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00')
+                                ? "bg-red-100 text-red-600 animate-pulse border border-red-200"
+                                : task.dueDate === today.toISOString().split('T')[0]
+                                ? "bg-orange-100 text-orange-600 border border-orange-200"
+                                : "text-gray-500 bg-gray-100"
+                            )}>
+                              {new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00') ? 'Vencido: ' : task.dueDate === today.toISOString().split('T')[0] ? 'Vence Hoje' : 'Prazo: '}
+                              {task.dueDate !== today.toISOString().split('T')[0] && format(parseISO(task.dueDate), "dd/MM/yyyy", { locale: ptBR })}
+                            </span>
+                          )}
+                        </div>
+                      </label>
+                      {currentUser === 'Thomás' && (
+                        <button 
+                          onClick={(e) => { 
+                            e.preventDefault(); 
+                            if (window.confirm('Deseja excluir esta tarefa permanentemente?')) {
+                              onDeleteTask(order.id, task.id); 
+                            }
+                          }}
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                          title="Deletar tarefa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                   
                   <form 
                     onSubmit={(e) => {
                       e.preventDefault();
                       if (!newTaskTitle.trim()) return;
-                      onAddTask(order.id, newTaskTitle.trim());
+                      onAddTask(order.id, newTaskTitle.trim(), newTaskAssignee, newTaskDueDate || undefined);
                       setNewTaskTitle('');
+                      setNewTaskDueDate('');
                     }} 
-                    className="flex items-center gap-2 mt-3"
+                    className="flex flex-col gap-2 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200"
                   >
                     <input 
                       type="text" 
                       placeholder="Nova tarefa..." 
                       value={newTaskTitle}
                       onChange={(e) => setNewTaskTitle(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     />
-                    <button 
-                      type="submit"
-                      disabled={!newTaskTitle.trim()}
-                      className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={newTaskAssignee}
+                        onChange={(e) => setNewTaskAssignee(e.target.value as TeamMember)}
+                        className="flex-1 px-2 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-gray-600"
+                      >
+                        <option value="Thomás">Thomás</option>
+                        <option value="Roberto">Roberto</option>
+                        <option value="Katlyn">Katlyn</option>
+                      </select>
+                      <input 
+                        type="date"
+                        value={newTaskDueDate}
+                        onChange={(e) => setNewTaskDueDate(e.target.value)}
+                        className="flex-1 px-2 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-gray-600"
+                        title="Prazo Final (Opcional)"
+                      />
+                      <button 
+                        type="submit"
+                        disabled={!newTaskTitle.trim()}
+                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex-shrink-0"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
                   </form>
                 </div>
               </div>
@@ -255,14 +465,27 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 <div className="space-y-3">
                   {order.atividades && order.atividades.length > 0 ? (
                     order.atividades.map(atividade => (
-                      <div key={atividade.id} className="bg-purple-50/50 border border-purple-100 rounded-lg p-3">
+                      <div key={atividade.id} className="group bg-purple-50/50 border border-purple-100 rounded-lg p-3 relative">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-purple-700">{atividade.usuario}</span>
                           <span className="text-xs text-purple-400">
                             {format(parseISO(atividade.criado_em), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-700">{atividade.descricao}</p>
+                        <p className="text-sm text-gray-700 pr-6">{atividade.descricao}</p>
+                        {currentUser === 'Thomás' && (
+                          <button 
+                            onClick={() => {
+                              if (window.confirm('Deseja excluir este registro permanentemente?')) {
+                                onDeleteAtividade(order.id, atividade.id);
+                              }
+                            }}
+                            className="absolute right-2 top-2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                            title="Deletar registro"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ))
                   ) : (
@@ -294,6 +517,143 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     Salvar Registro
                   </button>
                 </form>
+              </div>
+
+              {/* Documentos e Fotos */}
+              <div className="space-y-4 pt-4 border-t border-gray-100">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Paperclip className="w-5 h-5 text-blue-600" />
+                  Documentos e Fotos
+                </h3>
+
+                <div className="flex gap-2 mb-4">
+                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
+                    <input 
+                      type="file" 
+                      className="sr-only" 
+                      multiple 
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
+                          setStagedFiles(prev => [...prev, ...newFiles]);
+                          e.target.value = ''; // reset input
+                        }
+                      }}
+                    />
+                    <UploadCloud className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
+                    <span className="text-xs font-semibold text-gray-600">Anexar Arquivos</span>
+                  </label>
+                  
+                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
+                    <input 
+                      type="file" 
+                      className="sr-only" 
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
+                          setStagedFiles(prev => [...prev, ...newFiles]);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <Camera className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
+                    <span className="text-xs font-semibold text-gray-600">Tirar Foto</span>
+                  </label>
+                </div>
+
+                {/* Staging Area for new files */}
+                {stagedFiles.length > 0 && (
+                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-3 mb-4">
+                    <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Arquivos para Envio</h4>
+                    {stagedFiles.map((staged, idx) => (
+                      <div key={idx} className="flex flex-col sm:flex-row gap-2 bg-white p-2 rounded-lg border border-blue-100 shadow-sm">
+                        <div className="flex items-center gap-2 flex-1 overflow-hidden">
+                          {staged.file.type.includes('pdf') ? <FileText className="w-4 h-4 text-red-500 flex-shrink-0" /> : <ImageIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />}
+                          <span className="text-xs font-medium text-gray-600 truncate">{staged.file.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <input 
+                            type="text"
+                            placeholder="Legenda (ex: Fundação...)"
+                            value={staged.legenda}
+                            onChange={(e) => {
+                              const newArr = [...stagedFiles];
+                              newArr[idx].legenda = e.target.value;
+                              setStagedFiles(newArr);
+                            }}
+                            className="flex-1 sm:w-48 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                          />
+                          <button 
+                            onClick={() => setStagedFiles(prev => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        onClick={() => {
+                          if (onUploadFiles) {
+                            onUploadFiles(order.id, stagedFiles);
+                            setStagedFiles([]);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                      >
+                        Enviar {stagedFiles.length} arquivo(s)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {order.anexos && order.anexos.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {order.anexos.map(anexo => {
+                      const isPdf = anexo.tipo.includes('pdf');
+                      return (
+                        <div key={anexo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
+                          <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="block w-full aspect-square relative">
+                            {isPdf ? (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white">
+                                <FileText className="w-10 h-10 text-red-500 mb-2" />
+                                <span className="text-[10px] font-medium text-gray-600 text-center truncate w-full px-2">{anexo.nome_arquivo}</span>
+                              </div>
+                            ) : (
+                              <img src={anexo.url} alt={anexo.nome_arquivo} className="absolute inset-0 w-full h-full object-cover" />
+                            )}
+                          </a>
+                          {anexo.legenda && (
+                            <div className="p-2 bg-white border-t border-gray-100 flex-1 flex items-center">
+                              <p className="text-xs font-medium text-gray-700 line-clamp-2">{anexo.legenda}</p>
+                            </div>
+                          )}
+                          
+                          {currentUser === 'Thomás' && onDeleteAnexo && (
+                            <button 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (window.confirm('Deseja excluir este anexo permanentemente?')) {
+                                  onDeleteAnexo(order.id, anexo.id, anexo.url);
+                                }
+                              }}
+                              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-600 text-white rounded-full transition-colors shadow-sm z-10 backdrop-blur-sm"
+                              title="Excluir anexo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Nenhum anexo salvo.</p>
+                )}
               </div>
 
             </div>
