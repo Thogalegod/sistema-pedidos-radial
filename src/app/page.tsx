@@ -64,14 +64,14 @@ export default function Home() {
       priority: d.prioridade as Priority,
       status: d.status as any,
       createdAt: d.data_criacao,
-      dueDate: d.prazo_concessionaria,
+      dueDate: d.prazo_concessionaria || undefined,
       tasks: d.tarefas?.map((t: any) => ({
         id: t.id,
         title: t.descricao,
         completed: t.concluido,
         assignee: t.responsavel,
-        dueDate: t.vencimento,
-        completedAt: t.concluida_em,
+        dueDate: t.vencimento || undefined,
+        completedAt: t.concluida_em || undefined,
         subtarefas: t.subtarefas?.map((s: any) => ({
           id: s.id,
           tarefa_id: s.tarefa_id,
@@ -190,7 +190,7 @@ export default function Home() {
     if (!task) return;
 
     const newCompleted = !task.completed;
-    const completedAtValue = newCompleted ? new Date().toISOString() : null;
+    const completedAtValue = newCompleted ? new Date().toISOString() : undefined;
 
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
@@ -199,7 +199,7 @@ export default function Home() {
 
     await supabase.from('tarefas').update({ 
       concluido: newCompleted,
-      concluida_em: completedAtValue
+      concluida_em: completedAtValue ?? null
     }).eq('id', taskId);
 
     const updatedOrder = orders.find(o => o.id === orderId);
@@ -258,7 +258,7 @@ export default function Home() {
         return {
           ...o,
           status: newStatus as any,
-          tasks: [...o.tasks, { id: data.id, title: data.descricao, completed: false, assignee: data.responsavel, dueDate: data.vencimento }]
+          tasks: [...o.tasks, { id: data.id, title: data.descricao, completed: false, assignee: data.responsavel, dueDate: data.vencimento || undefined }]
         };
       }));
       const order = orders.find(o => o.id === orderId);
