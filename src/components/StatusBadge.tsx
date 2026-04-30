@@ -9,6 +9,36 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Color map por membro da equipe
+export const memberColor = (name?: string) => {
+  switch (name) {
+    case 'Thomás':
+      return {
+        badge: 'bg-blue-100 text-blue-700 border border-blue-200',
+        avatar: 'bg-blue-600',
+        dot: 'bg-blue-500'
+      };
+    case 'Roberto':
+      return {
+        badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+        avatar: 'bg-emerald-600',
+        dot: 'bg-emerald-500'
+      };
+    case 'Katlyn':
+      return {
+        badge: 'bg-violet-100 text-violet-700 border border-violet-200',
+        avatar: 'bg-violet-600',
+        dot: 'bg-violet-500'
+      };
+    default:
+      return {
+        badge: 'bg-gray-100 text-gray-600 border border-gray-200',
+        avatar: 'bg-gray-500',
+        dot: 'bg-gray-400'
+      };
+  }
+};
+
 interface StatusBadgeProps {
   order: Order;
   today?: Date;

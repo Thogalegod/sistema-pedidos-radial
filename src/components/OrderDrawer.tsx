@@ -1,6 +1,6 @@
 import { Order, Priority, TeamMember, Anexo } from '../types';
-import { StatusBadge, cn } from './StatusBadge';
-import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon } from 'lucide-react';
+import { StatusBadge, cn, memberColor } from './StatusBadge';
+import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useState } from 'react';
@@ -19,11 +19,18 @@ interface OrderDrawerProps {
   onEditOrderField?: (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => Promise<void>;
   onUploadFiles?: (orderId: string, stagedFiles: { file: File, legenda: string }[]) => Promise<void>;
   onDeleteAnexo?: (orderId: string, anexoId: string, url: string) => Promise<void>;
+  onEditTaskTitle: (orderId: string, taskId: string, newTitle: string) => Promise<void>;
+  onEditTaskDueDate?: (orderId: string, taskId: string, newDueDate: string | undefined) => Promise<void>;
+  onAddSubtarefa?: (orderId: string, taskId: string, descricao: string) => Promise<void>;
+  onToggleSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
+  onDeleteSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
+  onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<void>;
+  onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<void>;
   today?: Date;
   currentUser: TeamMember;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, today = new Date('2026-04-29'), currentUser }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), currentUser }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember>('Thomás');
@@ -33,11 +40,59 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
+  const [editingTaskDueDateId, setEditingTaskDueDateId] = useState<string | null>(null);
+  const [editingTaskDueDateValue, setEditingTaskDueDateValue] = useState('');
   
   const [stagedFiles, setStagedFiles] = useState<{ file: File, legenda: string }[]>([]);
   
   const [editingOrderField, setEditingOrderField] = useState<'orderNumber' | 'title' | 'client' | 'address' | null>(null);
   const [editingOrderValue, setEditingOrderValue] = useState('');
+
+  const [expandedTasks, setExpandedTasks] = useState<string[]>([]);
+  const [newSubtarefaText, setNewSubtarefaText] = useState<{ [taskId: string]: string }>({});
+  const [newComentarioText, setNewComentarioText] = useState<{ [taskId: string]: string }>({});
+  const [isRecording, setIsRecording] = useState<{ [taskId: string]: boolean }>({});
+
+  const toggleTaskExpanded = (taskId: string) => {
+    setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+  };
+
+  const startVoiceInput = (taskId: string) => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Seu navegador não suporta reconhecimento de voz.');
+      return;
+    }
+    
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsRecording(prev => ({ ...prev, [taskId]: true }));
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setNewComentarioText(prev => ({
+        ...prev,
+        [taskId]: (prev[taskId] ? prev[taskId] + ' ' : '') + transcript
+      }));
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsRecording(prev => ({ ...prev, [taskId]: false }));
+    };
+
+    recognition.onend = () => {
+      setIsRecording(prev => ({ ...prev, [taskId]: false }));
+    };
+
+    recognition.start();
+  };
 
   // Reset input when order changes
   useEffect(() => {
@@ -260,7 +315,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
 
                 <div className="flex items-start gap-3">
                   <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-xs text-gray-500 font-medium mb-0.5">Endereço da Obra</p>
                       {editingOrderField === 'address' ? (
                         <input
@@ -289,6 +344,31 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                           {order.address}
                         </p>
                       )}
+                      {/* Botões de navegação */}
+                      {order.address && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors border border-blue-200"
+                            title="Abrir no Google Maps"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                            Google Maps
+                          </a>
+                          <a
+                            href={`https://waze.com/ul?q=${encodeURIComponent(order.address)}&navigate=yes`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded-lg transition-colors border border-sky-200"
+                            title="Abrir no Waze"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                            Waze
+                          </a>
+                        </div>
+                      )}
                     </div>
                 </div>
 
@@ -311,103 +391,310 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 </h3>
                 
                 <div className="space-y-2">
-                  {order.tasks.map(task => (
-                    <div 
-                      key={task.id}
-                      className={cn(
-                        "group flex items-start gap-3 p-3 rounded-lg border transition-colors",
-                        task.completed ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/30"
-                      )}
-                    >
-                      <label className="flex items-start gap-3 flex-1 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="sr-only"
-                          checked={task.completed}
-                          onChange={() => onToggleTask(order.id, task.id)}
-                        />
-                        <div className="mt-0.5 flex-shrink-0">
-                          {task.completed ? (
-                            <CheckSquare className="w-5 h-5 text-blue-600" />
-                          ) : (
-                            <Square className="w-5 h-5 text-gray-300" />
-                          )}
-                        </div>
-                        <div className="flex flex-col flex-1">
-                          {editingTaskId === task.id ? (
-                            <input
-                              type="text"
-                              value={editingTaskTitle}
-                              onChange={(e) => setEditingTaskTitle(e.target.value)}
-                              onBlur={() => {
-                                if (editingTaskTitle.trim() && editingTaskTitle !== task.title) {
-                                  onEditTaskTitle(order.id, task.id, editingTaskTitle.trim());
-                                }
-                                setEditingTaskId(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  e.currentTarget.blur();
-                                } else if (e.key === 'Escape') {
+                  {order.tasks.map(task => {
+                    const isExpanded = expandedTasks.includes(task.id);
+                    const subtasksTotal = task.subtarefas?.length || 0;
+                    const subtasksCompleted = task.subtarefas?.filter(s => s.concluida).length || 0;
+                    return (
+                    <div key={task.id} className="flex flex-col gap-1">
+                      <div 
+                        className={cn(
+                          "group flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
+                          task.completed ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/30",
+                          isExpanded && "border-blue-300 bg-blue-50/10"
+                        )}
+                        onClick={(e) => {
+                          // Prevent toggling accordion when clicking interactive inner elements
+                          const target = e.target as HTMLElement;
+                          if (target.closest('.no-accordion') || target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'button') {
+                            return;
+                          }
+                          toggleTaskExpanded(task.id);
+                        }}
+                      >
+                        <div className="flex items-start gap-3 flex-1 no-accordion" onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            className="sr-only"
+                            checked={task.completed}
+                            onChange={() => onToggleTask(order.id, task.id)}
+                          />
+                          <div className="mt-0.5 flex-shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); onToggleTask(order.id, task.id); }}>
+                            {task.completed ? (
+                              <CheckSquare className="w-5 h-5 text-blue-600" />
+                            ) : (
+                              <Square className="w-5 h-5 text-gray-300" />
+                            )}
+                          </div>
+                          <div className="flex flex-col flex-1">
+                            {editingTaskId === task.id ? (
+                              <input
+                                type="text"
+                                value={editingTaskTitle}
+                                onChange={(e) => setEditingTaskTitle(e.target.value)}
+                                onBlur={() => {
+                                  if (editingTaskTitle.trim() && editingTaskTitle !== task.title) {
+                                    onEditTaskTitle(order.id, task.id, editingTaskTitle.trim());
+                                  }
                                   setEditingTaskId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.currentTarget.blur();
+                                  } else if (e.key === 'Escape') {
+                                    setEditingTaskId(null);
+                                  }
+                                }}
+                                autoFocus
+                                className="w-full text-sm font-medium text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent py-0.5"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span 
+                                  className={cn(
+                                    "text-sm font-medium transition-colors hover:text-blue-600 cursor-text",
+                                    task.completed ? "text-gray-400 line-through" : "text-gray-700"
+                                  )}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setEditingTaskId(task.id);
+                                    setEditingTaskTitle(task.title);
+                                  }}
+                                  title="Clique para editar"
+                                >
+                                  {task.title}
+                                </span>
+                                {subtasksTotal > 0 && (
+                                  <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                    {subtasksCompleted}/{subtasksTotal}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {task.assignee && (
+                              <span className={cn(
+                                "text-[10px] uppercase font-bold tracking-wider mt-1 px-2 py-0.5 rounded-full w-fit",
+                                memberColor(task.assignee).badge
+                              )}>
+                                {task.assignee}
+                              </span>
+                            )}
+                            {editingTaskDueDateId === task.id ? (
+                              <input
+                                type="date"
+                                value={editingTaskDueDateValue}
+                                onChange={(e) => setEditingTaskDueDateValue(e.target.value)}
+                                onBlur={() => {
+                                  if (onEditTaskDueDate) {
+                                    onEditTaskDueDate(order.id, task.id, editingTaskDueDateValue || undefined);
+                                  }
+                                  setEditingTaskDueDateId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.currentTarget.blur();
+                                  } else if (e.key === 'Escape') {
+                                    setEditingTaskDueDateId(null);
+                                  }
+                                }}
+                                autoFocus
+                                className="mt-1 text-xs px-2 py-0.5 border-b border-blue-500 focus:outline-none bg-transparent"
+                              />
+                            ) : !task.completed && (
+                              <span 
+                                className={cn(
+                                  "text-[10px] uppercase font-bold tracking-wider mt-1 px-1.5 py-0.5 rounded-full w-fit cursor-pointer hover:bg-gray-200 transition-colors",
+                                  task.dueDate 
+                                    ? (new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00')
+                                      ? "bg-red-100 text-red-600 animate-pulse border border-red-200"
+                                      : task.dueDate === today.toISOString().split('T')[0]
+                                      ? "bg-orange-100 text-orange-600 border border-orange-200"
+                                      : "text-gray-500 bg-gray-100")
+                                    : "text-gray-400 bg-gray-50 border border-dashed border-gray-200"
+                                )}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setEditingTaskDueDateId(task.id);
+                                  setEditingTaskDueDateValue(task.dueDate || '');
+                                }}
+                                title="Clique para editar o prazo"
+                              >
+                                {task.dueDate 
+                                  ? (new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00') 
+                                    ? 'Vencido: ' 
+                                    : task.dueDate === today.toISOString().split('T')[0] 
+                                    ? 'Vence Hoje' 
+                                    : 'Prazo: ') + (task.dueDate !== today.toISOString().split('T')[0] ? format(parseISO(task.dueDate), "dd/MM/yyyy", { locale: ptBR }) : '')
+                                  : '+ Adicionar Prazo'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 no-accordion" onClick={(e) => e.stopPropagation()}>
+                          {currentUser === 'Thomás' && (
+                            <button 
+                              onClick={(e) => { 
+                                e.preventDefault(); 
+                                e.stopPropagation();
+                                if (window.confirm('Deseja excluir esta tarefa permanentemente?')) {
+                                  onDeleteTask(order.id, task.id); 
                                 }
                               }}
-                              autoFocus
-                              className="w-full text-sm font-medium text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent py-0.5"
-                            />
-                          ) : (
-                            <span 
-                              className={cn(
-                                "text-sm font-medium transition-colors hover:text-blue-600",
-                                task.completed ? "text-gray-400 line-through" : "text-gray-700"
-                              )}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setEditingTaskId(task.id);
-                                setEditingTaskTitle(task.title);
-                              }}
-                              title="Clique para editar"
+                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                              title="Deletar tarefa"
                             >
-                              {task.title}
-                            </span>
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
-                          {task.assignee && (
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-blue-500/70 mt-1">
-                              {task.assignee}
-                            </span>
-                          )}
-                          {task.dueDate && !task.completed && (
-                            <span className={cn(
-                              "text-[10px] uppercase font-bold tracking-wider mt-1 px-1.5 py-0.5 rounded-full w-fit",
-                              new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00')
-                                ? "bg-red-100 text-red-600 animate-pulse border border-red-200"
-                                : task.dueDate === today.toISOString().split('T')[0]
-                                ? "bg-orange-100 text-orange-600 border border-orange-200"
-                                : "text-gray-500 bg-gray-100"
-                            )}>
-                              {new Date(`${task.dueDate}T00:00:00`) < new Date(today.toISOString().split('T')[0] + 'T00:00:00') ? 'Vencido: ' : task.dueDate === today.toISOString().split('T')[0] ? 'Vence Hoje' : 'Prazo: '}
-                              {task.dueDate !== today.toISOString().split('T')[0] && format(parseISO(task.dueDate), "dd/MM/yyyy", { locale: ptBR })}
-                            </span>
-                          )}
+                          <button 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleTaskExpanded(task.id); }}
+                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors flex-shrink-0"
+                          >
+                            {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                          </button>
                         </div>
-                      </label>
-                      {currentUser === 'Thomás' && (
-                        <button 
-                          onClick={(e) => { 
-                            e.preventDefault(); 
-                            if (window.confirm('Deseja excluir esta tarefa permanentemente?')) {
-                              onDeleteTask(order.id, task.id); 
-                            }
-                          }}
-                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
-                          title="Deletar tarefa"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      </div>
+
+                      {/* Expanded Panel */}
+                      {isExpanded && (
+                        <div className="pl-11 pr-3 pb-3 space-y-4">
+                          {/* Subtasks */}
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Subtarefas</h4>
+                            {task.subtarefas?.map(sub => (
+                              <div key={sub.id} className="flex items-center justify-between group">
+                                <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    className="sr-only"
+                                    checked={sub.concluida}
+                                    onChange={() => onToggleSubtarefa && onToggleSubtarefa(order.id, task.id, sub.id)}
+                                  />
+                                  <div className="flex-shrink-0">
+                                    {sub.concluida ? (
+                                      <CheckSquare className="w-4 h-4 text-blue-500" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-gray-300" />
+                                    )}
+                                  </div>
+                                  <span className={cn("text-xs transition-colors", sub.concluida ? "text-gray-400 line-through" : "text-gray-700")}>
+                                    {sub.descricao}
+                                  </span>
+                                </label>
+                                <button
+                                  onClick={() => onDeleteSubtarefa && onDeleteSubtarefa(order.id, task.id, sub.id)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                            <form 
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const val = newSubtarefaText[task.id]?.trim();
+                                if (val && onAddSubtarefa) {
+                                  onAddSubtarefa(order.id, task.id, val);
+                                  setNewSubtarefaText(prev => ({ ...prev, [task.id]: '' }));
+                                }
+                              }}
+                              className="flex items-center gap-2 mt-2"
+                            >
+                              <button type="submit" className="flex-shrink-0 w-5 h-5 flex items-center justify-center bg-gray-100 hover:bg-blue-100 rounded-md transition-colors text-gray-400 hover:text-blue-600">
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <input 
+                                type="text"
+                                value={newSubtarefaText[task.id] || ''}
+                                onChange={e => setNewSubtarefaText(prev => ({ ...prev, [task.id]: e.target.value }))}
+                                placeholder="Nova subtarefa..."
+                                className="flex-1 text-xs bg-transparent border-b border-dashed border-gray-300 focus:border-blue-500 focus:outline-none pb-0.5"
+                              />
+                            </form>
+                          </div>
+
+                          {/* Field Notes */}
+                          <div className="space-y-2 pt-3 border-t border-gray-100">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Notas de Campo</h4>
+                            
+                            <div className="space-y-2">
+                              {task.comentarios?.map(com => (
+                                <div key={com.id} className="bg-yellow-50/50 p-2 rounded-md border border-yellow-100 relative group">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full", memberColor(com.usuario).badge)}>{com.usuario}</span>
+                                    <span className="text-[10px] text-yellow-600/70">
+                                      {format(parseISO(com.criado_em), "dd/MM HH:mm", { locale: ptBR })}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-700">{com.texto}</p>
+                                  {currentUser === 'Thomás' && (
+                                    <button
+                                      onClick={() => onDeleteComentarioTarefa && onDeleteComentarioTarefa(order.id, task.id, com.id)}
+                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-yellow-600 hover:text-red-500 transition-all bg-yellow-50 rounded-md"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const val = newComentarioText[task.id]?.trim();
+                                if (val && onAddComentarioTarefa) {
+                                  onAddComentarioTarefa(order.id, task.id, val);
+                                  setNewComentarioText(prev => ({ ...prev, [task.id]: '' }));
+                                }
+                              }}
+                              className="flex flex-col gap-2 mt-2 relative"
+                            >
+                              <div className="relative">
+                                <textarea
+                                  value={newComentarioText[task.id] || ''}
+                                  onChange={e => setNewComentarioText(prev => ({ ...prev, [task.id]: e.target.value }))}
+                                  placeholder="Anotações, observações..."
+                                  rows={2}
+                                  className="w-full pl-3 pr-10 py-2 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isRecording[task.id]) {
+                                      // @ts-ignore
+                                      // We can't stop it directly without the recognition instance reference, but it will auto-stop when speech ends.
+                                      // Ideally we store the instance, but for now we rely on auto-end or toggle.
+                                    } else {
+                                      startVoiceInput(task.id);
+                                    }
+                                  }}
+                                  className={cn(
+                                    "absolute right-2 top-2 p-1.5 rounded-md transition-colors",
+                                    isRecording[task.id] ? "text-red-500 bg-red-50 animate-pulse" : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                                  )}
+                                  title="Digitação por voz"
+                                >
+                                  <Mic className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <button
+                                type="submit"
+                                disabled={!newComentarioText[task.id]?.trim()}
+                                className="self-end px-3 py-1 bg-yellow-100 text-yellow-700 hover:bg-yellow-200 text-xs font-semibold rounded-md transition-colors disabled:opacity-50"
+                              >
+                                Salvar Nota
+                              </button>
+                            </form>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                   
                   <form 
                     onSubmit={(e) => {
@@ -417,40 +704,39 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                       setNewTaskTitle('');
                       setNewTaskDueDate('');
                     }} 
-                    className="flex flex-col gap-2 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200"
+                    className="flex items-center gap-1.5 mt-3 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200"
                   >
                     <input 
                       type="text" 
                       placeholder="Nova tarefa..." 
                       value={newTaskTitle}
                       onChange={(e) => setNewTaskTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                      className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     />
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={newTaskAssignee}
-                        onChange={(e) => setNewTaskAssignee(e.target.value as TeamMember)}
-                        className="flex-1 px-2 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-gray-600"
-                      >
-                        <option value="Thomás">Thomás</option>
-                        <option value="Roberto">Roberto</option>
-                        <option value="Katlyn">Katlyn</option>
-                      </select>
-                      <input 
-                        type="date"
-                        value={newTaskDueDate}
-                        onChange={(e) => setNewTaskDueDate(e.target.value)}
-                        className="flex-1 px-2 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-gray-600"
-                        title="Prazo Final (Opcional)"
-                      />
-                      <button 
-                        type="submit"
-                        disabled={!newTaskTitle.trim()}
-                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex-shrink-0"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    </div>
+                    <select
+                      value={newTaskAssignee}
+                      onChange={(e) => setNewTaskAssignee(e.target.value as TeamMember)}
+                      className="w-24 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
+                      title="Responsável"
+                    >
+                      <option value="Thomás">Thomás</option>
+                      <option value="Roberto">Roberto</option>
+                      <option value="Katlyn">Katlyn</option>
+                    </select>
+                    <input 
+                      type="date"
+                      value={newTaskDueDate}
+                      onChange={(e) => setNewTaskDueDate(e.target.value)}
+                      className="w-28 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
+                      title="Prazo (Opcional)"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={!newTaskTitle.trim()}
+                      className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
                   </form>
                 </div>
               </div>

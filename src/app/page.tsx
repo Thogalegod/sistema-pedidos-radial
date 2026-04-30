@@ -6,6 +6,7 @@ import { sortOrders } from '../lib/sorting';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
 import { NewOrderDrawer } from '../components/NewOrderDrawer';
+import { memberColor } from '../components/StatusBadge';
 import { LayoutDashboard, CheckSquare, Search, Plus, LogOut, AlertCircle, Clock, CheckCircle2, Flame } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -45,7 +46,7 @@ export default function Home() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('pedidos')
-      .select('*, tarefas(*), atividades(*), anexos(*)');
+      .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)');
 
     if (error) {
       console.error('Error fetching orders:', error);
@@ -70,7 +71,21 @@ export default function Home() {
         completed: t.concluido,
         assignee: t.responsavel,
         dueDate: t.vencimento,
-        completedAt: t.concluida_em
+        completedAt: t.concluida_em,
+        subtarefas: t.subtarefas?.map((s: any) => ({
+          id: s.id,
+          tarefa_id: s.tarefa_id,
+          descricao: s.descricao,
+          concluida: s.concluida,
+          criado_em: s.criado_em
+        })).sort((a: any, b: any) => new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime()) || [],
+        comentarios: t.comentarios_tarefa?.map((c: any) => ({
+          id: c.id,
+          tarefa_id: c.tarefa_id,
+          texto: c.texto,
+          usuario: c.usuario,
+          criado_em: c.criado_em
+        })).sort((a: any, b: any) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()) || []
       })) || [],
       atividades: d.atividades?.map((a: any) => ({
         id: a.id,
@@ -265,6 +280,15 @@ export default function Home() {
     toast.success('Tarefa atualizada');
   };
 
+  const handleEditTaskDueDate = async (orderId: string, taskId: string, newDueDate: string | undefined) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      tasks: o.tasks.map(t => t.id === taskId ? { ...t, dueDate: newDueDate } : t)
+    } : o));
+    await supabase.from('tarefas').update({ vencimento: newDueDate || null }).eq('id', taskId);
+    toast.success('Prazo da tarefa atualizado');
+  };
+
   const handleEditOrderField = async (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: newValue } : o));
     
@@ -291,6 +315,101 @@ export default function Home() {
     await supabase.from('pedidos').delete().eq('id', orderId);
     toast.success('Pedido deletado');
   };
+
+  const handleAddSubtarefa = async (orderId: string, taskId: string, descricao: string) => {
+    const { data, error } = await supabase.from('subtarefas').insert({
+      tarefa_id: taskId,
+      descricao,
+      concluida: false
+    }).select().single();
+
+    if (!error && data) {
+      setOrders(prev => prev.map(o => o.id === orderId ? {
+        ...o,
+        tasks: o.tasks.map(t => t.id === taskId ? {
+          ...t,
+          subtarefas: [...(t.subtarefas || []), {
+            id: data.id,
+            tarefa_id: data.tarefa_id,
+            descricao: data.descricao,
+            concluida: data.concluida,
+            criado_em: data.criado_em
+          }]
+        } : t)
+      } : o));
+    } else {
+      toast.error('Erro ao adicionar subtarefa');
+    }
+  };
+
+  const handleToggleSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
+    let newConcluida = false;
+    setOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      tasks: o.tasks.map(t => {
+        if (t.id !== taskId) return t;
+        return {
+          ...t,
+          subtarefas: t.subtarefas?.map(s => {
+            if (s.id !== subtaskId) return s;
+            newConcluida = !s.concluida;
+            return { ...s, concluida: newConcluida };
+          })
+        };
+      })
+    } : o));
+
+    await supabase.from('subtarefas').update({ concluida: newConcluida }).eq('id', subtaskId);
+  };
+
+  const handleDeleteSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      tasks: o.tasks.map(t => t.id === taskId ? {
+        ...t,
+        subtarefas: t.subtarefas?.filter(s => s.id !== subtaskId)
+      } : t)
+    } : o));
+    await supabase.from('subtarefas').delete().eq('id', subtaskId);
+  };
+
+  const handleAddComentarioTarefa = async (orderId: string, taskId: string, texto: string) => {
+    const { data, error } = await supabase.from('comentarios_tarefa').insert({
+      tarefa_id: taskId,
+      texto,
+      usuario: currentUser
+    }).select().single();
+
+    if (!error && data) {
+      setOrders(prev => prev.map(o => o.id === orderId ? {
+        ...o,
+        tasks: o.tasks.map(t => t.id === taskId ? {
+          ...t,
+          comentarios: [{
+            id: data.id,
+            tarefa_id: data.tarefa_id,
+            texto: data.texto,
+            usuario: data.usuario,
+            criado_em: data.criado_em
+          }, ...(t.comentarios || [])]
+        } : t)
+      } : o));
+    } else {
+      toast.error('Erro ao salvar nota');
+    }
+  };
+
+  const handleDeleteComentarioTarefa = async (orderId: string, taskId: string, comentarioId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      tasks: o.tasks.map(t => t.id === taskId ? {
+        ...t,
+        comentarios: t.comentarios?.filter(c => c.id !== comentarioId)
+      } : t)
+    } : o));
+    await supabase.from('comentarios_tarefa').delete().eq('id', comentarioId);
+  };
+
 
   const handleAddAtividade = async (orderId: string, descricao: string) => {
     const toastId = toast.loading('Salvando registro...');
@@ -449,7 +568,7 @@ export default function Home() {
                  Novo Pedido
                </button>
                <div className="flex items-center gap-3 border-l border-gray-200 pl-4 ml-2">
-                 <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-blue-500 flex items-center justify-center text-white font-semibold shadow-sm border border-blue-700" title={currentUser}>
+                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${memberColor(currentUser).avatar}`} title={currentUser}>
                    {userInitials}
                  </div>
                  <button 
@@ -630,6 +749,7 @@ export default function Home() {
         onChangePriority={handleChangePriority}
         onAddTask={handleAddTask}
         onEditTaskTitle={handleEditTaskTitle}
+        onEditTaskDueDate={handleEditTaskDueDate}
         onEditOrderField={handleEditOrderField}
         onDeleteTask={handleDeleteTask}
         onDeleteOrder={handleDeleteOrder}
@@ -637,6 +757,11 @@ export default function Home() {
         onDeleteAtividade={handleDeleteAtividade}
         onUploadFiles={handleUploadFiles}
         onDeleteAnexo={handleDeleteAnexo}
+        onAddSubtarefa={handleAddSubtarefa}
+        onToggleSubtarefa={handleToggleSubtarefa}
+        onDeleteSubtarefa={handleDeleteSubtarefa}
+        onAddComentarioTarefa={handleAddComentarioTarefa}
+        onDeleteComentarioTarefa={handleDeleteComentarioTarefa}
         today={today}
         currentUser={currentUser}
       />

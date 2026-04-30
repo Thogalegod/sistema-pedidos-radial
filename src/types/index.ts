@@ -9,6 +9,24 @@ export interface Task {
   assignee?: TeamMember;
   dueDate?: string; // ISO format YYYY-MM-DD
   completedAt?: string; // ISO timestamp
+  subtarefas?: Subtarefa[];
+  comentarios?: ComentarioTarefa[];
+}
+
+export interface Subtarefa {
+  id: string;
+  tarefa_id: string;
+  descricao: string;
+  concluida: boolean;
+  criado_em: string;
+}
+
+export interface ComentarioTarefa {
+  id: string;
+  tarefa_id: string;
+  texto: string;
+  usuario: string;
+  criado_em: string;
 }
 
 export interface Atividade {
