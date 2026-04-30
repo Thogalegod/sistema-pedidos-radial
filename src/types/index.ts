@@ -1,6 +1,6 @@
 export type Priority = 'Baixa' | 'Normal' | 'Alta';
 export type OrderStatus = 'Ação Pendente' | 'Aguardando Cliente' | 'Prazo Concessionária' | 'Concluído';
-export type TeamMember = 'Thomás' | 'Roberto' | 'Katlyn';
+export type TeamMember = 'Thomás' | 'Roberto' | 'Katlyn' | 'Equipe de Campo';
 
 export interface Task {
   id: string;

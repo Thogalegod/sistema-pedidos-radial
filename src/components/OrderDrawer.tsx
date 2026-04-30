@@ -722,6 +722,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                       <option value="Thomás">Thomás</option>
                       <option value="Roberto">Roberto</option>
                       <option value="Katlyn">Katlyn</option>
+                      <option value="Equipe de Campo">Equipe de Campo</option>
                     </select>
                     <input 
                       type="date"

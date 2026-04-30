@@ -30,6 +30,12 @@ export const memberColor = (name?: string) => {
         avatar: 'bg-violet-600',
         dot: 'bg-violet-500'
       };
+    case 'Equipe de Campo':
+      return {
+        badge: 'bg-amber-100 text-amber-700 border border-amber-200',
+        avatar: 'bg-amber-600',
+        dot: 'bg-amber-500'
+      };
     default:
       return {
         badge: 'bg-gray-100 text-gray-600 border border-gray-200',
