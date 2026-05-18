@@ -5,19 +5,27 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar, Cell, Tooltip } from 'recharts';
 import { getUrlArquivo } from '@/lib/storage';
+import { Document, Page, pdfjs } from 'react-pdf';
 
+// Importa os estilos do react-pdf (necessário para não desconfigurar algumas renderizações)
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// Configura o worker do PDF.js
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export default function CabineReportViewer(props: { params: Promise<{ id: string }> }) {
+export default function CabinePrintViewer(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   
   const [artUrl, setArtUrl] = useState<string | null>(null);
   const [creaUrl, setCreaUrl] = useState<string | null>(null);
+  const [numPagesArt, setNumPagesArt] = useState<number>();
 
   useEffect(() => {
     if (data?.art_arquivo_url) {
@@ -40,8 +48,17 @@ export default function CabineReportViewer(props: { params: Promise<{ id: string
       });
   }, [params.id]);
 
+  useEffect(() => {
+    // Auto-print option could be enabled here after everything loads, 
+    // but better to let user click to ensure PDF is loaded.
+  }, []);
+
+  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+    setNumPagesArt(numPages);
+  }
+
   if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
-  if (!data) return <div className="p-8 text-center">Carregando relatório...</div>;
+  if (!data) return <div className="p-8 text-center">Carregando relatório para impressão...</div>;
 
   const v = data.valores_calculados;
 
@@ -105,18 +122,10 @@ export default function CabineReportViewer(props: { params: Promise<{ id: string
       `}} />
 
       <div className="text-center p-4 no-print bg-white border-b sticky top-0 z-50 shadow-sm flex justify-between items-center max-w-4xl mx-auto">
-        <button onClick={() => router.push('/cabine')} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">← Voltar</button>
-        <h2 className="font-bold">Visualização do Relatório</h2>
+        <button onClick={() => router.push(`/cabine/${data.id}`)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">← Voltar</button>
+        <h2 className="font-bold">Página de Impressão</h2>
         <div>
-          <button onClick={() => router.push(`/cabine/${params.id}/imprimir`)} className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Imprimir Relatório (Completo)</button>
-          {artUrl && (
-            <button
-              onClick={() => window.open(artUrl, '_blank')}
-              className="no-print bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 ml-2"
-            >
-              Abrir ART
-            </button>
-          )}
+          <button onClick={() => window.print()} className="bg-green-600 text-white px-6 py-2 rounded shadow hover:bg-green-700 font-bold">🖨️ Imprimir Agora</button>
         </div>
       </div>
 
@@ -784,7 +793,7 @@ export default function CabineReportViewer(props: { params: Promise<{ id: string
         <Footer />
       </div>
 
-      {/* PÁGINA 8 — ANEXO I */}
+      {/* PÁGINA 8 — ANEXO I (CREA) */}
       <div className="page-container page-break flex flex-col items-center justify-center">
         <Header fl={8} />
         <div className="flex-1 flex flex-col items-center justify-center w-full mt-4">
@@ -802,43 +811,56 @@ export default function CabineReportViewer(props: { params: Promise<{ id: string
         <Footer />
       </div>
 
-      {/* PÁGINA 9 — ANEXO II */}
-      <div className="page-container">
-        <Header fl={9} />
-        <div className="flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
-          <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO II</h1>
-          <h2 className="text-xl font-medium text-gray-600 mb-12">Anotação de Responsabilidade Técnica</h2>
-
-          {artUrl ? (
-            <>
-              {/* Na tela: botão para abrir em nova aba */}
-              <div className="no-print flex flex-col items-center gap-4">
-                <div className="text-green-700 font-semibold text-lg">✓ ART anexada</div>
-                <button
-                  onClick={() => window.open(artUrl, '_blank')}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Abrir ART em nova aba
-                </button>
-                <p className="text-gray-500 text-sm text-center max-w-md">
-                  Para incluir a ART no relatório impresso, abra o arquivo acima,
-                  imprima separadamente e adicione ao final do relatório.
-                </p>
+      {/* ANEXO II — ART (PODE TER MÚLTIPLAS PÁGINAS) */}
+      {artUrl ? (
+        <Document
+          file={artUrl}
+          onLoadSuccess={onDocumentLoadSuccess}
+          className="flex flex-col items-center"
+          loading={
+            <div className="page-container page-break flex flex-col items-center justify-center">
+              <Header fl={9} />
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mb-4"></div>
+                <p>Processando PDF da ART para impressão...</p>
               </div>
-
-              {/* Na impressão: placeholder indicando que ART deve ser anexada */}
-              <div className="print-only w-full border-2 border-dashed border-gray-400 rounded flex items-center justify-center text-gray-500 italic text-center p-8" style={{ minHeight: 400 }}>
-                ART registrada no sistema — imprimir separadamente e incluir aqui
+            </div>
+          }
+        >
+          {Array.from(new Array(numPagesArt || 0), (el, index) => (
+            <div key={`page_${index + 1}`} className="page-container page-break flex flex-col items-center justify-center w-full relative">
+              <Header fl={9 + index} />
+              {index === 0 && (
+                <div className="w-full text-center mb-4">
+                  <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO II</h1>
+                  <h2 className="text-xl font-medium text-gray-600">Anotação de Responsabilidade Técnica</h2>
+                </div>
+              )}
+              <div className="w-full flex justify-center bg-white my-4">
+                 <Page 
+                   pageNumber={index + 1} 
+                   renderTextLayer={false} 
+                   renderAnnotationLayer={false} 
+                   width={650} 
+                 />
               </div>
-            </>
-          ) : (
+              <Footer />
+            </div>
+          ))}
+        </Document>
+      ) : (
+        <div className="page-container">
+          <Header fl={9} />
+          <div className="flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
+            <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO II</h1>
+            <h2 className="text-xl font-medium text-gray-600 mb-12">Anotação de Responsabilidade Técnica</h2>
             <div className="w-full border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 italic" style={{ minHeight: 400 }}>
               Nenhuma ART anexada para este relatório.
             </div>
-          )}
+          </div>
+          <Footer />
         </div>
-        <Footer />
-      </div>
+      )}
 
     </div>
   );
