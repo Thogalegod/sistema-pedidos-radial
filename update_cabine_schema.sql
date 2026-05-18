@@ -1,0 +1,14 @@
+ALTER TABLE relatorios_cabine
+  ADD COLUMN IF NOT EXISTS cabo_isolacao TEXT DEFAULT 'EPR',
+  ADD COLUMN IF NOT EXISTS cabo_secao TEXT DEFAULT '25mm²',
+  ADD COLUMN IF NOT EXISTS cabo_emendas TEXT DEFAULT 'Não',
+  ADD COLUMN IF NOT EXISTS cabo_instalacao TEXT DEFAULT 'Subterrânea',
+  ADD COLUMN IF NOT EXISTS cabo_blindagem TEXT DEFAULT 'Fita de cobre',
+  ADD COLUMN IF NOT EXISTS trafo_potencia_kva NUMERIC,
+  ADD COLUMN IF NOT EXISTS trafo_tensao_bt TEXT,
+  ADD COLUMN IF NOT EXISTS trafo_taps INTEGER[],
+  ADD COLUMN IF NOT EXISTS trafo_tap_despacho INTEGER,
+  ADD COLUMN IF NOT EXISTS trafo_numero_serie TEXT,
+  ADD COLUMN IF NOT EXISTS trafo_fabricante TEXT,
+  ADD COLUMN IF NOT EXISTS art_numero TEXT,
+  ADD COLUMN IF NOT EXISTS revisao INTEGER DEFAULT 0;

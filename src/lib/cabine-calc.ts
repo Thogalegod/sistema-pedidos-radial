@@ -1,4 +1,5 @@
 // Motor de cálculo — Relatório Cabine Primária
+import { calcularRelatorio, TransformerOutput } from './transformer-calc';
 
 export interface CabineInput {
   clienteNome: string;
@@ -18,9 +19,25 @@ export interface CabineInput {
   caboComprimento: string;
   caboBitola: string;
   caboTerminais?: string;
+  caboIsolacao?: string;      // 'EPR' | 'XLPE' | 'HEPR'
+  caboSecao?: string;         // '25mm²' | '35mm²' | '50mm²'
+  caboEmendas?: string;       // 'Sim' | 'Não'
+  caboInstalacao?: string;    // 'Subterrânea' | 'Aérea'
+  caboBlindagem?: string;     // 'Fita de cobre'
   caboTemperatura?: number;
   caboUmidade?: number;
   caboClima?: string;
+
+  // Transformador
+  trafoPotenciaKva?: number;
+  trafoTensaoBt?: '220' | '380' | '440';
+  trafoTaps?: number[];
+  trafoTapDespacho?: number;
+  trafoNumeroSerie?: string;
+  trafoFabricante?: string;
+
+  // Revisão
+  revisao?: number;
 
   // HIPOT
   hipotTensaoTeste?: string;
@@ -48,6 +65,8 @@ export interface CabineInput {
   // Responsável
   responsavelNome?: string;
   responsavelCrea?: string;
+  artNumero?: string;
+  artArquivoUrl?: string | null;
 
   // Seed para determinismo
   seed?: string;
@@ -76,6 +95,9 @@ export interface CabineOutput {
 
   // Aterramento — leitura por haste (Ω)
   aterramento: number[];
+
+  // Transformador
+  trafo: TransformerOutput | null;
 }
 
 function seededRandom(seed: string, index: number): number {
@@ -139,8 +161,34 @@ export function calcularCabine(input: CabineInput): CabineOutput {
   // Faixa realista: 3 a 9 Ω
   const aterramento: number[] = [];
   for (let i = 0; i < input.aterramentoQtdeHastes; i++) {
-    aterramento.push(randRange(3, 9, seed + '_at', i));
+    const val = randRange(3.5, 9.5, seed + '_aterramento_haste_' + i + '_unique', i * 17 + 3);
+    aterramento.push(+val.toFixed(1));
   }
 
-  return { hipot, megger, aterramento };
+  // --- TRANSFORMADOR ---
+  let trafo: TransformerOutput | null = null;
+  if (input.trafoPotenciaKva && input.trafoTensaoBt) {
+    trafo = calcularRelatorio({
+      clienteNome: input.clienteNome,
+      clienteEndereco: input.clienteEndereco,
+      clienteCidade: input.clienteCidade,
+      clienteUf: input.clienteUf,
+      clienteCnpj: input.clienteCnpj,
+      clienteIe: input.clienteIe,
+      fabricante: input.trafoFabricante,
+      numeroSerie: input.trafoNumeroSerie,
+      potenciaKva: input.trafoPotenciaKva,
+      tensaoAtNominal: 13800,
+      tensaoBt: input.trafoTensaoBt,
+      taps: input.trafoTaps || [13800, 13200, 12600, 12000, 11400],
+      tapDespacho: input.trafoTapDespacho || 13800,
+      temperaturaC: input.caboTemperatura,
+      umidadeRelativa: input.caboUmidade,
+      dataRelatorio: input.dataExecucao,
+      responsavelNome: input.responsavelNome,
+      responsavelCrea: input.responsavelCrea,
+    });
+  }
+
+  return { hipot, megger, aterramento, trafo };
 }

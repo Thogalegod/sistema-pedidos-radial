@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LayoutDashboard, FileText, ArrowRight, FileCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, ArrowRight, FileCheck, Settings } from 'lucide-react';
 
 export default function HubPage() {
   return (
@@ -48,6 +48,17 @@ export default function HubPage() {
           </div>
         </Link>
 
+        {/* Configurações */}
+        <Link href="/configuracoes" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-gray-500 transition-all">
+          <div className="w-14 h-14 bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <Settings size={28} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-gray-600 transition-colors">Configurações</h2>
+          <p className="text-gray-500 mb-6 line-clamp-2">Configurações do sistema, assinaturas, templates e gestão de credenciais técnicas.</p>
+          <div className="flex items-center text-gray-600 font-medium text-sm">
+            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </Link>
       </div>
     </div>
   );
