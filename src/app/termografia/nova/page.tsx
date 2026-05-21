@@ -299,7 +299,7 @@ export default function NovaTermografiaPage() {
                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'digital', e.target.files?.[0])} />
                       </label>
                       <div className="grid grid-cols-2 gap-2 md:col-span-2">
-                        <a href="intent://xtherm/#Intent;package=com.infiRay.Xtherm;end" className="flex items-center justify-center gap-2 border border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 hover:border-orange-400">
+                        <a href="intent://xtherm/#Intent;package=com.infiRay.Xtherm;component=com.infiRay.Xtherm/.MainActivity;end" className="flex items-center justify-center gap-2 border border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 hover:border-orange-400">
                           <FileImage size={18} /> Abrir Xtherm
                         </a>
                         <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:border-blue-400">
