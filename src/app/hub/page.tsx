@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LayoutDashboard, FileText, ArrowRight, FileCheck, Settings } from 'lucide-react';
+import { LayoutDashboard, FileText, ArrowRight, FileCheck, Settings, Camera } from 'lucide-react';
 
 export default function HubPage() {
   return (
@@ -44,6 +44,18 @@ export default function HubPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">Cabine Primária</h2>
           <p className="text-gray-500 mb-6 line-clamp-2">Relatório completo de inspeção para concessionária com HIPOT, Megger e Aterramento.</p>
           <div className="flex items-center text-purple-600 font-medium text-sm">
+            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </Link>
+
+        {/* Termografia */}
+        <Link href="/termografia" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-orange-500 transition-all">
+          <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <Camera size={28} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">Termografia</h2>
+          <p className="text-gray-500 mb-6 line-clamp-2">Relatório de inspeção termográfica com roteiro, fotos digitais, fotos térmicas e ocorrências.</p>
+          <div className="flex items-center text-orange-600 font-medium text-sm">
             Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>

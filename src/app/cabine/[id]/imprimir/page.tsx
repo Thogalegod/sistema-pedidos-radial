@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar, Cell, Tooltip } from 'recharts';
 import { getUrlArquivo } from '@/lib/storage';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { creaBase64 } from '@/lib/creaBase64';
 
 // Importa os estilos do react-pdf (necessário para não desconfigurar algumas renderizações)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -24,14 +25,41 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
   const [data, setData] = useState<any>(null);
   
   const [artUrl, setArtUrl] = useState<string | null>(null);
-  const [creaUrl, setCreaUrl] = useState<string | null>(null);
+  const [artTipo, setArtTipo] = useState<'pdf' | 'image' | null>(null);
   const [numPagesArt, setNumPagesArt] = useState<number>();
 
   useEffect(() => {
+    let ativo = true;
+
     if (data?.art_arquivo_url) {
-      getUrlArquivo(data.art_arquivo_url).then(setArtUrl);
+      setArtUrl(null);
+      setArtTipo(null);
+      setNumPagesArt(undefined);
+
+      getUrlArquivo(data.art_arquivo_url).then(async (url) => {
+        if (!ativo) return;
+        setArtUrl(url);
+
+        if (!url) return;
+
+        try {
+          const response = await fetch(url, { method: 'HEAD' });
+          const contentType = response.headers.get('content-type') || '';
+          if (!ativo) return;
+          setArtTipo(contentType.startsWith('image/') ? 'image' : 'pdf');
+        } catch {
+          if (ativo) setArtTipo('pdf');
+        }
+      });
+    } else {
+      setArtUrl(null);
+      setArtTipo(null);
+      setNumPagesArt(undefined);
     }
-    getUrlArquivo('crea/roberto-fontes-lopes.jpg').then(setCreaUrl);
+
+    return () => {
+      ativo = false;
+    };
   }, [data]);
 
   useEffect(() => {
@@ -55,25 +83,27 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPagesArt(numPages);
+    setArtTipo('pdf');
   }
 
   if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
   if (!data) return <div className="p-8 text-center">Carregando relatório para impressão...</div>;
 
   const v = data.valores_calculados;
+  const artCarregando = Boolean(artUrl && artTipo !== 'image' && !numPagesArt);
 
   const Header = ({ fl }: { fl: number }) => (
-    <div className="cabecalho w-full border-2 border-blue-900 mb-6 flex text-[10pt]">
-      <div className="w-1/4 p-2 flex items-center justify-center border-r-2 border-blue-900">
-        <img src="/logo.png" alt="Logo" className="max-h-12 object-contain" />
+    <div className="cabecalho w-full border-2 border-blue-900 mb-3 flex text-[10pt]">
+      <div className="w-1/4 p-1 flex items-center justify-center border-r-2 border-blue-900">
+        <img src="/logo.png" alt="Logo" className="max-h-8 object-contain" />
       </div>
-      <div className="w-1/2 p-2 flex items-center justify-center border-r-2 border-blue-900 font-bold text-center">
+      <div className="w-1/2 p-1 flex items-center justify-center border-r-2 border-blue-900 font-bold text-center">
         RELATÓRIO TÉCNICO
       </div>
-      <div className="w-1/4 p-0 text-xs" style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', borderLeft: '2px solid #1e3a5f' }}>
-        <div style={{ padding: '2px 6px', borderBottom: '1px solid #1e3a5f', display: 'flex', alignItems: 'center' }}>N Relatório: {data.numero_relatorio}</div>
-        <div style={{ padding: '2px 6px', borderBottom: '1px solid #1e3a5f', display: 'flex', alignItems: 'center' }}>Data: {data.data_execucao?.split('-').reverse().join('/')}</div>
-        <div style={{ padding: '2px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="w-1/4 p-0 text-[10px]" style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', borderLeft: '2px solid #1e3a5f' }}>
+        <div style={{ padding: '2px 4px', borderBottom: '1px solid #1e3a5f', display: 'flex', alignItems: 'center' }}>Nº: {data.numero_relatorio}</div>
+        <div style={{ padding: '2px 4px', borderBottom: '1px solid #1e3a5f', display: 'flex', alignItems: 'center' }}>Data: {data.data_execucao?.split('-').reverse().join('/')}</div>
+        <div style={{ padding: '2px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Rev.: {data.revisao}</span>
           <span>FL.: {fl}/12</span>
         </div>
@@ -91,48 +121,95 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
     <div className="bg-gray-100 min-h-screen pb-10 print:bg-white text-gray-900">
       <style dangerouslySetInnerHTML={{
         __html: `
-        @page { size: A4 portrait; margin: 15mm; }
+        @page { size: A4 portrait; margin: 10mm; }
         @media print {
           .no-print { display: none !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 190mm !important;
+            background: white !important;
+          }
           .page-break { page-break-after: always; break-after: page; }
           .page-break:last-child { page-break-after: avoid; break-after: avoid; }
-          .page-container { margin: 0; padding: 15mm; box-shadow: none; }
+          .page-container {
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            width: 190mm !important;
+            height: 276mm !important;
+            min-height: 276mm !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+          }
+          .cover-content {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
           body { font-size: 9pt; font-family: Arial, sans-serif; background: white; }
           table { font-size: 8pt; width: 100%; border-collapse: collapse; }
-          th { background-color: #1e3a5f !important; color: white !important; padding: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #ccc; text-align: left; }
-          td { padding: 6px; border: 1px solid #ccc; }
+          th { background-color: #1e3a5f !important; color: white !important; padding: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #ccc; text-align: left; }
+          td { padding: 4px; border: 1px solid #ccc; }
           tr:nth-child(even) td { background-color: #f5f7fa !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .cabecalho { position: static; }
-          .section-title { color: #1e6db5 !important; font-weight: bold; font-size: 11pt; margin-top: 15px; margin-bottom: 8px; }
+          .section-title { color: #1e6db5 !important; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 6px; }
           .print-only { display: flex !important; }
+          @page art { size: A4 portrait; margin: 6mm; }
+          .art-page {
+            page: art;
+            padding: 8mm !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+            justify-content: flex-start !important;
+          }
+          .art-pdf-wrapper {
+            margin-top: 2mm !important;
+            margin-bottom: 0 !important;
+          }
+          .art-pdf-wrapper .react-pdf__Page,
+          .art-pdf-wrapper .react-pdf__Page canvas {
+            display: block !important;
+            margin: 0 auto !important;
+            width: 144mm !important;
+            height: auto !important;
+            max-width: 100% !important;
+          }
         }
         @media screen {
           .print-only { display: none !important; }
         }
         /* Visualização em tela similar à impressão */
         .page-container {
-          background: white; max-width: 210mm; margin: 20px auto; padding: 15mm;
+          background: white; max-width: 210mm; margin: 20px auto; padding: 10mm;
           box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative;
+          box-sizing: border-box;
         }
-        .page-container table { font-size: 9pt; width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-        .page-container th { background-color: #1e3a5f; color: white; padding: 6px; border: 1px solid #ccc; text-align: left; }
-        .page-container td { padding: 6px; border: 1px solid #ccc; }
+        .page-container table { font-size: 9pt; width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .page-container th { background-color: #1e3a5f; color: white; padding: 4px; border: 1px solid #ccc; text-align: left; }
+        .page-container td { padding: 4px; border: 1px solid #ccc; }
         .page-container tr:nth-child(even) td { background-color: #f5f7fa; }
-        .section-title { color: #1e6db5; font-weight: bold; font-size: 12pt; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .section-title { color: #1e6db5; font-weight: bold; font-size: 12pt; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
       `}} />
 
       <div className="text-center p-4 no-print bg-white border-b sticky top-0 z-50 shadow-sm flex justify-between items-center max-w-4xl mx-auto">
         <button onClick={() => router.push(`/cabine/${data.id}`)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">← Voltar</button>
         <h2 className="font-bold">Página de Impressão</h2>
         <div>
-          <button onClick={() => window.print()} className="bg-green-600 text-white px-6 py-2 rounded shadow hover:bg-green-700 font-bold">🖨️ Imprimir Agora</button>
+          <button
+            onClick={() => window.print()}
+            disabled={artCarregando}
+            className="bg-green-600 text-white px-6 py-2 rounded shadow hover:bg-green-700 font-bold disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {artCarregando ? 'Carregando ART...' : '🖨️ Imprimir Agora'}
+          </button>
         </div>
       </div>
 
       {/* PÁGINA 1 — CAPA */}
-      <div className="page-container page-break flex flex-col items-center justify-center">
+      <div className="page-container page-break flex flex-col" style={{ minHeight: '277mm' }}>
         <Header fl={1} />
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
+        <div className="cover-content flex-1 flex flex-col items-center justify-center text-center">
           <h1 className="text-3xl font-bold text-blue-900 mb-4 tracking-wide">RELATÓRIO TÉCNICO DE ENSAIOS ELÉTRICOS</h1>
           <h2 className="text-xl font-semibold text-gray-700 mb-8">HIPOT CC + MEGGER DO CABO + ATERRAMENTO + TRANSFORMADOR</h2>
           <p className="text-lg text-gray-600">Cabine Primária Blindada - Ramal de Entrada de Média Tensão 15 kV</p>
@@ -190,18 +267,30 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
         <div className="section-title">2. Dados do circuito de média tensão</div>
         <table>
           <tbody>
-            <tr><th className="w-1/3">Origem</th><td>{data.cabo_de}</td></tr>
-            <tr><th>Destino</th><td>{data.cabo_para}</td></tr>
-            <tr><th>Classe de tensão</th><td>8,7/15 kV</td></tr>
-            <tr><th>Tensão nominal</th><td>13,8 kV</td></tr>
-            <tr><th>Condutor</th><td>Cobre</td></tr>
-            <tr><th>Seção</th><td>{data.cabo_secao}</td></tr>
-            <tr><th>Isolação</th><td>{data.cabo_isolacao}</td></tr>
-            <tr><th>Comprimento aproximado</th><td>{data.cabo_comprimento}</td></tr>
-            <tr><th>Tipo de terminal</th><td>{data.cabo_terminais}</td></tr>
-            <tr><th>Emendas</th><td>{data.cabo_emendas}</td></tr>
-            <tr><th>Blindagem</th><td>{data.cabo_blindagem}</td></tr>
-            <tr><th>Instalação</th><td>{data.cabo_instalacao}</td></tr>
+            <tr>
+              <th className="w-1/4">Origem</th><td className="w-1/4">{data.cabo_de}</td>
+              <th className="w-1/4">Isolação</th><td className="w-1/4">{data.cabo_isolacao}</td>
+            </tr>
+            <tr>
+              <th>Destino</th><td>{data.cabo_para}</td>
+              <th>Comprimento aprox.</th><td>{data.cabo_comprimento}</td>
+            </tr>
+            <tr>
+              <th>Classe de tensão</th><td>8,7/15 kV</td>
+              <th>Tipo de terminal</th><td>{data.cabo_terminais}</td>
+            </tr>
+            <tr>
+              <th>Tensão nominal</th><td>13,8 kV</td>
+              <th>Emendas</th><td>{data.cabo_emendas}</td>
+            </tr>
+            <tr>
+              <th>Condutor</th><td>Cobre</td>
+              <th>Blindagem</th><td>{data.cabo_blindagem}</td>
+            </tr>
+            <tr>
+              <th>Seção</th><td>{data.cabo_secao}</td>
+              <th>Instalação</th><td>{data.cabo_instalacao}</td>
+            </tr>
           </tbody>
         </table>
 
@@ -298,25 +387,35 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
           </tbody>
         </table>
 
-        <div className="mt-8 border border-gray-300 p-2 bg-white">
-          <h3 className="text-center font-bold text-gray-700 mb-2">Corrente de fuga x tempo - Hipot CC 35 kV</h3>
-          <div style={{ width: '100%', overflowX: 'auto', marginTop: 16 }}>
+        <div className="mt-4 border border-gray-300 p-2 bg-white">
+          <h3 className="text-center font-bold text-gray-700 mb-1">Corrente de fuga x tempo - Hipot CC 35 kV</h3>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: 8 }}>
             <LineChart
-              width={700}
-              height={320}
+              width={650}
+              height={220}
               data={[{ minuto: 0, faseR: 0, faseS: 0, faseT: 0 }, ...v.hipot]}
-              margin={{ top: 10, right: 30, left: 20, bottom: 30 }}
+              margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="minuto" label={{ value: 'Tempo (min)', position: 'insideBottom', offset: -15 }} />
-              <YAxis domain={[0, 16]} label={{ value: 'Corrente de fuga (µA)', angle: -90, position: 'insideLeft', offset: 10 }} />
+              <XAxis dataKey="minuto" tick={{fontSize: 10}} label={{ value: 'Tempo (min)', position: 'insideBottom', offset: -10, fontSize: 11 }} />
+              <YAxis domain={[0, 16]} tick={{fontSize: 10}} label={{ value: 'Corrente de fuga (µA)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 11 }} />
               <Tooltip />
-              <Legend verticalAlign="top" height={36} />
-              <Line type="monotone" dataKey="faseR" name="Fase R" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="faseS" name="Fase S" stroke="#f97316" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="faseT" name="Fase T" stroke="#16a34a" strokeWidth={2} dot={{ r: 4 }} />
+              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px' }} />
+              <Line type="monotone" dataKey="faseR" name="Fase R" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="faseS" name="Fase S" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="faseT" name="Fase T" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </div>
+        </div>
+
+        {/* Conclusão Técnica Hipot */}
+        <div className="p-3 border border-[#ccc] bg-[#f5f7fa] mt-4">
+          <h3 className="font-bold uppercase mb-1 text-center text-[#1e6db5]">Conclusão Técnica — Ensaio de Tensão Aplicada (Hipot CC)</h3>
+          <p className="italic text-justify leading-snug text-[8pt]">
+            O ensaio de tensão aplicada em corrente contínua (Hipot CC) foi conduzido de acordo com a norma IEC 60060-1 e as recomendações da ABNT NBR 7287, com tensão de ensaio de 35 kV CC por 15 minutos. Durante todo o período, as leituras de corrente de fuga apresentaram comportamento decrescente ou estável nas três fases (R, S e T), sem ocorrência de descargas disruptivas (breakdown) ou rupturas do sistema dielétrico.
+            <br/><br/>
+            Conclui-se que o cabo de média tensão e suas terminações suportaram integralmente a tenção de ensaio estipulada, comprovando a qualidade da instalação e a integridade dielétrica do sistema para operação em tensão nominal de 13,8 kV.
+          </p>
         </div>
 
         <Footer />
@@ -358,24 +457,25 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
               <th>Tensão de teste</th>
               <th>Tempo</th>
               <th>Leitura obtida (MΩ)</th>
+              <th>Resultado</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td className="text-center font-bold">R x S</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxS.toLocaleString('pt-BR')}</td></tr>
-            <tr><td className="text-center font-bold">R x T</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxT.toLocaleString('pt-BR')}</td></tr>
-            <tr><td className="text-center font-bold">S x T</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.SxT.toLocaleString('pt-BR')}</td></tr>
-            <tr><td className="text-center font-bold">R x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxMassa.toLocaleString('pt-BR')}</td></tr>
-            <tr><td className="text-center font-bold">S x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.SxMassa.toLocaleString('pt-BR')}</td></tr>
-            <tr><td className="text-center font-bold">T x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.TxMassa.toLocaleString('pt-BR')}</td></tr>
+            <tr><td className="text-center font-bold">R x S</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxS.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
+            <tr><td className="text-center font-bold">R x T</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxT.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
+            <tr><td className="text-center font-bold">S x T</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.SxT.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
+            <tr><td className="text-center font-bold">R x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.RxMassa.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
+            <tr><td className="text-center font-bold">S x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.SxMassa.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
+            <tr><td className="text-center font-bold">T x Massa</td><td className="text-center">10 kV</td><td className="text-center">15 min</td><td className="text-right pr-4">{v.megger.TxMassa.toLocaleString('pt-BR')}</td><td className="text-center text-green-700 font-bold">Aprovado</td></tr>
           </tbody>
         </table>
         
-        <div style={{ width: '100%', marginTop: '16px' }} className="border border-gray-300 p-2 bg-white">
-          <h3 className="text-center font-bold text-gray-700 mb-2 text-xs">Megger 10 kV / 15 min - Resistência de isolamento</h3>
-          <div style={{ width: '100%', overflowX: 'auto', marginTop: 16 }}>
+        <div style={{ width: '100%', marginTop: '12px' }} className="border border-gray-300 p-2 bg-white">
+          <h3 className="text-center font-bold text-gray-700 mb-1 text-xs">Megger 10 kV / 15 min - Resistência de isolamento</h3>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: 8 }}>
             <BarChart
-              width={700}
-              height={280}
+              width={650}
+              height={220}
               data={[
                 { name: 'R-S', val: v.megger.RxS },
                 { name: 'R-T', val: v.megger.RxT },
@@ -384,7 +484,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
                 { name: 'S-Massa', val: v.megger.SxMassa },
                 { name: 'T-Massa', val: v.megger.TxMassa }
               ]}
-              margin={{ top: 10, right: 20, left: 20, bottom: 20 }}
+              margin={{ top: 10, right: 20, left: 0, bottom: 20 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -395,6 +495,16 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
               </Bar>
             </BarChart>
           </div>
+        </div>
+
+        {/* Conclusão Técnica Megger */}
+        <div className="p-3 border border-[#ccc] bg-[#f5f7fa] mt-4">
+          <h3 className="font-bold uppercase mb-1 text-center text-[#1e6db5]">Conclusão Técnica — Ensaio de Resistência de Isolamento (Megger)</h3>
+          <p className="italic text-justify leading-snug text-[8pt]">
+            O ensaio de resistência de isolamento foi executado com megôhmetro eletrônico aplicando 10 kV CC por 15 minutos, conforme prescrições da norma ABNT NBR 7286 e IEC 60093. Os valores obtidos entre as combinações de fases e fase-terra apresentaram-se significativamente elevados e com distribuição coerente entre as medições, sem desequilíbrios acentuados que pudessem indicar degradação localizada da isolação.
+            <br/><br/>
+            Os resultados obtidos confirmam que a isolação do cabo se encontra em ótimas condições, com níveis de resistência muito acima dos limites mínimos estabelecidos pelas normas vigentes, garantindo segurança e longevidade ao sistema elétrico instalado.
+          </p>
         </div>
 
         <Footer />
@@ -431,52 +541,60 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
           </tbody>
         </table>
 
-        <div className="flex gap-4">
-          <div className="w-1/2">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ponto Medido</th>
-                  <th>Leitura Obtida (Ω)</th>
-                  <th>Resultado</th>
+        <div className="w-full mb-4">
+          <table>
+            <thead>
+              <tr>
+                <th>Ponto Medido</th>
+                <th>Leitura Obtida (Ω)</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {v.aterramento.map((val: number, i: number) => (
+                <tr key={i}>
+                  <td className="text-center font-bold">Haste P{i + 1}</td>
+                  <td className="text-right pr-8">{val.toFixed(2)} Ω</td>
+                  <td className="text-center text-green-700 font-bold">Aprovado</td>
                 </tr>
-              </thead>
-              <tbody>
-                {v.aterramento.map((val: number, i: number) => (
-                  <tr key={i}>
-                    <td className="text-center font-bold">Haste P{i + 1}</td>
-                    <td className="text-right pr-8">{val.toFixed(2)} Ω</td>
-                    <td className="text-center text-green-700 font-bold">Aprovado</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="w-1/2 border border-gray-300 p-2 bg-white">
-            <h3 className="text-center font-bold text-gray-700 mb-2 text-xs">Resistência de aterramento por ponto</h3>
-            <div style={{ width: '100%', overflowX: 'auto', marginTop: 16 }}>
-              <BarChart
-                width={700}
-                height={280}
-                data={[
-                  ...v.aterramento.map((val: number, i: number) => ({ name: `P${i+1}`, val })),
-                  { name: 'Geral', val: +(v.aterramento.reduce((a: number, b: number) => a + b, 0) / v.aterramento.length).toFixed(2) }
-                ]}
-                margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} label={{ value: 'Ohms (Ω)', angle: -90, position: 'insideLeft' }} />
-                <Tooltip />
-                <Bar dataKey="val" name="Resistência (Ω)" label={{ position: 'top', fontSize: 10 }}>
-                  {[...v.aterramento.map((_: any, i: number) => (
-                    <Cell key={i} fill={['#2563eb','#16a34a','#f97316','#dc2626'][i % 4]} />
-                  )), <Cell key="geral" fill="#9333ea" />]}
-                </Bar>
-              </BarChart>
-            </div>
+        <div style={{ width: '100%', marginTop: '12px' }} className="border border-gray-300 p-2 bg-white">
+          <h3 className="text-center font-bold text-gray-700 mb-1 text-xs">Resistência de aterramento por ponto</h3>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+            <BarChart
+              width={650}
+              height={220}
+              data={[
+                ...v.aterramento.map((val: number, i: number) => ({ name: `P${i+1}`, val })),
+                { name: 'Geral', val: +(v.aterramento.reduce((a: number, b: number) => a + b, 0) / v.aterramento.length).toFixed(2) }
+              ]}
+              margin={{ top: 10, right: 20, left: 0, bottom: 20 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Ohms (Ω)', angle: -90, position: 'insideLeft' }} />
+              <Tooltip />
+              <Bar dataKey="val" name="Resistência (Ω)" label={{ position: 'top', fontSize: 10 }}>
+                {[...v.aterramento.map((_: any, i: number) => (
+                  <Cell key={i} fill={['#2563eb','#16a34a','#f97316','#dc2626'][i % 4]} />
+                )), <Cell key="geral" fill="#9333ea" />]}
+              </Bar>
+            </BarChart>
           </div>
+        </div>
+
+        {/* Conclusão Técnica Aterramento */}
+        <div className="p-3 border border-[#ccc] bg-[#f5f7fa] mt-4">
+          <h3 className="font-bold uppercase mb-1 text-center text-[#1e6db5]">Conclusão Técnica do Sistema de Aterramento</h3>
+          <p className="italic text-justify leading-snug text-[8pt]">
+            As medições de resistência ôhmica do sistema de aterramento foram realizadas em conformidade com as recomendações da norma ABNT NBR 15749 (Medição de Resistência de Aterramento e de Potenciais na Superfície do Solo) e NBR 5410. Os valores obtidos nas hastes e na malha geral encontram-se dentro dos limites aceitáveis para garantir o escoamento seguro de correntes de falta e proteção contra choques elétricos.
+            <br/><br/>
+            Desta forma, atesta-se que a malha de aterramento inspecionada apresenta integridade e continuidade elétrica satisfatórias, estando apta a proteger os equipamentos e garantir a segurança dos usuários e da instalação.
+          </p>
         </div>
 
         <Footer />
@@ -489,7 +607,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
 
         {v.trafo ? (
           <div className="text-[8pt]">
-            <table className="mb-4">
+            <table className="mb-2">
               <tbody>
                 <tr>
                   <th className="w-1/4">Fabricante</th><td className="w-1/4">{data.trafo_fabricante}</td>
@@ -503,9 +621,9 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
             </table>
 
             {/* Relação de Transformação */}
-            <div className="mt-4 mb-1"><strong>TENSÃO DE DESPACHO AT:</strong> {Number(data.trafo_tap_despacho).toLocaleString('pt-BR')} V</div>
+            <div className="mt-2 mb-1"><strong>TENSÃO DE DESPACHO AT:</strong> {Number(data.trafo_tap_despacho).toLocaleString('pt-BR')} V</div>
             <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Relação de Transformação</h4>
-            <table className="mb-4 text-center">
+            <table className="mb-2 text-center">
               <thead>
                 <tr>
                   <th className="w-40 text-left">TAP [V]:</th>
@@ -539,7 +657,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
 
             {/* Correntes Nominais */}
             <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Correntes Nominais</h4>
-            <table className="mb-4 text-center">
+            <table className="mb-2 text-center">
               <tbody>
                 <tr className="font-semibold">
                   <td className="w-16 bg-[#f5f7fa]">V</td>
@@ -554,7 +672,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
               </tbody>
             </table>
 
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-2">
               {/* Perdas em Vazio */}
               <div className="w-1/2">
                 <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Perdas em Vazio</h4>
@@ -605,7 +723,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
               </div>
             </div>
 
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-2">
               {/* Tensão Aplicada */}
               <div className="w-1/2">
                 <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Tensão Aplicada</h4>
@@ -659,7 +777,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
               </div>
             </div>
 
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-2">
               {/* Resistência de Isolamento */}
               <div className="w-1/2">
                 <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Resistência de Isolamento</h4>
@@ -793,50 +911,63 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
         <Footer />
       </div>
 
-      {/* PÁGINA 8 — ANEXO I (CREA) */}
-      <div className="page-container page-break flex flex-col items-center justify-center">
+      {/* PÁGINA 8 — ANEXO I (CAPA) */}
+      <div className="page-container page-break flex flex-col" style={{ minHeight: '277mm' }}>
         <Header fl={8} />
-        <div className="flex-1 flex flex-col items-center justify-center w-full mt-4">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO I</h1>
-          <h2 className="text-xl font-medium text-gray-600 mb-12">CREA Responsável técnico</h2>
+        <div className="cover-content flex-1 flex flex-col items-center justify-center w-full">
+          <h1 className="text-5xl font-bold text-gray-800 mb-4 tracking-widest">ANEXO I</h1>
+          <h2 className="text-2xl font-medium text-gray-600">CREA Responsável técnico</h2>
+        </div>
+        <Footer />
+      </div>
 
-          {creaUrl ? (
-            <img src={creaUrl} alt="CREA Roberto Fontes Lopes" className="w-full max-w-2xl" />
+      {/* PÁGINA 9 — ANEXO I (IMAGEM) */}
+      <div className="page-container page-break flex flex-col" style={{ minHeight: '277mm' }}>
+        <Header fl={9} />
+        <div className="cover-content flex-1 flex flex-col items-center justify-center w-full">
+          {!creaBase64.startsWith("COLE_AQUI") ? (
+            <img src={creaBase64} alt="CREA Roberto Fontes Lopes" className="w-full max-w-2xl object-contain" style={{ maxHeight: '220mm' }} />
           ) : (
-            <div className="w-full max-w-2xl bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 font-bold" style={{ minHeight: '600px' }}>
-              Imagem do CREA não cadastrada. Acesse Configurações para adicionar.
+            <div className="w-full max-w-2xl bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 font-bold" style={{ minHeight: '220mm' }}>
+              Cole o texto Base64 no arquivo src/lib/creaBase64.ts
             </div>
           )}
         </div>
         <Footer />
       </div>
 
+      {/* PÁGINA 10 — ANEXO II (CAPA) */}
+      <div className="page-container page-break flex flex-col" style={{ minHeight: '277mm' }}>
+        <Header fl={10} />
+        <div className="cover-content flex-1 flex flex-col items-center justify-center w-full">
+          <h1 className="text-5xl font-bold text-gray-800 mb-4 tracking-widest">ANEXO II</h1>
+          <h2 className="text-2xl font-medium text-gray-600">Anotação de Responsabilidade Técnica</h2>
+        </div>
+        <Footer />
+      </div>
+
       {/* ANEXO II — ART (PODE TER MÚLTIPLAS PÁGINAS) */}
-      {artUrl ? (
+      {artUrl && artTipo === 'image' ? (
+        <div className="page-container page-break art-page flex flex-col items-center justify-center w-full relative">
+          <Header fl={11} />
+          <div className="art-pdf-wrapper w-full flex justify-center bg-white my-4">
+            <img src={artUrl} alt="ART anexada" className="w-full object-contain" style={{ maxWidth: '170mm', maxHeight: '245mm' }} />
+          </div>
+          <Footer />
+        </div>
+      ) : artUrl ? (
         <Document
           file={artUrl}
           onLoadSuccess={onDocumentLoadSuccess}
+          onLoadError={() => setArtTipo('image')}
           className="flex flex-col items-center"
-          loading={
-            <div className="page-container page-break flex flex-col items-center justify-center">
-              <Header fl={9} />
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mb-4"></div>
-                <p>Processando PDF da ART para impressão...</p>
-              </div>
-            </div>
-          }
+          loading={<div className="no-print p-8 text-center text-gray-500">Processando PDF da ART para impressão...</div>}
+          error={<div className="no-print p-8 text-center text-gray-500">Carregando ART como imagem...</div>}
         >
           {Array.from(new Array(numPagesArt || 0), (el, index) => (
-            <div key={`page_${index + 1}`} className="page-container page-break flex flex-col items-center justify-center w-full relative">
-              <Header fl={9 + index} />
-              {index === 0 && (
-                <div className="w-full text-center mb-4">
-                  <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO II</h1>
-                  <h2 className="text-xl font-medium text-gray-600">Anotação de Responsabilidade Técnica</h2>
-                </div>
-              )}
-              <div className="w-full flex justify-center bg-white my-4">
+            <div key={`page_${index + 1}`} className="page-container page-break art-page flex flex-col items-center justify-center w-full relative">
+              <Header fl={11 + index} />
+              <div className="art-pdf-wrapper w-full flex justify-center bg-white my-4">
                  <Page 
                    pageNumber={index + 1} 
                    renderTextLayer={false} 
@@ -849,12 +980,10 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
           ))}
         </Document>
       ) : (
-        <div className="page-container">
-          <Header fl={9} />
-          <div className="flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2 tracking-widest">ANEXO II</h1>
-            <h2 className="text-xl font-medium text-gray-600 mb-12">Anotação de Responsabilidade Técnica</h2>
-            <div className="w-full border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 italic" style={{ minHeight: 400 }}>
+        <div className="page-container flex flex-col" style={{ minHeight: '277mm' }}>
+          <Header fl={11} />
+          <div className="flex-1 flex flex-col items-center justify-center w-full">
+            <div className="w-full max-w-2xl border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 italic" style={{ minHeight: '220mm' }}>
               Nenhuma ART anexada para este relatório.
             </div>
           </div>
@@ -865,3 +994,4 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
     </div>
   );
 }
+
