@@ -17,6 +17,8 @@ type TermografiaPontoDraft = TermografiaPonto & {
 
 const inputClass = 'w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
+const xthermDownloadUrl = 'https://www.xinfrared.com/pages/download-center';
+const xthermIntentUrl = `intent://xtherm/#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.infiRay.Xtherm;S.browser_fallback_url=${encodeURIComponent(xthermDownloadUrl)};end`;
 
 async function prepararImagem(file: File) {
   if (!file.type.startsWith('image/')) return file;
@@ -96,6 +98,20 @@ export default function NovaTermografiaPage() {
       ? { fotoDigitalUrl: URL.createObjectURL(file), dataHoraFoto, _fotoDigitalFile: file }
       : { fotoTermicaUrl: URL.createObjectURL(file), dataHoraFoto, _fotoTermicaFile: file };
     atualizarPonto(id, patch);
+  };
+
+  const abrirXtherm = () => {
+    if (!/Android/i.test(navigator.userAgent)) {
+      toast.error('O Xtherm só pode ser aberto automaticamente em celulares Android.');
+      return;
+    }
+
+    window.location.href = xthermIntentUrl;
+    window.setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        toast('Se o Xtherm não abrir, confira se ele está instalado no celular.');
+      }
+    }, 1500);
   };
 
   const irParaPontos = () => {
@@ -299,9 +315,9 @@ export default function NovaTermografiaPage() {
                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'digital', e.target.files?.[0])} />
                       </label>
                       <div className="grid grid-cols-2 gap-2 md:col-span-2">
-                        <a href="intent://xtherm/#Intent;package=com.infiRay.Xtherm;component=com.infiRay.Xtherm/.MainActivity;end" className="flex items-center justify-center gap-2 border border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 hover:border-orange-400">
+                        <button type="button" onClick={abrirXtherm} className="flex items-center justify-center gap-2 border border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 hover:border-orange-400">
                           <FileImage size={18} /> Abrir Xtherm
-                        </a>
+                        </button>
                         <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:border-blue-400">
                           <FileImage size={18} /> Anexar térmica
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'termica', e.target.files?.[0])} />
