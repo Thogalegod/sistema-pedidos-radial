@@ -6,8 +6,22 @@ import { format, parseISO } from 'date-fns';
 import { Camera, Eye, FileText, Search, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
+type TermografiaPontoResumo = {
+  ocorrencia?: boolean;
+};
+
+type TermografiaRelatorioRow = {
+  id: string;
+  numero_relatorio: string;
+  cliente_nome: string;
+  data_execucao: string;
+  status: string;
+  criado_em: string;
+  pontos?: TermografiaPontoResumo[];
+};
+
 export default function TermografiaListPage() {
-  const [relatorios, setRelatorios] = useState<any[]>([]);
+  const [relatorios, setRelatorios] = useState<TermografiaRelatorioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
 
@@ -32,8 +46,8 @@ export default function TermografiaListPage() {
     <div className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <Link href="/hub" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
-            &larr; Voltar ao Hub
+          <Link href="/relatorios-tecnicos" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            &larr; Voltar aos Relatórios Técnicos
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-2">Relatórios de Termografia</h1>
           <p className="text-sm text-gray-500 mt-1">Inspeções termográficas com fotos digitais, imagens térmicas e ocorrências.</p>
@@ -85,7 +99,7 @@ export default function TermografiaListPage() {
                 </tr>
               ) : (
                 filtrados.map((rel) => {
-                  const ocorrencias = (rel.pontos ?? []).filter((p: any) => p.ocorrencia).length;
+                  const ocorrencias = (rel.pontos ?? []).filter((p) => p.ocorrencia).length;
                   return (
                     <tr key={rel.id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-4 whitespace-nowrap">

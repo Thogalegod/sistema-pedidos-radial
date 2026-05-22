@@ -7,6 +7,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar, Ce
 import { getUrlArquivo } from '@/lib/storage';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { creaBase64 } from '@/lib/creaBase64';
+import { CabineTransformerSheet } from '@/components/CabineTransformerSheet';
 
 // Importa os estilos do react-pdf (necessário para não desconfigurar algumas renderizações)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -81,6 +82,11 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
     // but better to let user click to ensure PDF is loaded.
   }, []);
 
+  useEffect(() => {
+    if (!data?.numero_relatorio) return;
+    document.title = `Relatório-${data.numero_relatorio}`;
+  }, [data?.numero_relatorio]);
+
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPagesArt(numPages);
     setArtTipo('pdf');
@@ -154,6 +160,10 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
           tr:nth-child(even) td { background-color: #f5f7fa !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .cabecalho { position: static; }
           .section-title { color: #1e6db5 !important; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 6px; }
+          .trafo-sheet table { margin-bottom: 0 !important; font-size: 7.2pt !important; }
+          .trafo-sheet th { background-color: #f5f7fa !important; color: #111827 !important; padding: 2px 3px !important; border: 1px solid #ccc !important; text-align: center !important; }
+          .trafo-sheet td { padding: 2px 3px !important; border: 1px solid #ccc !important; background-color: transparent !important; }
+          .trafo-sheet tr:nth-child(even) td { background-color: transparent !important; }
           .print-only { display: flex !important; }
           @page art { size: A4 portrait; margin: 6mm; }
           .art-page {
@@ -189,12 +199,16 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
         .page-container th { background-color: #1e3a5f; color: white; padding: 4px; border: 1px solid #ccc; text-align: left; }
         .page-container td { padding: 4px; border: 1px solid #ccc; }
         .page-container tr:nth-child(even) td { background-color: #f5f7fa; }
+        .page-container .trafo-sheet table { margin-bottom: 0; font-size: 7.2pt; }
+        .page-container .trafo-sheet th { background-color: #f5f7fa; color: #111827; padding: 2px 3px; border: 1px solid #ccc; text-align: center; }
+        .page-container .trafo-sheet td { padding: 2px 3px; border: 1px solid #ccc; background-color: transparent; }
+        .page-container .trafo-sheet tr:nth-child(even) td { background-color: transparent; }
         .section-title { color: #1e6db5; font-weight: bold; font-size: 12pt; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
       `}} />
 
       <div className="text-center p-4 no-print bg-white border-b sticky top-0 z-50 shadow-sm flex justify-between items-center max-w-4xl mx-auto">
-        <button onClick={() => router.push(`/cabine/${data.id}`)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">← Voltar</button>
-        <h2 className="font-bold">Página de Impressão</h2>
+        <button onClick={() => router.push('/cabine')} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">← Voltar</button>
+        <h2 className="font-bold">Relatório Completo</h2>
         <div>
           <button
             onClick={() => window.print()}
@@ -606,245 +620,7 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
         <div className="section-title">9. Ensaios do transformador</div>
 
         {v.trafo ? (
-          <div className="text-[8pt]">
-            <table className="mb-2">
-              <tbody>
-                <tr>
-                  <th className="w-1/4">Fabricante</th><td className="w-1/4">{data.trafo_fabricante}</td>
-                  <th className="w-1/4">Potência</th><td className="w-1/4">{data.trafo_potencia_kva} kVA</td>
-                </tr>
-                <tr>
-                  <th>Nº de Série</th><td>{data.trafo_numero_serie}</td>
-                  <th>Tensão AT/BT</th><td>13800 / {data.trafo_tensao_bt} V</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Relação de Transformação */}
-            <div className="mt-2 mb-1"><strong>TENSÃO DE DESPACHO AT:</strong> {Number(data.trafo_tap_despacho).toLocaleString('pt-BR')} V</div>
-            <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Relação de Transformação</h4>
-            <table className="mb-2 text-center">
-              <thead>
-                <tr>
-                  <th className="w-40 text-left">TAP [V]:</th>
-                  {v.trafo.taps.map((t: any) => <th key={t.tensaoAt} className="text-center">{t.tensaoAt}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="font-semibold text-left">FASE 1</td>
-                  {v.trafo.taps.map((t: any) => <td key={t.tensaoAt}>{t.relH1H2}</td>)}
-                </tr>
-                <tr>
-                  <td className="font-semibold text-left">FASE 2</td>
-                  {v.trafo.taps.map((t: any) => <td key={t.tensaoAt}>{t.relH2H3}</td>)}
-                </tr>
-                <tr>
-                  <td className="font-semibold text-left">FASE 3</td>
-                  {v.trafo.taps.map((t: any) => <td key={t.tensaoAt}>{t.relH3H1}</td>)}
-                </tr>
-                <tr className="border-t border-[#ccc]">
-                  <td className="font-semibold bg-[#f5f7fa] text-left">ERRO [%]:</td>
-                  {v.trafo.taps.map((t: any) => {
-                    const max = Math.max(t.relH1H2, t.relH2H3, t.relH3H1);
-                    const min = Math.min(t.relH1H2, t.relH2H3, t.relH3H1);
-                    const erro = ((max - min) / t.relacaoTeorica) * 100;
-                    return <td key={t.tensaoAt} className="font-bold text-red-600 print:text-black">{erro.toFixed(2)}</td>;
-                  })}
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Correntes Nominais */}
-            <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Correntes Nominais</h4>
-            <table className="mb-2 text-center">
-              <tbody>
-                <tr className="font-semibold">
-                  <td className="w-16 bg-[#f5f7fa]">V</td>
-                  {v.trafo.taps.map((t: any) => <td key={`v-${t.tensaoAt}`}>{t.tensaoAt}</td>)}
-                  <td className="bg-[#e2e8f0]">{data.trafo_tensao_bt}</td>
-                </tr>
-                <tr>
-                  <td className="w-16 font-semibold bg-[#f5f7fa]">A</td>
-                  {v.trafo.taps.map((t: any) => <td key={`a-${t.tensaoAt}`}>{t.correnteAt}</td>)}
-                  <td className="font-bold bg-[#f5f7fa]">{v.trafo.correnteBt}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div className="flex gap-2 mb-2">
-              {/* Perdas em Vazio */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Perdas em Vazio</h4>
-                <table className="text-center w-full">
-                  <thead>
-                    <tr>
-                      <th>I1 (A)</th>
-                      <th>I2 (A)</th>
-                      <th>I3 (A)</th>
-                      <th>I Méd (A)</th>
-                      <th>P (W)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>{v.trafo.perdaVazioI1}</td>
-                      <td>{v.trafo.perdaVazioI2}</td>
-                      <td>{v.trafo.perdaVazioI3}</td>
-                      <td>{v.trafo.perdaVazioImed}</td>
-                      <td>{v.trafo.perdaVazioP}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              {/* Perdas em Carga */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Perdas em Carga e Impedância</h4>
-                <table className="text-center w-full">
-                  <thead>
-                    <tr>
-                      <th>IN (A)</th>
-                      <th>Vcc (V)</th>
-                      <th>Z (%)</th>
-                      <th>P a 22°C (W)</th>
-                      <th>P a 75°C (W)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>{v.trafo.correnteBt}</td>
-                      <td>{v.trafo.tensaoCurtoCircuito}</td>
-                      <td>{v.trafo.impedanciaPercent75}</td>
-                      <td>{v.trafo.perdaCargaPcc22}</td>
-                      <td>{v.trafo.perdaCargaPcc75}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mb-2">
-              {/* Tensão Aplicada */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Tensão Aplicada</h4>
-                <table className="w-full text-left">
-                  <tbody>
-                    <tr>
-                      <td colSpan={2} className="font-bold text-center bg-[#f5f7fa]">TENSÃO APLICADA EM 60 Hz</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa] w-3/5">Tempo [s]</td>
-                      <td className="text-center w-2/5">60</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">AT x BT [kV]</td>
-                      <td className="text-center">{v.trafo.tensaoAplicadaPrimKv}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">AT x Massa [kV]</td>
-                      <td className="text-center">{v.trafo.tensaoAplicadaPrimKv}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">BT x Massa [kV]</td>
-                      <td className="text-center">{v.trafo.tensaoAplicadaSecKv}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              {/* Tensão Induzida */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold italic text-center border border-[#ccc] uppercase">Tensão Induzida</h4>
-                <table className="w-full text-left">
-                  <tbody>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa] w-3/5">TENSÃO INDUZIDA [V]:</td>
-                      <td className="w-2/5 text-center">380</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">FREQUÊNCIA [Hz]:</td>
-                      <td className="text-center">120</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">TEMPO DO ENSAIO [S]:</td>
-                      <td className="text-center">60</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">MÉTODO DO ENSAIO:</td>
-                      <td className="text-center">NORMAL</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mb-2">
-              {/* Resistência de Isolamento */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Resistência de Isolamento</h4>
-                <table className="w-full text-center">
-                  <thead>
-                    <tr>
-                      <th>Posição</th>
-                      <th>Tensão Aplicada [V]</th>
-                      <th>Resistência [MΩ]</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="font-semibold text-left">AT x BT</td>
-                      <td>5000</td>
-                      <td className="font-bold">{v.trafo.isolAtBt}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold text-left">AT x Massa</td>
-                      <td>5000</td>
-                      <td className="font-bold">{v.trafo.isolAtMassa}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold text-left">BT x Massa</td>
-                      <td>2500</td>
-                      <td className="font-bold">{v.trafo.isolBtMassa}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              {/* Rigidez Dielétrica do Óleo */}
-              <div className="w-1/2">
-                <h4 className="bg-[#1e3a5f] text-white py-1 px-2 font-bold text-center border border-[#ccc] uppercase">Rigidez Dielétrica do Óleo</h4>
-                <table className="w-full text-left">
-                  <tbody>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa] w-3/5">Rigidez Dielétrica [kV]</td>
-                      <td className="text-center w-2/5 font-bold">{v.trafo.rigidezKv}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">Temperatura [°C]</td>
-                      <td className="text-center">{data.cabo_temperatura || '--'}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">Tipo</td>
-                      <td className="text-center">Mineral</td>
-                    </tr>
-                    <tr>
-                      <td className="font-semibold bg-[#f5f7fa]">Procedência</td>
-                      <td className="text-center">BR</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Conclusão Técnica Trafo */}
-            <div className="p-3 border border-[#ccc] bg-[#f5f7fa] mt-2">
-              <h3 className="font-bold uppercase mb-1 text-center text-[#1e6db5]">Conclusão Técnica do Transformador</h3>
-              <p className="italic text-justify leading-snug text-xs">
-                Os ensaios realizados neste equipamento apresentaram resultados dentro dos limites estabelecidos pelas normas ABNT NBR 5356 e ABNT NBR IEC 60156, abrangendo os ensaios de relação de transformação, correntes nominais, perdas em vazio, perdas em carga e impedância, tensão aplicada, tensão induzida, resistência de isolamento e rigidez dielétrica do óleo isolante.
-                <br/><br/>
-                Com base nos resultados obtidos, o transformador encontra-se em condições técnicas satisfatórias, estando apto para energização e operação em plena carga dentro de suas especificações nominais.
-              </p>
-            </div>
-
-          </div>
+          <CabineTransformerSheet data={data} trafo={v.trafo} extra={v.trafoDados} />
         ) : (
           <div className="text-center p-8 text-gray-500 italic">
             Não há dados de transformador registrados para esta cabine.

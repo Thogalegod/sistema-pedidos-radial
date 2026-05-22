@@ -6,8 +6,19 @@ import { FilePlus, Search, X, Eye } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
+type TransformadorRelatorioRow = {
+  id: string;
+  numero_relatorio: string;
+  cliente_nome: string;
+  potencia_kva: number;
+  tensao_bt_label: string;
+  data_relatorio: string;
+  status: string;
+  criado_em: string;
+};
+
 export default function InspecoesPage() {
-  const [relatorios, setRelatorios] = useState<any[]>([]);
+  const [relatorios, setRelatorios] = useState<TransformadorRelatorioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'cancelados' | 'todos'>('ativos');
   const [busca, setBusca] = useState('');
@@ -46,12 +57,12 @@ export default function InspecoesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Link href="/hub" className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
-              &larr; Voltar ao Hub
+            <Link href="/relatorios-tecnicos/transformador" className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+              &larr; Voltar ao Transformador
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Relatórios de Transformadores</h1>
-          <p className="text-sm text-gray-500 mt-1">Gerencie e emita fichas de ensaio técnico</p>
+          <h1 className="text-2xl font-bold text-gray-900">Ensaio Rápido / Concessionária</h1>
+          <p className="text-sm text-gray-500 mt-1">Gerencie e emita a ficha rápida de ensaio de transformador</p>
         </div>
         <Link 
           href="/inspecoes/nova" 
@@ -143,13 +154,13 @@ export default function InspecoesPage() {
                         }
                       </p>
                       {!busca && abaAtiva !== 'cancelados' && (
-                        <p className="mt-1">Clique em "Novo Relatório" para começar a gerar fichas de ensaio.</p>
+                        <p className="mt-1">Clique em &quot;Novo Relatório&quot; para começar a gerar fichas de ensaio.</p>
                       )}
                     </div>
                   </td>
                 </tr>
               ) : (
-                filtrados.map((rel: any) => (
+                filtrados.map((rel) => (
                   <tr key={rel.id} className={`hover:bg-gray-50 transition-colors ${rel.status === 'cancelado' ? 'opacity-50 grayscale line-through' : ''}`}>
                     <td className="p-4 whitespace-nowrap">
                       <Link href={`/inspecoes/${rel.id}`} className="text-blue-600 font-semibold hover:text-blue-800 hover:underline">

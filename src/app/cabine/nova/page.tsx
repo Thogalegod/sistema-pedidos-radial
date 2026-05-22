@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
 import { criarRelatorioCabine } from '../actions';
@@ -10,6 +11,8 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import { uploadArquivo } from '@/lib/storage';
 
+type TipoCabine = 'convencional' | 'simplificada';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -18,13 +21,15 @@ const supabase = createClient(
 export default function NovaCabinePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
+  const [tipoCabine, setTipoCabine] = useState<TipoCabine>('convencional');
   
   // Step 1 - Cliente & Condições
   const [clienteNome, setClienteNome] = useState('');
   const [clienteCnpj, setClienteCnpj] = useState('');
   const [clienteEndereco, setClienteEndereco] = useState('');
   const [clienteCidade, setClienteCidade] = useState('');
+  const [clienteUf, setClienteUf] = useState('SP');
   const [clienteCep, setClienteCep] = useState('');
   
   const today = new Date().toISOString().split('T')[0];
@@ -78,6 +83,11 @@ export default function NovaCabinePage() {
   const [trafoTensaoBt, setTrafoTensaoBt] = useState<'220' | '380' | '440'>('380');
   const [trafoNumeroSerie, setTrafoNumeroSerie] = useState('');
   const [trafoFabricante, setTrafoFabricante] = useState('');
+  const [trafoResfriamento, setTrafoResfriamento] = useState('LN');
+  const [trafoGrupoLigacao, setTrafoGrupoLigacao] = useState('Subtrativa');
+  const [trafoTipoOleo, setTrafoTipoOleo] = useState('Mineral');
+  const [trafoProcedenciaOleo, setTrafoProcedenciaOleo] = useState('BR');
+  const [trafoObservacoes, setTrafoObservacoes] = useState('');
   
   const allTaps = [13800, 13200, 12600, 12000, 11400, 10800, 10200];
   const [selectedTaps, setSelectedTaps] = useState<number[]>([13800, 13200, 12600, 12000, 11400]);
@@ -94,7 +104,7 @@ export default function NovaCabinePage() {
   };
 
   const handleNext = () => setStep(s => s + 1);
-  const handlePrev = () => setStep(s => s - 1);
+  const handlePrev = () => setStep(s => s === 1 ? 0 : s - 1);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +129,7 @@ export default function NovaCabinePage() {
       }
 
       const input: CabineInput = {
-        clienteNome, clienteEndereco, clienteCidade, clienteUf: clienteCidade, clienteCep, clienteCnpj, dataExecucao,
+        clienteNome, clienteEndereco, clienteCidade, clienteUf, clienteCep, clienteCnpj, dataExecucao,
         responsavelNome, responsavelCrea, artNumero, artArquivoUrl: artUrl,
         caboDe, caboPara, caboSecao, caboIsolacao, caboComprimento, caboTerminais, caboEmendas, caboInstalacao,
         caboTemperatura: temperatura === '' ? undefined : Number(temperatura),
@@ -132,6 +142,11 @@ export default function NovaCabinePage() {
         trafoPotenciaKva: trafoPotenciaKva === '' ? undefined : Number(trafoPotenciaKva),
         trafoTensaoBt: trafoPotenciaKva ? trafoTensaoBt : undefined,
         trafoNumeroSerie, trafoFabricante,
+        trafoResfriamento,
+        trafoGrupoLigacao,
+        trafoTipoOleo,
+        trafoProcedenciaOleo,
+        trafoObservacoes,
         trafoTaps: selectedTaps,
         trafoTapDespacho: tapDespacho
       };
@@ -142,8 +157,8 @@ export default function NovaCabinePage() {
       toast.success('Relatório criado com sucesso!');
       setUploadando(false);
       router.push(`/cabine/${res.id}`);
-    } catch (e: any) {
-      toast.error('Erro ao salvar relatório: ' + e.message);
+    } catch (e: unknown) {
+      toast.error('Erro ao salvar relatório: ' + (e instanceof Error ? e.message : 'erro desconhecido'));
       setLoading(false);
       setUploadando(false);
     }
@@ -167,18 +182,78 @@ export default function NovaCabinePage() {
           <Link href="/cabine" className="text-gray-500 hover:text-gray-700">
             <ArrowLeft size={20} />
           </Link>
-          <img src="/logo.png" alt="Radial Energia" className="h-8 object-contain" />
+          <Image src="/logo.png" alt="Radial Energia" width={160} height={32} className="h-8 w-auto object-contain" />
         </div>
         <div className="text-right hidden sm:block">
-          <h1 className="text-sm font-bold text-gray-900 leading-tight">RELATÓRIO TÉCNICO DE ENSAIOS ELÉTRICOS</h1>
-          <p className="text-xs text-gray-500">Cabine Primária Blindada - 15 kV</p>
+          <h1 className="text-sm font-bold text-gray-900 leading-tight">INSPEÇÃO CABINE (CONCESSIONÁRIA)</h1>
+          <p className="text-xs text-gray-500">Relatório para inspeção e energização da cabine primária pela concessionária</p>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto p-4 md:p-6 pb-20">
         <Toaster position="bottom-center" />
         
+        {step === 0 && (
+          <div className="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm p-5 md:p-6">
+            <div className="mb-5">
+              <h2 className="text-xl font-bold text-gray-900">Escolha o tipo de cabine</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Cada tipo de cabine terá roteiro e ensaios específicos. O fluxo convencional usa o relatório atual.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setTipoCabine('convencional');
+                  setStep(1);
+                }}
+                className="text-left border border-blue-600 bg-blue-50 rounded-lg p-5 transition-colors hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-bold text-gray-900">Cabine convencional</div>
+                  <span className="text-xs font-semibold text-blue-700 bg-white border border-blue-200 rounded-full px-3 py-1">
+                    Disponível
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 mt-2">
+                  Inspeção e energização pela concessionária com o formulário já implantado.
+                </div>
+              </button>
+              <button
+                type="button"
+                disabled
+                className="text-left border border-dashed border-gray-300 rounded-lg p-5 bg-gray-50 text-gray-400 cursor-not-allowed"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-bold">Cabine simplificada</div>
+                  <span className="text-xs font-semibold bg-white border border-gray-200 rounded-full px-3 py-1">
+                    Em breve
+                  </span>
+                </div>
+                <div className="text-sm mt-2">
+                  Estrutura reservada para ensaios e roteiro próprios da cabine simplificada.
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step > 0 && (
         <div className="mb-8 mt-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Cabine {tipoCabine === 'convencional' ? 'convencional' : 'simplificada'}</h2>
+              <p className="text-sm text-gray-500">Preencha os dados do roteiro selecionado.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStep(0)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              Trocar tipo
+            </button>
+          </div>
           <div className="flex items-center justify-between relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10 rounded-full"></div>
             <div 
@@ -198,7 +273,9 @@ export default function NovaCabinePage() {
             ))}
           </div>
         </div>
+        )}
 
+        {step > 0 && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
           
           {step === 1 && (
@@ -218,8 +295,12 @@ export default function NovaCabinePage() {
                   <input value={clienteEndereco} onChange={e => setClienteEndereco(e.target.value)} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Cidade / UF</label>
+                  <label className={labelClass}>Cidade</label>
                   <input value={clienteCidade} onChange={e => setClienteCidade(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>UF</label>
+                  <input value={clienteUf} onChange={e => setClienteUf(e.target.value.toUpperCase())} className={inputClass} maxLength={2} />
                 </div>
                 <div>
                   <label className={labelClass}>CEP</label>
@@ -427,7 +508,7 @@ export default function NovaCabinePage() {
                 </div>
                 <div>
                   <label className={labelClass}>Tensão BT</label>
-                  <select value={trafoTensaoBt} onChange={e => setTrafoTensaoBt(e.target.value as any)} className={inputClass} disabled={trafoPotenciaKva === ''}>
+                  <select value={trafoTensaoBt} onChange={e => setTrafoTensaoBt(e.target.value as '220' | '380' | '440')} className={inputClass} disabled={trafoPotenciaKva === ''}>
                     <option value="220">220/127V</option>
                     <option value="380">380/220V</option>
                     <option value="440">440/254V</option>
@@ -440,6 +521,26 @@ export default function NovaCabinePage() {
                 <div>
                   <label className={labelClass}>Fabricante</label>
                   <input value={trafoFabricante} onChange={e => setTrafoFabricante(e.target.value)} className={inputClass} disabled={trafoPotenciaKva === ''} />
+                </div>
+                <div>
+                  <label className={labelClass}>Resfriamento</label>
+                  <input value={trafoResfriamento} onChange={e => setTrafoResfriamento(e.target.value)} className={inputClass} disabled={trafoPotenciaKva === ''} />
+                </div>
+                <div>
+                  <label className={labelClass}>Grupo de ligação / polaridade</label>
+                  <input value={trafoGrupoLigacao} onChange={e => setTrafoGrupoLigacao(e.target.value)} className={inputClass} disabled={trafoPotenciaKva === ''} />
+                </div>
+                <div>
+                  <label className={labelClass}>Tipo de óleo</label>
+                  <input value={trafoTipoOleo} onChange={e => setTrafoTipoOleo(e.target.value)} className={inputClass} disabled={trafoPotenciaKva === ''} />
+                </div>
+                <div>
+                  <label className={labelClass}>Procedência do óleo</label>
+                  <input value={trafoProcedenciaOleo} onChange={e => setTrafoProcedenciaOleo(e.target.value)} className={inputClass} disabled={trafoPotenciaKva === ''} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Observações da ficha</label>
+                  <textarea value={trafoObservacoes} onChange={e => setTrafoObservacoes(e.target.value)} className={inputClass} rows={2} disabled={trafoPotenciaKva === ''} placeholder="Ex.: Nenhuma" />
                 </div>
               </div>
 
@@ -518,6 +619,7 @@ export default function NovaCabinePage() {
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

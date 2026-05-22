@@ -35,6 +35,11 @@ export interface CabineInput {
   trafoTapDespacho?: number;
   trafoNumeroSerie?: string;
   trafoFabricante?: string;
+  trafoResfriamento?: string;
+  trafoGrupoLigacao?: string;
+  trafoTipoOleo?: string;
+  trafoProcedenciaOleo?: string;
+  trafoObservacoes?: string;
 
   // Revisão
   revisao?: number;
@@ -98,6 +103,13 @@ export interface CabineOutput {
 
   // Transformador
   trafo: TransformerOutput | null;
+  trafoDados?: {
+    resfriamento: string;
+    grupoLigacao: string;
+    tipoOleo: string;
+    procedenciaOleo: string;
+    observacoes: string;
+  };
 }
 
 function seededRandom(seed: string, index: number): number {
@@ -180,6 +192,10 @@ export function calcularCabine(input: CabineInput): CabineOutput {
       potenciaKva: input.trafoPotenciaKva,
       tensaoAtNominal: 13800,
       tensaoBt: input.trafoTensaoBt,
+      resfriamento: input.trafoResfriamento,
+      grupoLigacao: input.trafoGrupoLigacao,
+      tipoOleo: input.trafoTipoOleo,
+      procedenciaOleo: input.trafoProcedenciaOleo,
       taps: input.trafoTaps || [13800, 13200, 12600, 12000, 11400],
       tapDespacho: input.trafoTapDespacho || 13800,
       temperaturaC: input.caboTemperatura,
@@ -190,5 +206,17 @@ export function calcularCabine(input: CabineInput): CabineOutput {
     });
   }
 
-  return { hipot, megger, aterramento, trafo };
+  return {
+    hipot,
+    megger,
+    aterramento,
+    trafo,
+    trafoDados: {
+      resfriamento: input.trafoResfriamento ?? 'LN',
+      grupoLigacao: input.trafoGrupoLigacao ?? 'Subtrativa',
+      tipoOleo: input.trafoTipoOleo ?? 'Mineral',
+      procedenciaOleo: input.trafoProcedenciaOleo ?? 'BR',
+      observacoes: input.trafoObservacoes ?? 'Nenhuma',
+    },
+  };
 }

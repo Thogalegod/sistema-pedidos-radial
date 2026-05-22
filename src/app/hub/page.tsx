@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LayoutDashboard, FileText, ArrowRight, FileCheck, Settings, Camera } from 'lucide-react';
+import { LayoutDashboard, FileText, ArrowRight } from 'lucide-react';
 
 export default function HubPage() {
   return (
@@ -11,7 +11,7 @@ export default function HubPage() {
         <p className="text-gray-500 mt-2 font-medium">Hub de Aplicações</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
         
         {/* Controle de Pedidos */}
         <Link href="/" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-500 transition-all">
@@ -26,48 +26,13 @@ export default function HubPage() {
         </Link>
 
         {/* Relatórios Técnicos */}
-        <Link href="/inspecoes" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:green-blue-500 transition-all">
+        <Link href="/relatorios-tecnicos" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-green-500 transition-all">
           <div className="w-14 h-14 bg-green-100 text-green-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
             <FileText size={28} />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-green-600 transition-colors">Relatórios Técnicos</h2>
-          <p className="text-gray-500 mb-6 line-clamp-2">Geração de fichas de ensaio de transformadores com cálculos automáticos segundo as normas NBR.</p>
+          <p className="text-gray-500 mb-6 line-clamp-2">Transformador, inspeção de cabine, termografia e futuros relatórios de equipamentos de média tensão.</p>
           <div className="flex items-center text-green-600 font-medium text-sm">
-            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </Link>
-        {/* Cabine Primária */}
-        <Link href="/cabine" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-purple-500 transition-all">
-          <div className="w-14 h-14 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <FileCheck size={28} />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">Cabine Primária</h2>
-          <p className="text-gray-500 mb-6 line-clamp-2">Relatório completo de inspeção para concessionária com HIPOT, Megger e Aterramento.</p>
-          <div className="flex items-center text-purple-600 font-medium text-sm">
-            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </Link>
-
-        {/* Termografia */}
-        <Link href="/termografia" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-orange-500 transition-all">
-          <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <Camera size={28} />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">Termografia</h2>
-          <p className="text-gray-500 mb-6 line-clamp-2">Relatório de inspeção termográfica com roteiro, fotos digitais, fotos térmicas e ocorrências.</p>
-          <div className="flex items-center text-orange-600 font-medium text-sm">
-            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </Link>
-
-        {/* Configurações */}
-        <Link href="/configuracoes" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-gray-500 transition-all">
-          <div className="w-14 h-14 bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <Settings size={28} />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-gray-600 transition-colors">Configurações</h2>
-          <p className="text-gray-500 mb-6 line-clamp-2">Configurações do sistema, assinaturas, templates e gestão de credenciais técnicas.</p>
-          <div className="flex items-center text-gray-600 font-medium text-sm">
             Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>

@@ -17,8 +17,6 @@ type TermografiaPontoDraft = TermografiaPonto & {
 
 const inputClass = 'w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
-const xthermDownloadUrl = 'https://www.xinfrared.com/pages/download-center';
-const xthermIntentUrl = 'intent://xtherm/#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;component=com.infiRay.Xtherm/com.infiRay.Xtherm.MainActivity;end';
 
 async function prepararImagem(file: File) {
   if (!file.type.startsWith('image/')) return file;
@@ -98,20 +96,6 @@ export default function NovaTermografiaPage() {
       ? { fotoDigitalUrl: URL.createObjectURL(file), dataHoraFoto, _fotoDigitalFile: file }
       : { fotoTermicaUrl: URL.createObjectURL(file), dataHoraFoto, _fotoTermicaFile: file };
     atualizarPonto(id, patch);
-  };
-
-  const abrirXtherm = () => {
-    if (!/Android/i.test(navigator.userAgent)) {
-      toast.error('O Xtherm só pode ser aberto automaticamente em celulares Android.');
-      return;
-    }
-
-    window.location.href = xthermIntentUrl;
-    window.setTimeout(() => {
-      if (document.visibilityState === 'visible') {
-        toast('Se o Xtherm não abrir, abra o aplicativo manualmente e depois anexe a imagem térmica.');
-      }
-    }, 1500);
   };
 
   const irParaPontos = () => {
@@ -309,25 +293,17 @@ export default function NovaTermografiaPage() {
                       </label>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200">
                       <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:border-blue-400">
                         <Camera size={18} /> Foto digital
                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'digital', e.target.files?.[0])} />
                       </label>
-                      <div className="grid grid-cols-2 gap-2 md:col-span-2">
-                        <button type="button" onClick={abrirXtherm} className="flex items-center justify-center gap-2 border border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 hover:border-orange-400">
-                          <FileImage size={18} /> Abrir Xtherm
-                        </button>
-                        <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:border-blue-400">
-                          <FileImage size={18} /> Anexar térmica
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'termica', e.target.files?.[0])} />
-                        </label>
-                        <a href={xthermDownloadUrl} target="_blank" rel="noreferrer" className="md:col-span-2 flex items-center justify-center gap-2 border border-gray-200 rounded-md p-2 bg-white text-xs font-medium text-gray-500 hover:border-orange-300 hover:text-orange-600">
-                          Baixar Xtherm pelo site oficial
-                        </a>
-                      </div>
+                      <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md p-3 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:border-blue-400">
+                        <FileImage size={18} /> Anexar térmica
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'termica', e.target.files?.[0])} />
+                      </label>
                       {(ponto.fotoDigitalUrl || ponto.fotoTermicaUrl) && (
-                        <div className="grid grid-cols-2 gap-3 md:col-span-3">
+                        <div className="grid grid-cols-2 gap-3 md:col-span-2">
                           {ponto.fotoDigitalUrl && <img src={ponto.fotoDigitalUrl} alt="Foto digital" className="w-full h-40 object-cover rounded border" />}
                           {ponto.fotoTermicaUrl && <img src={ponto.fotoTermicaUrl} alt="Foto termográfica" className="w-full h-40 object-cover rounded border" />}
                         </div>
