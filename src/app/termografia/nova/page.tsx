@@ -18,7 +18,7 @@ type TermografiaPontoDraft = TermografiaPonto & {
 const inputClass = 'w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 const xthermDownloadUrl = 'https://www.xinfrared.com/pages/download-center';
-const xthermSchemeUrl = 'xtherm://';
+const xthermIntentUrl = 'intent://xtherm/#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;component=com.infiRay.Xtherm/com.infiRay.Xtherm.MainActivity;end';
 
 async function prepararImagem(file: File) {
   if (!file.type.startsWith('image/')) return file;
@@ -106,7 +106,7 @@ export default function NovaTermografiaPage() {
       return;
     }
 
-    window.location.href = xthermSchemeUrl;
+    window.location.href = xthermIntentUrl;
     window.setTimeout(() => {
       if (document.visibilityState === 'visible') {
         toast('Se o Xtherm não abrir, abra o aplicativo manualmente e depois anexe a imagem térmica.');
