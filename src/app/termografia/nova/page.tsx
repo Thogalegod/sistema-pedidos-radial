@@ -18,7 +18,7 @@ type TermografiaPontoDraft = TermografiaPonto & {
 const inputClass = 'w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 const xthermDownloadUrl = 'https://www.xinfrared.com/pages/download-center';
-const xthermIntentUrl = `intent://xtherm/#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.infiRay.Xtherm;S.browser_fallback_url=${encodeURIComponent(xthermDownloadUrl)};end`;
+const xthermSchemeUrl = 'xtherm://';
 
 async function prepararImagem(file: File) {
   if (!file.type.startsWith('image/')) return file;
@@ -106,10 +106,10 @@ export default function NovaTermografiaPage() {
       return;
     }
 
-    window.location.href = xthermIntentUrl;
+    window.location.href = xthermSchemeUrl;
     window.setTimeout(() => {
       if (document.visibilityState === 'visible') {
-        toast('Se o Xtherm não abrir, confira se ele está instalado no celular.');
+        toast('Se o Xtherm não abrir, abra o aplicativo manualmente e depois anexe a imagem térmica.');
       }
     }, 1500);
   };
@@ -322,6 +322,9 @@ export default function NovaTermografiaPage() {
                           <FileImage size={18} /> Anexar térmica
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => selecionarFoto(ponto.id, 'termica', e.target.files?.[0])} />
                         </label>
+                        <a href={xthermDownloadUrl} target="_blank" rel="noreferrer" className="md:col-span-2 flex items-center justify-center gap-2 border border-gray-200 rounded-md p-2 bg-white text-xs font-medium text-gray-500 hover:border-orange-300 hover:text-orange-600">
+                          Baixar Xtherm pelo site oficial
+                        </a>
                       </div>
                       {(ponto.fotoDigitalUrl || ponto.fotoTermicaUrl) && (
                         <div className="grid grid-cols-2 gap-3 md:col-span-3">
