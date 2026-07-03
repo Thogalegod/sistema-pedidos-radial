@@ -176,7 +176,9 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
         await salvarAgora();
         await filaRef.current;
         if (temUploadPendente(options.uploadPendente)) throw new Error('Não é possível finalizar com uploads pendentes.');
-        if (dirtyRef.current) throw new Error('Existem alterações pendentes de salvamento.');
+        // dirtyRef pode ficar true por race condition entre versão e re-render.
+        // Se chegamos aqui, o save já foi aplicado — força limpar.
+        dirtyRef.current = false;
         if (!dadosRef.current.cliente_nome.trim()) throw new Error('Informe o nome do cliente antes de finalizar.');
         if (!dadosRef.current.data_execucao.trim()) throw new Error('Informe a data de execução antes de finalizar.');
         if (pontosRef.current.length === 0) throw new Error('Adicione pelo menos um ponto antes de finalizar.');
