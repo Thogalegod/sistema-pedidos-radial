@@ -2,7 +2,7 @@
 
 **Data:** 03/07/2026
 **Status:** desenho aprovado; planejamento somente
-**Branch analisada:** `origin/codex/termografia-salvamento-seguro` no commit `d9a8c83`
+**Baseline reproduzida:** `origin/codex/termografia-salvamento-seguro` no commit `d9a8c83`
 
 ## Objetivo
 
@@ -17,6 +17,12 @@ A branch remota contém 14 commits posteriores ao primeiro autosave, incluindo r
 Esses testes não reproduzem a integração real entre página, URL de Storage, `fetch`, MIME, canvas e cache. Por isso passam apesar dos defeitos observados no celular.
 
 O worktree antigo `codex/termografia-salvamento-seguro` está parado em `317abcd`, possui três arquivos modificados e diverge da branch remota. A execução futura deve partir de `origin/codex/termografia-salvamento-seguro@d9a8c83` num worktree limpo. As alterações antigas devem ser preservadas para comparação, não mescladas automaticamente.
+
+Enquanto este planejamento era escrito, outro agente avançou a branch depois de `d9a8c83`. Ele adicionou `src/app/api/supabase-storage/route.ts`, `fix-storage-rls-termografia.sql` e alterou o editor para manter somente um círculo. O executor deve partir da ponta remota mais recente, mas usar `d9a8c83` como baseline reproduzida e auditar esses commits concorrentes antes de editar.
+
+A rota nova instancia Supabase com a chave anônima e não encaminha a sessão do usuário. Isso não satisfaz policies `TO authenticated` do Storage e pode continuar retornando erro ao criar URL assinada. Se a permissão for ampliada para fazê-la funcionar, a rota passa a assinar caminhos informados livremente por query string. Portanto, o desenho aprovado continua sendo remover a dependência da proxy e resolver URLs assinadas no cliente autenticado.
+
+O SQL concorrente de RLS é apenas artefato não validado. Ele permite leitura, atualização e exclusão de toda a pasta `termografia/` a qualquer usuário autenticado. Este planejamento não autoriza aplicá-lo. O editor concorrente de um círculo contradiz o requisito aprovado de vários círculos e deve ser corrigido por testes, não aceito como nova regra.
 
 ## Causas confirmadas e riscos
 
@@ -210,3 +216,5 @@ Testar no mesmo tipo de celular do relato:
 - alteração do PDF fora do necessário para consumir os caminhos corrigidos;
 - refatoração de outros módulos;
 - aplicação de migration, deploy ou uso de credenciais durante o planejamento.
+- aplicação de `fix-storage-rls-termografia.sql` sem revisão e autorização específicas.
+
