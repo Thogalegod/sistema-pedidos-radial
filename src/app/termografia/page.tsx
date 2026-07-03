@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Camera, Eye, FileText, Search, Trash2, X } from 'lucide-react';
@@ -24,7 +23,6 @@ type TermografiaRelatorioRow = {
 };
 
 export default function TermografiaListPage() {
-  const router = useRouter();
   const [relatorios, setRelatorios] = useState<TermografiaRelatorioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');

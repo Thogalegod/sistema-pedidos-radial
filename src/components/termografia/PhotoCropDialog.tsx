@@ -146,7 +146,7 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
           </button>
         </header>
 
-        <div className="relative h-[90dvh] min-h-72 bg-slate-950 sm:h-[60dvh]">
+        <div className="relative h-[75dvh] min-h-72 bg-slate-950 sm:h-[60dvh]">
           {previewUrl ? (
             <Cropper
               image={previewUrl}
@@ -154,7 +154,7 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
               zoom={zoom}
               minZoom={1}
               maxZoom={5}
-              aspect={undefined}
+              aspect={3 / 4}
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={atualizarArea}

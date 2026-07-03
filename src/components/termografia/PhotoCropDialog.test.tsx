@@ -5,16 +5,18 @@ import { recortarImagem } from '@/lib/termografia/images';
 import { PhotoCropDialog } from './PhotoCropDialog';
 
 vi.mock('react-easy-crop', () => ({
-  default: ({ onCropComplete, minZoom, maxZoom }: {
+  default: ({ onCropComplete, minZoom, maxZoom, aspect }: {
     onCropComplete: (area: unknown, pixels: unknown) => void;
     minZoom: number;
     maxZoom: number;
+    aspect: number;
   }) => (
     <button
       type="button"
       data-testid="cropper"
       data-min-zoom={minZoom}
       data-max-zoom={maxZoom}
+      data-aspect={aspect}
       onClick={() => onCropComplete({}, { x: 10, y: 20, width: 100, height: 80 })}
     >
       Definir recorte
@@ -40,7 +42,7 @@ afterEach(() => {
 });
 
 describe('PhotoCropDialog', () => {
-  it('oferece um diálogo acessível, recorte livre e zoom de 1 a 5', () => {
+  it('oferece um diálogo acessível, recorte 3:4 vertical e zoom de 1 a 5', () => {
     render(
       <PhotoCropDialog file={new File(['foto'], 'foto.jpg')} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     );
@@ -50,6 +52,7 @@ describe('PhotoCropDialog', () => {
     expect(screen.getByLabelText('Zoom da foto')).toHaveAttribute('max', '5');
     expect(screen.getByTestId('cropper')).toHaveAttribute('data-min-zoom', '1');
     expect(screen.getByTestId('cropper')).toHaveAttribute('data-max-zoom', '5');
+    expect(screen.getByTestId('cropper')).toHaveAttribute('data-aspect', '0.75');
   });
 
   it('aplica o recorte em pixels e confirma o arquivo resultante', async () => {
