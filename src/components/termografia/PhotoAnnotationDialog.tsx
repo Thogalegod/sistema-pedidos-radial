@@ -128,7 +128,7 @@ export function PhotoAnnotationDialog({
 
       const scaleX = w / 100;
       const scaleY = h / 100;
-      const refStroke = 3;
+      const refStroke = 6;
 
       annotations.forEach((ann, i) => {
         const cx = ann.x * scaleX;
