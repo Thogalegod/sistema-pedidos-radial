@@ -69,7 +69,7 @@ export async function renderAnnotationsToCanvas(
 
   const scaleX = canvasWidth / 100;
   const scaleY = canvasHeight / 100;
-  const refStroke = 6;
+  const refStroke = 10;
 
   for (const ann of annotations) {
     const cx = ann.x * scaleX;
