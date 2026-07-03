@@ -15,11 +15,14 @@
 ## Contexto obrigatório para o executor
 
 - Branch remota diagnosticada: `origin/codex/termografia-salvamento-seguro`.
-- Baseline inspecionada: `d9a8c83`.
+- Baseline reproduzida: `d9a8c83`.
 - Diagnóstico no baseline: 10 arquivos/95 testes PASS; TypeScript PASS.
 - Esses testes não exercitam a integração real de URL, `fetch`, MIME e canvas.
 - O worktree antigo local está em `317abcd`, divergiu do remoto e possui alterações não commitadas. Não mesclar ou apagar automaticamente.
-- A branch remota possui um commit documental posterior a `d9a8c83`; partir da ponta remota mais recente.
+- A branch remota avançou durante o planejamento. Depois de `d9a8c83`, outro agente adicionou uma proxy `/api/supabase-storage`, um SQL de RLS e mudou o editor de vários círculos para um círculo. Partir da ponta remota mais recente, mas revisar esse diff antes de aceitá-lo.
+- A proxy concorrente usa apenas `NEXT_PUBLIC_SUPABASE_ANON_KEY`, sem sessão do usuário; ela não satisfaz policy `TO authenticated` e pode continuar devolvendo erro. Não ampliar acesso anônimo para contornar o defeito.
+- `fix-storage-rls-termografia.sql` não foi validado nem autorizado para aplicação. Ele concede DELETE amplo na pasta a qualquer autenticado.
+- O requisito continua sendo **vários** círculos vermelhos. Não preservar a regressão para um único círculo.
 
 ### Preparar ambiente sem perder trabalho existente
 
@@ -33,6 +36,16 @@ npx tsc --noEmit --incremental false
 ```
 
 Expected: branch nova e limpa; 95 ou mais testes PASS; TypeScript sem erros. Se o baseline remoto mudar, registrar SHA e resultados antes de continuar.
+
+Antes do primeiro teste, inspecionar:
+
+```powershell
+git log --oneline d9a8c83..HEAD
+git diff --name-status d9a8c83..HEAD
+git diff d9a8c83..HEAD -- src/app/api/supabase-storage/route.ts src/components/termografia/PhotoAnnotationDialog.tsx src/lib/termografia/annotations.ts fix-storage-rls-termografia.sql
+```
+
+Não executar o SQL. Registrar no PR quais partes concorrentes foram mantidas, substituídas ou removidas e por quê.
 
 Antes de editar Next.js, reler os guias relevantes em `node_modules/next/dist/docs/`, principalmente Route Handlers, imagens, Client Components e formulários. Este plano não cria a rota `/api/supabase-storage`; as referências incorretas serão removidas.
 
@@ -296,7 +309,7 @@ git commit -m "fix: separa preview local de caminho persistente"
 
 - [ ] **Step 1: Remover todas as URLs da rota inexistente**
 
-Eliminar as três ocorrências de `/api/supabase-storage`. Preview usa `fotoDigitalSrc`/`fotoTermicaSrc` local. Depois de retomada, a página resolve caminhos com `getRequiredSignedImageUrl`.
+Eliminar as três ocorrências de `/api/supabase-storage` nas páginas e remover a rota concorrente quando ela ficar sem consumidores. Preview usa `fotoDigitalSrc`/`fotoTermicaSrc` local. Depois de retomada, a página resolve caminhos com `getRequiredSignedImageUrl` usando o cliente autenticado existente.
 
 Adicionar asserção:
 
@@ -304,7 +317,7 @@ Adicionar asserção:
 rg -n "/api/supabase-storage" src
 ```
 
-Expected: nenhuma ocorrência, a menos que uma rota real tenha sido deliberadamente criada fora deste plano; este desenho não a cria.
+Expected: nenhuma ocorrência. Não manter a proxy anônima adicionada depois de `d9a8c83`.
 
 - [ ] **Step 2: Tornar upload uma transação de interface**
 
@@ -801,6 +814,7 @@ Abrir PR para a branch de termografia ou para `main` conforme o responsável dec
 Este plano não autoriza:
 
 - migrations no Supabase;
+- execução de `fix-storage-rls-termografia.sql`;
 - alteração de `.env`;
 - service role;
 - deploy preview ou produção;
@@ -821,3 +835,4 @@ Não considerar concluído apenas porque os 95 testes antigos continuam verdes. 
 - sincronização sem duplicidade;
 - fluxo online funcional quando IndexedDB está indisponível;
 - testes, TypeScript, lint focado e build verdes no mesmo SHA.
+
