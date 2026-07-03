@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Camera, Download, Edit3, Eye, FileText, Plus, Printer, Save, Scissors, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Camera, Download, Edit3, Eye, FileText, Plus, Printer, RotateCcw, Save, Scissors, Target, Trash2, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast, Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +13,7 @@ import { nomeFotoPonto, recortarImagem } from '@/lib/termografia/images';
 import { deletarRelatorio } from '@/lib/termografia/delete';
 import { GeneralDataEditor } from '@/components/termografia/GeneralDataEditor';
 import { PhotoCropDialog } from '@/components/termografia/PhotoCropDialog';
+import { PhotoAnnotationDialog } from '@/components/termografia/PhotoAnnotationDialog';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -68,6 +69,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   const [excluindoRelatorio, setExcluindoRelatorio] = useState(false);
   const [cropPontoId, setCropPontoId] = useState<string | null>(null);
   const [cropTipo, setCropTipo] = useState<'digital' | 'termica'>('digital');
+  const [annotateFile, setAnnotateFile] = useState<File | null>(null);
+  const [annotatePontoId, setAnnotatePontoId] = useState<string | null>(null);
 
   // Cache de URLs assinadas
   const cacheUrls = useRef<Map<string, string | null>>(new Map());
@@ -341,6 +344,79 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
     }
   };
 
+  // Open annotation dialog for a digital photo
+  const abrirAnnotacao = async (ponto: PontoComFotos) => {
+    const src = ponto.fotoDigitalSrc;
+    if (!src) return;
+    try {
+      const file = await fetchPhotoAsFile(src, nomeFotoPonto(ponto.id, 'digital'));
+      setAnnotateFile(file);
+      setAnnotatePontoId(ponto.id);
+    } catch {
+      toast.error('Não foi possível carregar a foto para marcação.');
+    }
+  };
+
+  // Handle annotation confirmation
+  const handleAnnotateConfirm = async (annotatedFile: File) => {
+    if (!data || !annotatePontoId) return;
+    try {
+      const filePreparado = await prepararImagem(annotatedFile);
+      await uploadArquivo(filePreparado, `termografia/${data.numero_relatorio}`, nomeFotoPonto(annotatePontoId, 'digital'));
+
+      // Clear cache and get new signed URL
+      const chave = `${annotatePontoId}-digital`;
+      cacheUrls.current.delete(chave);
+      const caminho = `termografia/${data.numero_relatorio}/${nomeFotoPonto(annotatePontoId, 'digital')}`;
+      const novaUrl = await getUrlArquivo(caminho);
+      cacheUrls.current.set(chave, novaUrl);
+
+      // Update pontos state with new signed URL
+      setPontos((atuais) => atuais.map((item) => ({
+        ...item,
+        ...(item.id === annotatePontoId ? { fotoDigitalSrc: novaUrl } : {}),
+      })));
+
+      toast.success('Marcações salvas com sucesso.');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar marcações.');
+    } finally {
+      setAnnotateFile(null);
+      setAnnotatePontoId(null);
+    }
+  };
+
+  // Restore original digital photo
+  const restaurarOriginal = async (ponto: PontoComFotos) => {
+    if (!data || !ponto.fotoDigitalOriginalUrl) return;
+    try {
+      // Update DB: set fotoDigitalUrl back to original path
+      const atualizados = pontos.map((p) => {
+        if (p.id !== ponto.id) return p;
+        return { ...p, fotoDigitalUrl: ponto.fotoDigitalOriginalUrl };
+      });
+
+      const { error } = await supabase.from('relatorios_termografia').update({ pontos: atualizados.map(removerFotosAssinadas) }).eq('id', data.id);
+      if (error) throw error;
+
+      // Clear cache and reload signed URL for the original
+      const chave = `${ponto.id}-digital`;
+      cacheUrls.current.delete(chave);
+      const novaUrl = await getUrlArquivo(ponto.fotoDigitalOriginalUrl);
+      cacheUrls.current.set(chave, novaUrl);
+
+      setPontos(atualizados.map((item) => ({
+        ...item,
+        ...(item.id === ponto.id ? { fotoDigitalSrc: novaUrl, fotoDigitalUrl: ponto.fotoDigitalOriginalUrl } : {}),
+      })));
+      setData({ ...data, pontos: atualizados.map(removerFotosAssinadas) });
+
+      toast.success('Foto original restaurada.');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao restaurar foto.');
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6 pb-20">
       <Toaster position="bottom-center" />
@@ -575,10 +651,20 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
                                     </button>
                                   )}
                                   {ponto.fotoDigitalUrl && (ponto as PontoComFotos).fotoDigitalSrc && (
-                                    <button onClick={() => abrirCrop(ponto, 'digital')} className="text-xs text-green-600 hover:underline inline-flex items-center gap-1">
-                                      <Scissors size={12} /> Recortar
-                                    </button>
-                                  )}
+                                      <button onClick={() => abrirCrop(ponto, 'digital')} className="text-xs text-green-600 hover:underline inline-flex items-center gap-1">
+                                        <Scissors size={12} /> Recortar
+                                      </button>
+                                    )}
+                                    {ponto.ocorrencia && ponto.fotoDigitalUrl && (ponto as PontoComFotos).fotoDigitalSrc && (
+                                      <button onClick={() => abrirAnnotacao(ponto)} className="text-xs text-purple-600 hover:underline inline-flex items-center gap-1">
+                                        <Target size={12} /> Marcar componentes
+                                      </button>
+                                    )}
+                                    {ponto.fotoDigitalOriginalUrl && ponto.fotoDigitalUrl !== ponto.fotoDigitalOriginalUrl && (
+                                      <button onClick={() => void restaurarOriginal(ponto)} className="text-xs text-orange-600 hover:underline inline-flex items-center gap-1">
+                                        <RotateCcw size={12} /> Restaurar original
+                                      </button>
+                                    )}
                                   </div>
                               {(ponto as PontoComFotos).fotoDigitalSrc
                                 ? <img src={(ponto as PontoComFotos).fotoDigitalSrc!} alt="Foto digital" className="w-full h-56 object-cover rounded border" />
@@ -631,6 +717,13 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
           file={cropFile}
           onConfirm={handleCropConfirm}
           onCancel={() => { setCropFile(null); setCropPontoId(null); }}
+        />
+      )}
+      {annotateFile && annotatePontoId && (
+        <PhotoAnnotationDialog
+          file={annotateFile}
+          onConfirm={handleAnnotateConfirm}
+          onCancel={() => { setAnnotateFile(null); setAnnotatePontoId(null); }}
         />
       )}
     </div>

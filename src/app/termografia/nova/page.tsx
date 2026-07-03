@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, Check, Edit3, FileImage, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Camera, Check, Edit3, FileImage, Loader2, Plus, Target, Trash2 } from 'lucide-react';
 import { toast, Toaster } from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 import { uploadArquivo } from '@/lib/storage';
@@ -10,6 +10,7 @@ import { gerarIdPonto, TermografiaClassificacao, TermografiaRisco, conclusoesPad
 import { nomeFotoPonto } from '@/lib/termografia/images';
 import { useTermografiaDraft, type UseTermografiaDraftOptions } from '@/hooks/useTermografiaDraft';
 import { SaveStatusBanner } from '@/components/termografia/SaveStatusBanner';
+import { PhotoAnnotationDialog } from '@/components/termografia/PhotoAnnotationDialog';
 
 type FotoEstado = 'vazia' | 'local' | 'enviando' | 'salva' | 'erro';
 
@@ -92,6 +93,8 @@ export default function NovaTermografiaPage() {
 
   const [abertoId, setAbertoId] = useState('');
   const [finalizando, setFinalizando] = useState(false);
+  const [annotateFile, setAnnotateFile] = useState<File | null>(null);
+  const [annotatePontoId, setAnnotatePontoId] = useState<string | null>(null);
 
   // Mostrar aviso de recuperação
   const jaRecuperou = useRef(false);
@@ -159,12 +162,21 @@ export default function NovaTermografiaPage() {
     atualizarEstado(pontoId, tipo, 'enviando');
     try {
       const comprimida = await prepararImagem(file);
-      const caminho = await uploadArquivo(comprimida, `termografia/${relatorio?.numero_relatorio ?? 'rascunho'}`, nomeFotoPonto(pontoId, tipo));
-      atualizarPontos(pontos.map((p) => {
-        if (p.id !== pontoId) return p;
-        const urlKey = tipo === 'digital' ? 'fotoDigitalUrl' : 'fotoTermicaUrl';
-        return { ...p, [urlKey]: caminho };
-      }));
+      const pasta = `termografia/${relatorio?.numero_relatorio ?? 'rascunho'}`;
+      if (tipo === 'digital') {
+        const caminhoOriginal = await uploadArquivo(comprimida, pasta, `${pontoId}-digital-original.jpg`);
+        const caminho = await uploadArquivo(comprimida, pasta, nomeFotoPonto(pontoId, 'digital'));
+        atualizarPontos(pontos.map((p) => {
+          if (p.id !== pontoId) return p;
+          return { ...p, fotoDigitalUrl: caminho, fotoDigitalOriginalUrl: caminhoOriginal };
+        }));
+      } else {
+        const caminho = await uploadArquivo(comprimida, pasta, nomeFotoPonto(pontoId, 'termica'));
+        atualizarPontos(pontos.map((p) => {
+          if (p.id !== pontoId) return p;
+          return { ...p, fotoTermicaUrl: caminho };
+        }));
+      }
       atualizarEstado(pontoId, tipo, 'salva');
       void salvarAgora();
     } catch (err) {
@@ -172,6 +184,18 @@ export default function NovaTermografiaPage() {
       atualizarEstado(pontoId, tipo, 'erro', msg);
       toast.error(msg);
     }
+  };
+
+  const handleAnnotateConfirm = async (annotatedFile: File) => {
+    if (!relatorio || !annotatePontoId) return;
+    const pasta = `termografia/${relatorio.numero_relatorio}`;
+    const caminho = await uploadArquivo(await prepararImagem(annotatedFile), pasta, nomeFotoPonto(annotatePontoId, 'digital'));
+    atualizarPontos(pontos.map((p) => {
+      if (p.id !== annotatePontoId) return p;
+      return { ...p, fotoDigitalUrl: caminho };
+    }));
+    void salvarAgora();
+    toast.success('Marcações salvas com sucesso.');
   };
 
   const handleFinalizar = async () => {
@@ -350,6 +374,29 @@ export default function NovaTermografiaPage() {
                                   >
                                     Substituir foto
                                   </button>
+                                  {ponto.ocorrencia && ponto.fotoDigitalUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const src = ponto.fotoDigitalUrl?.startsWith('http') || ponto.fotoDigitalUrl?.startsWith('termografia')
+                                            ? `/api/supabase-storage?path=${encodeURIComponent(ponto.fotoDigitalUrl)}`
+                                            : ponto.fotoDigitalSrc ?? '';
+                                          if (!src) return;
+                                          const resp = await fetch(src);
+                                          const blob = await resp.blob();
+                                          const file = new File([blob], `${ponto.id}-digital.jpg`, { type: blob.type });
+                                          setAnnotateFile(file);
+                                          setAnnotatePontoId(ponto.id);
+                                        } catch {
+                                          toast.error('Não foi possível carregar a foto para marcação.');
+                                        }
+                                      }}
+                                      className="text-sm text-purple-600 hover:underline inline-flex items-center gap-1"
+                                    >
+                                      <Target size={14} /> Marcar componentes
+                                    </button>
+                                  )}
                                   <input
                                     id={`foto-digital-input-${ponto.id}`}
                                     type="file"
@@ -516,6 +563,13 @@ export default function NovaTermografiaPage() {
         )}
       </form>
 
+      {annotateFile && annotatePontoId && (
+        <PhotoAnnotationDialog
+          file={annotateFile}
+          onConfirm={handleAnnotateConfirm}
+          onCancel={() => { setAnnotateFile(null); setAnnotatePontoId(null); }}
+        />
+      )}
     </div>
   );
 }

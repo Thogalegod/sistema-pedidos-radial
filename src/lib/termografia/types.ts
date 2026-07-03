@@ -38,6 +38,7 @@ export interface TermografiaPonto {
   risco?: TermografiaRisco;
   conclusao?: string;
   fotoDigitalUrl?: string | null;
+  fotoDigitalOriginalUrl?: string | null;
   fotoTermicaUrl?: string | null;
 }
 
