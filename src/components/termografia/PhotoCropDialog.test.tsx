@@ -243,4 +243,23 @@ describe('PhotoCropDialog', () => {
     expect(primeiroOnCancel).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Usar original' })).toBeEnabled();
   });
+
+  it('foto horizontal é recortada na proporção 3:4 vertical', () => {
+    render(
+      <PhotoCropDialog file={new File(['horizontal'], 'h.jpg')} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    // The cropper mock receives aspect=0.75 (3/4) regardless of photo orientation
+    expect(screen.getByTestId('cropper')).toHaveAttribute('data-aspect', '0.75');
+    expect(screen.getByRole('dialog', { name: 'Recortar foto' })).toBeInTheDocument();
+  });
+
+  it('usar original não chama recortarImagem', async () => {
+    const user = userEvent.setup();
+    const file = new File(['foto'], 'foto.jpg');
+    render(<PhotoCropDialog file={file} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Usar original' }));
+
+    expect(recortarImagem).not.toHaveBeenCalled();
+  });
 });

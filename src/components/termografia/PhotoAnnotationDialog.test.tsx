@@ -167,4 +167,112 @@ describe('PhotoAnnotationDialog', () => {
     resolveConfirm();
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
   });
+
+  it('processando impede salvamento duplo', async () => {
+    const { renderAnnotationsToCanvas } = await import('@/lib/termografia/annotations');
+    let resolveConfirm!: () => void;
+    vi.mocked(renderAnnotationsToCanvas).mockImplementation(
+      () => new Promise<Blob>((resolve) => (resolveConfirm = () => resolve(new Blob(['ok'], { type: 'image/jpeg' })))),
+    );
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(
+      <PhotoAnnotationDialog
+        file={new File(['foto'], 'foto.jpg')}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+    // First click starts processing
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    // Button is disabled so second click is impossible
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+    resolveConfirm();
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+  });
+
+  it('toque/mouse adiciona nova marcação na posição', async () => {
+    const user = userEvent.setup();
+    render(
+      <PhotoAnnotationDialog
+        file={new File(['foto'], 'foto.jpg')}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const canvas = screen.getByTestId('annotation-canvas');
+    // Simulate a tap/click on the canvas (empty area) — should add annotation
+    await user.click(canvas);
+    // Limpar should now be enabled (annotation was added)
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
+  });
+
+  it('toques múltiplos criam múltiplas marcações', async () => {
+    const user = userEvent.setup();
+    render(
+      <PhotoAnnotationDialog
+        file={new File(['foto'], 'foto.jpg')}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const canvas = screen.getByTestId('annotation-canvas');
+    // Add first annotation
+    await user.click(canvas);
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+    // Add second annotation
+    await user.click(canvas);
+    // Desfazer and Limpar should still be enabled
+    expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+  });
+
+  it('desfazer reverte última anotação e limpar remove todas', async () => {
+    const user = userEvent.setup();
+    render(
+      <PhotoAnnotationDialog
+        file={new File(['foto'], 'foto.jpg')}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const canvas = screen.getByTestId('annotation-canvas');
+    // Add two annotations
+    await user.click(canvas);
+    await user.click(canvas);
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
+    // Undo — back to 1 annotation
+    await user.click(screen.getByRole('button', { name: 'Desfazer' }));
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+    // Clear — back to 0
+    await user.click(screen.getByRole('button', { name: 'Limpar' }));
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeDisabled();
+    // Desfazer still enabled (can undo the clear)
+    expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
+  });
+
+  it('cancelar fecha sem salvar alterações', async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    render(
+      <PhotoAnnotationDialog
+        file={new File(['foto'], 'foto.jpg')}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />,
+    );
+    const canvas = screen.getByTestId('annotation-canvas');
+    // Add an annotation
+    await user.click(canvas);
+    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
+    // Cancel via footer button — should not save
+    const cancelButtons = screen.getAllByRole('button', { name: 'Cancelar' });
+    await user.click(cancelButtons[1]); // footer Cancelar
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });
