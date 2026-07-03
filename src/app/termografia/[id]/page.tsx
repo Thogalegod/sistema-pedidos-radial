@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { getUrlArquivo, getUrlDownload, uploadArquivo } from '@/lib/storage';
 import { conclusoesPadrao, gerarIdPonto, pontosAquecidosPorSetorLocal, type TermografiaClassificacao, type TermografiaDadosGerais, type TermografiaPonto, type TermografiaRelatorio, type TermografiaRisco } from '@/lib/termografia/types';
 import { nomeFotoPonto, recortarImagem } from '@/lib/termografia/images';
+import { deletarRelatorio } from '@/lib/termografia/delete';
 import { GeneralDataEditor } from '@/components/termografia/GeneralDataEditor';
 import { PhotoCropDialog } from '@/components/termografia/PhotoCropDialog';
 
@@ -64,6 +65,7 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   const [mostrarEditor, setMostrarEditor] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [excluindoRelatorio, setExcluindoRelatorio] = useState(false);
   const [cropPontoId, setCropPontoId] = useState<string | null>(null);
   const [cropTipo, setCropTipo] = useState<'digital' | 'termica'>('digital');
 
@@ -148,6 +150,25 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
     setData({ ...data, ...novosDados });
     setMostrarEditor(false);
     toast.success('Dados atualizados.');
+  };
+  // Exclusão do relatório
+  const excluirRelatorio = async () => {
+    if (!data) return;
+    if (!window.confirm(`Tem certeza que deseja excluir o relatório ${data.numero_relatorio}? Esta ação não pode ser desfeita.`)) return;
+    setExcluindoRelatorio(true);
+    try {
+      const { error } = await deletarRelatorio(data.id, data.numero_relatorio);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      toast.success('Relatório excluído.');
+      router.push('/termografia');
+    } catch {
+      toast.error('Erro ao excluir relatório.');
+    } finally {
+      setExcluindoRelatorio(false);
+    }
   };
 
   if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
@@ -353,6 +374,14 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
             className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md font-medium hover:bg-blue-700"
           >
             <Printer size={18} /> Imprimir Relatório
+          </button>
+          <button
+            type="button"
+            onClick={excluirRelatorio}
+            disabled={excluindoRelatorio}
+            className="inline-flex items-center gap-2 border border-red-200 bg-white text-red-600 px-4 py-2 rounded-md font-medium hover:bg-red-50 disabled:opacity-50"
+          >
+            <Trash2 size={16} /> {excluindoRelatorio ? 'Excluindo...' : 'Excluir'}
           </button>
         </div>
       </div>

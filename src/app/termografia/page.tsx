@@ -1,10 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Camera, Eye, FileText, Search, X } from 'lucide-react';
+import { Camera, Eye, FileText, Search, Trash2, X } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
+import { deletarRelatorio } from '@/lib/termografia/delete';
 
 type TermografiaPontoResumo = {
   ocorrencia?: boolean;
@@ -21,9 +24,29 @@ type TermografiaRelatorioRow = {
 };
 
 export default function TermografiaListPage() {
+  const router = useRouter();
   const [relatorios, setRelatorios] = useState<TermografiaRelatorioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
+  const [deletando, setDeletando] = useState<string | null>(null);
+
+  const handleDeletar = async (rel: TermografiaRelatorioRow) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o relatório ${rel.numero_relatorio}? Esta ação não pode ser desfeita.`)) return;
+    setDeletando(rel.id);
+    try {
+      const { error } = await deletarRelatorio(rel.id, rel.numero_relatorio);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      setRelatorios((prev) => prev.filter((r) => r.id !== rel.id));
+      toast.success('Relatório excluído.');
+    } catch {
+      toast.error('Erro ao excluir relatório.');
+    } finally {
+      setDeletando(null);
+    }
+  };
 
   useEffect(() => {
     supabase
@@ -45,6 +68,7 @@ export default function TermografiaListPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
+      <Toaster position="bottom-center" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <Link href="/relatorios-tecnicos" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -116,9 +140,19 @@ export default function TermografiaListPage() {
                         </span>
                       </td>
                       <td className="p-4 whitespace-nowrap text-center">
-                        <Link href={`/termografia/${rel.id}`} className="inline-block p-1 text-gray-400 hover:text-blue-600 transition-colors" title="Visualizar">
+                        <Link href={`/termografia/${rel.id}`} className="inline-block p-1 text-gray-400 hover:text-blue-600 transition-colors" title="Visualizar" aria-label="Visualizar">
                           <Eye size={20} />
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletar(rel)}
+                          disabled={deletando === rel.id}
+                          className="inline-block p-1 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                          title="Excluir relatório"
+                          aria-label="Excluir relatório"
+                        >
+                          <Trash2 size={20} />
+                        </button>
                       </td>
                     </tr>
                   );
