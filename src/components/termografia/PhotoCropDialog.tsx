@@ -131,7 +131,7 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-2xl"
+        className="relative flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-2xl"
       >
         <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h2 id={titleId} className="text-lg font-bold text-slate-900">Recortar foto</h2>
@@ -146,7 +146,7 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
           </button>
         </header>
 
-        <div className="relative h-[52dvh] min-h-72 bg-slate-950">
+        <div className="relative h-[75dvh] min-h-72 bg-slate-950 sm:h-[52dvh]">
           {previewUrl ? (
             <Cropper
               image={previewUrl}
