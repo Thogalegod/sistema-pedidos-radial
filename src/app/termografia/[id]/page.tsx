@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Camera, Download, Edit3, Eye, FileText, Plus, Printer, Save, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Camera, Download, Edit3, Eye, FileText, Plus, Printer, Save, Scissors, Trash2, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast, Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import { getUrlArquivo, getUrlDownload, uploadArquivo } from '@/lib/storage';
 import { conclusoesPadrao, gerarIdPonto, pontosAquecidosPorSetorLocal, type TermografiaClassificacao, type TermografiaDadosGerais, type TermografiaPonto, type TermografiaRelatorio, type TermografiaRisco } from '@/lib/termografia/types';
-import { nomeFotoPonto } from '@/lib/termografia/images';
+import { nomeFotoPonto, recortarImagem } from '@/lib/termografia/images';
 import { GeneralDataEditor } from '@/components/termografia/GeneralDataEditor';
+import { PhotoCropDialog } from '@/components/termografia/PhotoCropDialog';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -62,6 +63,9 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   const [carregandoFotos, setCarregandoFotos] = useState(false);
   const [mostrarEditor, setMostrarEditor] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropPontoId, setCropPontoId] = useState<string | null>(null);
+  const [cropTipo, setCropTipo] = useState<'digital' | 'termica'>('digital');
 
   // Cache de URLs assinadas
   const cacheUrls = useRef<Map<string, string | null>>(new Map());
@@ -261,6 +265,58 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
       toast.error('Erro ao excluir ponto.');
     } finally {
       setExcluindo(false);
+    }
+  };
+
+  // Fetch photo as File for cropping
+  const fetchPhotoAsFile = async (url: string, nome: string): Promise<File> => {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new File([blob], nome, { type: blob.type });
+  };
+
+  // Open crop dialog for a photo
+  const abrirCrop = async (ponto: PontoComFotos, tipo: 'digital' | 'termica') => {
+    const src = tipo === 'digital' ? ponto.fotoDigitalSrc : ponto.fotoTermicaSrc;
+    if (!src) return;
+    try {
+      const file = await fetchPhotoAsFile(src, nomeFotoPonto(ponto.id, tipo));
+      setCropFile(file);
+      setCropPontoId(ponto.id);
+      setCropTipo(tipo);
+    } catch {
+      toast.error('Não foi possível carregar a foto para recorte.');
+    }
+  };
+
+  // Handle crop confirmation
+  const handleCropConfirm = async (file: File) => {
+    if (!data || !cropPontoId || !cropTipo) return;
+    try {
+      const filePreparado = await prepararImagem(file);
+      await uploadArquivo(filePreparado, `termografia/${data.numero_relatorio}`, nomeFotoPonto(cropPontoId, cropTipo));
+
+      // Clear cache and get new signed URL
+      const chave = `${cropPontoId}-${cropTipo}`;
+      cacheUrls.current.delete(chave);
+      const caminho = `termografia/${data.numero_relatorio}/${nomeFotoPonto(cropPontoId, cropTipo)}`;
+      const novaUrl = await getUrlArquivo(caminho);
+      cacheUrls.current.set(chave, novaUrl);
+
+      // Update pontos state with new signed URL
+      setPontos((atuais) => atuais.map((item) => ({
+        ...item,
+        ...(cropTipo === 'digital' && item.id === cropPontoId ? { fotoDigitalSrc: novaUrl } : {}),
+        ...(cropTipo === 'termica' && item.id === cropPontoId ? { fotoTermicaSrc: novaUrl } : {}),
+      })));
+
+      toast.success('Foto recortada com sucesso.');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao recortar foto.');
+    } finally {
+      setCropFile(null);
+      setCropPontoId(null);
+      setCropTipo('digital');
     }
   };
 
@@ -486,10 +542,15 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
                                 <span className="text-xs font-semibold text-gray-500">Digital</span>
                                 {ponto.fotoDigitalUrl && (
                                   <button onClick={() => baixarFoto(ponto.fotoDigitalUrl!, ponto.id, 'digital')} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
-                                    <Download size={12} /> Baixar
-                                  </button>
-                                )}
-                              </div>
+                                      <Download size={12} /> Baixar
+                                    </button>
+                                  )}
+                                  {ponto.fotoDigitalUrl && (ponto as PontoComFotos).fotoDigitalSrc && (
+                                    <button onClick={() => abrirCrop(ponto, 'digital')} className="text-xs text-green-600 hover:underline inline-flex items-center gap-1">
+                                      <Scissors size={12} /> Recortar
+                                    </button>
+                                  )}
+                                  </div>
                               {(ponto as PontoComFotos).fotoDigitalSrc
                                 ? <img src={(ponto as PontoComFotos).fotoDigitalSrc!} alt="Foto digital" className="w-full h-56 object-cover rounded border" />
                                 : ponto.fotoDigitalUrl
@@ -501,10 +562,15 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
                                 <span className="text-xs font-semibold text-gray-500">Térmica</span>
                                 {ponto.fotoTermicaUrl && (
                                   <button onClick={() => baixarFoto(ponto.fotoTermicaUrl!, ponto.id, 'termica')} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
-                                    <Download size={12} /> Baixar
-                                  </button>
-                                )}
-                              </div>
+                                      <Download size={12} /> Baixar
+                                    </button>
+                                  )}
+                                  {ponto.fotoTermicaUrl && (ponto as PontoComFotos).fotoTermicaSrc && (
+                                    <button onClick={() => abrirCrop(ponto, 'termica')} className="text-xs text-green-600 hover:underline inline-flex items-center gap-1">
+                                      <Scissors size={12} /> Recortar
+                                    </button>
+                                  )}
+                                  </div>
                               {(ponto as PontoComFotos).fotoTermicaSrc
                                 ? <img src={(ponto as PontoComFotos).fotoTermicaSrc!} alt="Foto termográfica" className="w-full h-56 object-cover rounded border" />
                                 : ponto.fotoTermicaUrl
@@ -529,6 +595,13 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
           relatorio={data}
           onSave={salvarDadosGerais}
           onClose={() => setMostrarEditor(false)}
+        />
+      )}
+      {cropFile && (
+        <PhotoCropDialog
+          file={cropFile}
+          onConfirm={handleCropConfirm}
+          onCancel={() => { setCropFile(null); setCropPontoId(null); }}
         />
       )}
     </div>
