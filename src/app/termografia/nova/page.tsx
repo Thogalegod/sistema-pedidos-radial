@@ -10,7 +10,6 @@ import { gerarIdPonto, TermografiaClassificacao, TermografiaRisco, conclusoesPad
 import { nomeFotoPonto } from '@/lib/termografia/images';
 import { useTermografiaDraft, type UseTermografiaDraftOptions } from '@/hooks/useTermografiaDraft';
 import { SaveStatusBanner } from '@/components/termografia/SaveStatusBanner';
-import { PhotoCropDialog } from '@/components/termografia/PhotoCropDialog';
 
 type FotoEstado = 'vazia' | 'local' | 'enviando' | 'salva' | 'erro';
 
@@ -29,8 +28,8 @@ const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 async function prepararImagem(file: File) {
   if (!file.type.startsWith('image/')) return file;
   return imageCompression(file, {
-    maxSizeMB: 1.2,
-    maxWidthOrHeight: 1800,
+    maxSizeMB: 2,
+    maxWidthOrHeight: 2400,
     useWebWorker: true,
   });
 }
@@ -94,10 +93,6 @@ export default function NovaTermografiaPage() {
   const [abertoId, setAbertoId] = useState('');
   const [finalizando, setFinalizando] = useState(false);
 
-  // Crop dialog state
-  const [cropFile, setCropFile] = useState<File | null>(null);
-  const [cropPontoId, setCropPontoId] = useState<string | null>(null);
-
   // Mostrar aviso de recuperação
   const jaRecuperou = useRef(false);
   useEffect(() => {
@@ -157,13 +152,7 @@ export default function NovaTermografiaPage() {
 
   const handleFotoSelecionada = (pontoId: string, tipo: 'digital' | 'termica', file?: File) => {
     if (!file) return;
-    if (tipo === 'digital') {
-      setCropFile(file);
-      setCropPontoId(pontoId);
-    } else {
-      // Térmica vai direto, sem recorte
-      void processarFoto(pontoId, 'termica', file);
-    }
+    void processarFoto(pontoId, tipo, file);
   };
 
   const processarFoto = async (pontoId: string, tipo: 'digital' | 'termica', file: File) => {
@@ -183,13 +172,6 @@ export default function NovaTermografiaPage() {
       atualizarEstado(pontoId, tipo, 'erro', msg);
       toast.error(msg);
     }
-  };
-
-  const handleCropConfirm = async (file: File) => {
-    if (!cropPontoId) return;
-    await processarFoto(cropPontoId, 'digital', file);
-    setCropFile(null);
-    setCropPontoId(null);
   };
 
   const handleFinalizar = async () => {
@@ -534,14 +516,6 @@ export default function NovaTermografiaPage() {
         )}
       </form>
 
-      {/* Crop dialog */}
-      {cropFile && cropPontoId && (
-        <PhotoCropDialog
-          file={cropFile}
-          onConfirm={handleCropConfirm}
-          onCancel={() => { setCropFile(null); setCropPontoId(null); }}
-        />
-      )}
     </div>
   );
 }
