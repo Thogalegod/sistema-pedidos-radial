@@ -40,16 +40,16 @@ afterEach(() => {
 });
 
 describe('PhotoCropDialog', () => {
-  it('oferece um diálogo acessível, recorte livre e zoom de 1 a 3', () => {
+  it('oferece um diálogo acessível, recorte livre e zoom de 1 a 5', () => {
     render(
       <PhotoCropDialog file={new File(['foto'], 'foto.jpg')} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     );
 
     expect(screen.getByRole('dialog', { name: 'Recortar foto' })).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom da foto')).toHaveAttribute('min', '1');
-    expect(screen.getByLabelText('Zoom da foto')).toHaveAttribute('max', '3');
+    expect(screen.getByLabelText('Zoom da foto')).toHaveAttribute('max', '5');
     expect(screen.getByTestId('cropper')).toHaveAttribute('data-min-zoom', '1');
-    expect(screen.getByTestId('cropper')).toHaveAttribute('data-max-zoom', '3');
+    expect(screen.getByTestId('cropper')).toHaveAttribute('data-max-zoom', '5');
   });
 
   it('aplica o recorte em pixels e confirma o arquivo resultante', async () => {

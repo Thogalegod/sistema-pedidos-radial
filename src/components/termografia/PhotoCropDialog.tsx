@@ -146,14 +146,14 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
           </button>
         </header>
 
-        <div className="relative h-[75dvh] min-h-72 bg-slate-950 sm:h-[52dvh]">
+        <div className="relative h-[90dvh] min-h-72 bg-slate-950 sm:h-[60dvh]">
           {previewUrl ? (
             <Cropper
               image={previewUrl}
               crop={crop}
               zoom={zoom}
               minZoom={1}
-              maxZoom={3}
+              maxZoom={5}
               aspect={undefined}
               onCropChange={setCrop}
               onZoomChange={setZoom}
@@ -169,7 +169,7 @@ export function PhotoCropDialog({ file, onConfirm, onCancel }: PhotoCropDialogPr
             <input
               type="range"
               min="1"
-              max="3"
+              max="5"
               step="0.1"
               value={zoom}
               onChange={(event) => setZoom(Number(event.target.value))}
