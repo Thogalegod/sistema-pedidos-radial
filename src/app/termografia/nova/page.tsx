@@ -192,10 +192,6 @@ export default function NovaTermografiaPage() {
     setCropPontoId(null);
   };
 
-  const adicionarPontoAbaixo = () => {
-    adicionarPonto();
-  };
-
   const handleFinalizar = async () => {
     if (finalizando) return;
     if (!dados.cliente_nome.trim()) { toast.error('Informe o cliente.'); return; }
@@ -497,20 +493,13 @@ export default function NovaTermografiaPage() {
                             </div>
                           )}
 
-                          <div className="flex flex-col sm:flex-row justify-end gap-2 mt-4">
+                          <div className="flex justify-end mt-4">
                             <button
                               type="button"
                               onClick={() => setAbertoId('')}
                               className="inline-flex items-center justify-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800"
                             >
                               <Check size={16} /> Concluir ponto
-                            </button>
-                            <button
-                              type="button"
-                              onClick={adicionarPontoAbaixo}
-                              className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
-                            >
-                              <Plus size={16} /> Adicionar novo ponto
                             </button>
                           </div>
                         </>
