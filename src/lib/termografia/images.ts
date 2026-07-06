@@ -9,6 +9,18 @@ export function nomeFotoPonto(id: string, tipo: 'digital' | 'termica'): string {
   return `${id}-${tipo}.jpg`;
 }
 
+export function nomeFotoPontoVersionada(
+  id: string,
+  tipo: 'digital' | 'termica',
+  revisao = Date.now(),
+): string {
+  return `${id}-${revisao}-${tipo}.jpg`;
+}
+
+export function nomeFotoOriginalVersionada(id: string, revisao = Date.now()): string {
+  return `${id}-${revisao}-digital-original.jpg`;
+}
+
 export async function recortarImagem(file: File, area: CropPixels): Promise<File> {
   const bitmap = await createImageBitmap(file);
   try {

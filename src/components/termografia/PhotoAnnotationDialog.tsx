@@ -277,17 +277,31 @@ export function PhotoAnnotationDialog({
           origH: ann.height,
         };
       } else {
-        setSelectedIndex(null);
         const defaultH = DEFAULT_WIDTH_PCT * ASPECT;
-        const newAnn: Annotation = {
-          id: generateId(),
-          x,
-          y,
-          width: DEFAULT_WIDTH_PCT,
-          height: defaultH,
-          rotation: 0,
-        };
-        commitAction({ type: 'add', annotation: newAnn });
+        const existente = annotations[0];
+        const newAnn: Annotation = existente
+          ? {
+              ...existente,
+              x,
+              y,
+            }
+          : {
+              id: generateId(),
+              x,
+              y,
+              width: DEFAULT_WIDTH_PCT,
+              height: defaultH,
+              rotation: 0,
+            };
+
+        if (existente) {
+          setAnnotations([newAnn]);
+          setHistory((h) => [...h, [newAnn]]);
+          setSelectedIndex(0);
+        } else {
+          commitAction({ type: 'add', annotation: newAnn });
+          setSelectedIndex(0);
+        }
       }
     },
     [annotations, selectedIndex, hitTest, getPointerPct, commitAction],

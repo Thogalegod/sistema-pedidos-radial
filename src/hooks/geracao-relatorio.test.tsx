@@ -102,8 +102,15 @@ async function montar(fake = criarClienteFake()) {
 
 /* ── Suite ───────────────────────────────────────────────────────── */
 
-beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  window.localStorage.clear();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  window.localStorage.clear();
+});
 
 describe('Geração de relatório — fluxo completo', () => {
 

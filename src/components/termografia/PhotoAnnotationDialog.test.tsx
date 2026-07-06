@@ -209,7 +209,7 @@ describe('PhotoAnnotationDialog', () => {
     expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
   });
 
-  it('toques múltiplos criam múltiplas marcações', async () => {
+  it('um novo toque reposiciona o único círculo em vez de criar vários', async () => {
     const user = userEvent.setup();
     render(
       <PhotoAnnotationDialog
@@ -219,17 +219,14 @@ describe('PhotoAnnotationDialog', () => {
       />,
     );
     const canvas = screen.getByTestId('annotation-canvas');
-    // Add first annotation
     await user.click(canvas);
-    expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
-    // Add second annotation
     await user.click(canvas);
-    // Desfazer and Limpar should still be enabled
+    // Continua existindo apenas uma marcação editável
     expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
   });
 
-  it('desfazer reverte última anotação e limpar remove todas', async () => {
+  it('desfazer reverte o reposicionamento e limpar remove o círculo', async () => {
     const user = userEvent.setup();
     render(
       <PhotoAnnotationDialog
@@ -239,18 +236,14 @@ describe('PhotoAnnotationDialog', () => {
       />,
     );
     const canvas = screen.getByTestId('annotation-canvas');
-    // Add two annotations
     await user.click(canvas);
     await user.click(canvas);
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
-    // Undo — back to 1 annotation
     await user.click(screen.getByRole('button', { name: 'Desfazer' }));
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeEnabled();
-    // Clear — back to 0
     await user.click(screen.getByRole('button', { name: 'Limpar' }));
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeDisabled();
-    // Desfazer still enabled (can undo the clear)
     expect(screen.getByRole('button', { name: 'Desfazer' })).toBeEnabled();
   });
 

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import { useTermografiaDraft, type TermografiaDraftClient } from './useTermografiaDraft';
+import { RASCUNHO_LOCAL_KEY } from '@/lib/termografia/draft';
 
 const ponto = { id: 'p1', setor: 'QGBT', local: 'Disjuntor', inspecionado: true, ocorrencia: false };
 const relatorio = {
@@ -81,8 +82,15 @@ async function montar(fake = clienteFake()) {
 }
 
 describe('useTermografiaDraft', () => {
-  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
-  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
 
   it('retoma o rascunho mais recente do usuário', async () => {
     const { hook, calls } = await montar();
@@ -149,6 +157,7 @@ describe('useTermografiaDraft', () => {
     await waitFor(() => expect(hook.result.current.saveStatus).toBe('salvo'));
     const update = calls.find((c) => c.op === 'update');
     expect(update?.payload).toEqual(expect.objectContaining({ cliente_nome: 'B', pontos: [ponto] }));
+    expect(window.localStorage.getItem(RASCUNHO_LOCAL_KEY)).toContain('"cliente_nome":"B"');
   });
 
   it('serializa saves e preserva a ordem das versões', async () => {
@@ -190,6 +199,72 @@ describe('useTermografiaDraft', () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
     await act(async () => window.dispatchEvent(new Event('online')));
     await waitFor(() => expect(hook.result.current.saveStatus).toBe('salvo'));
+  });
+
+  it('restaura o backup local mais novo que o banco e sincroniza quando online', async () => {
+    window.localStorage.setItem(RASCUNHO_LOCAL_KEY, JSON.stringify({
+      relatorio: {
+        id: 'r1',
+        numero_relatorio: 'RT-202607-001',
+        status: 'rascunho',
+        criado_em: '2026-07-02T12:00:00Z',
+        atualizado_em: '2026-07-02T12:00:00Z',
+      },
+      dados: {
+        cliente_nome: 'Local',
+        cliente_cnpj: '',
+        cliente_endereco: '',
+        cliente_cidade: '',
+        cliente_uf: 'SP',
+        cliente_cep: '',
+        data_execucao: '2026-07-02',
+        objetivo: 'Inspeção',
+        equipamento: 'Flir',
+        responsavel_nome: 'Roberto',
+        responsavel_crea: '1',
+      },
+      pontos: [{ ...ponto, local: 'Backup local' }],
+      salvoEm: '2026-07-02T12:05:00Z',
+    }));
+
+    const { hook, calls } = await montar();
+    expect(hook.result.current.dados.cliente_nome).toBe('Local');
+    expect(hook.result.current.pontos[0].local).toBe('Backup local');
+    await waitFor(() => expect(calls.some((call) => call.op === 'update')).toBe(true));
+  });
+
+  it('abre em modo offline a partir do backup local quando a inicialização falha', async () => {
+    window.localStorage.setItem(RASCUNHO_LOCAL_KEY, JSON.stringify({
+      relatorio: {
+        id: 'r1',
+        numero_relatorio: 'RT-202607-001',
+        status: 'rascunho',
+        criado_em: '2026-07-02T12:00:00Z',
+        atualizado_em: '2026-07-02T12:00:00Z',
+      },
+      dados: {
+        cliente_nome: 'Offline',
+        cliente_cnpj: '',
+        cliente_endereco: '',
+        cliente_cidade: '',
+        cliente_uf: 'SP',
+        cliente_cep: '',
+        data_execucao: '2026-07-02',
+        objetivo: 'Inspeção',
+        equipamento: 'Flir',
+        responsavel_nome: 'Roberto',
+        responsavel_crea: '1',
+      },
+      pontos: [ponto],
+      salvoEm: '2026-07-02T12:05:00Z',
+    }));
+
+    const fake = clienteFake();
+    fake.falharAuth(new Error('sem rede'));
+    const hook = renderHook(() => useTermografiaDraft({ client: fake.client }));
+    await waitFor(() => expect(hook.result.current.carregando).toBe(false));
+    expect(hook.result.current.saveStatus).toBe('offline');
+    expect(hook.result.current.dados.cliente_nome).toBe('Offline');
   });
 
   it('remove listeners no cleanup e considera upload pendente', async () => {
@@ -242,7 +317,11 @@ describe('useTermografiaDraft', () => {
   ])('não gera relatório inválido (%s)', async (dados, pontos, mensagem) => {
     const { hook, calls } = await montar();
     act(() => {
-      hook.result.current.atualizarDados(dados);
+      hook.result.current.atualizarDados({
+        cliente_nome: 'Cliente base',
+        data_execucao: '2026-07-02',
+        ...dados,
+      });
       hook.result.current.atualizarPontos(pontos);
     });
     await expect(hook.result.current.finalizar()).rejects.toThrow(mensagem);

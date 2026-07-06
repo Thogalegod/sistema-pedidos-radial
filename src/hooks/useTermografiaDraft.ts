@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { limparPontoPersistido, type PontoTransitorio } from '@/lib/termografia/draft';
+import {
+  carregarRascunhoLocal,
+  limparPontoPersistido,
+  limparRascunhoLocal,
+  salvarRascunhoLocal,
+  type PontoTransitorio,
+} from '@/lib/termografia/draft';
 import type { TermografiaDadosGerais, TermografiaRelatorio } from '@/lib/termografia/types';
 import type { SaveStatus } from '@/components/termografia/SaveStatusBanner';
 
@@ -66,6 +72,12 @@ function temUploadPendente(valor: UploadPendente | undefined) {
   return typeof valor === 'function' ? valor() : Boolean(valor);
 }
 
+function dataMaisRecente(a?: string | null, b?: string | null) {
+  const timeA = a ? new Date(a).getTime() : 0;
+  const timeB = b ? new Date(b).getTime() : 0;
+  return timeA >= timeB;
+}
+
 export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): UseTermografiaDraftResult {
   const client = (options.client ?? supabase) as unknown as TermografiaDraftClient;
   const [relatorio, setRelatorio] = useState<TermografiaRelatorio | null>(null);
@@ -88,6 +100,24 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
   const finalizandoRef = useRef(false);
   const finalizacaoRef = useRef<Promise<string> | null>(null);
 
+  const persistirBackupLocal = useCallback((relatorioAtual?: TermografiaRelatorio | null) => {
+    const base = relatorioAtual ?? relatorioRef.current;
+    if (!base) return;
+
+    salvarRascunhoLocal({
+      relatorio: {
+        id: base.id,
+        numero_relatorio: base.numero_relatorio,
+        status: base.status,
+        criado_em: base.criado_em,
+        atualizado_em: base.atualizado_em,
+      },
+      dados: dadosRef.current,
+      pontos: pontosRef.current.map(limparPontoPersistido),
+      salvoEm: new Date().toISOString(),
+    });
+  }, []);
+
   const salvarAgora = useCallback(async () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     const atual = relatorioRef.current;
@@ -109,7 +139,13 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
         dirtyRef.current = false;
         const agora = new Date();
         setSalvoEm(agora); setSaveStatus('salvo');
-        setRelatorio((valor) => valor ? { ...valor, ...payload, atualizado_em: agora.toISOString() } : valor);
+        setRelatorio((valor) => {
+          if (!valor) return valor;
+          const atualizado = { ...valor, ...payload, atualizado_em: agora.toISOString() };
+          relatorioRef.current = atualizado;
+          persistirBackupLocal(atualizado);
+          return atualizado;
+        });
       }
     };
     filaRef.current = filaRef.current.catch(() => undefined).then(operacao);
@@ -127,12 +163,19 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
 
   const atualizarDados = useCallback((patch: Partial<TermografiaDadosGerais>) => {
     if (finalizandoRef.current) return;
-    const valor = { ...dadosRef.current, ...patch }; dadosRef.current = valor; setDados(valor); agendar();
-  }, [agendar]);
+    const valor = { ...dadosRef.current, ...patch };
+    dadosRef.current = valor;
+    setDados(valor);
+    persistirBackupLocal();
+    agendar();
+  }, [agendar, persistirBackupLocal]);
   const atualizarPontos = useCallback((valor: PontoTransitorio[]) => {
     if (finalizandoRef.current) return;
-    pontosRef.current = valor; setPontos(valor); agendar();
-  }, [agendar]);
+    pontosRef.current = valor;
+    setPontos(valor);
+    persistirBackupLocal();
+    agendar();
+  }, [agendar, persistirBackupLocal]);
 
   const inicializar = useCallback(async () => {
     const geracao = ++inicializacaoRef.current;
@@ -151,11 +194,60 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
         valor = criado.data as TermografiaRelatorio;
       }
       if (!montadoRef.current || geracao !== inicializacaoRef.current) return;
-      relatorioRef.current = valor; dadosRef.current = extrairDados(valor); pontosRef.current = valor.pontos ?? [];
-      setRelatorio(valor); setDados(dadosRef.current); setPontos(pontosRef.current); setSaveStatus('salvo');
-      if (valor.atualizado_em) setSalvoEm(new Date(valor.atualizado_em));
+      const backupLocal = carregarRascunhoLocal();
+      const usarBackup =
+        backupLocal?.relatorio.id === valor.id
+        && dataMaisRecente(backupLocal.salvoEm, valor.atualizado_em ?? valor.criado_em);
+      const dadosIniciais = usarBackup ? backupLocal.dados : extrairDados(valor);
+      const pontosIniciais = usarBackup ? backupLocal.pontos : (valor.pontos ?? []);
+
+      relatorioRef.current = valor;
+      dadosRef.current = dadosIniciais;
+      pontosRef.current = pontosIniciais;
+      setRelatorio(valor);
+      setDados(dadosIniciais);
+      setPontos(pontosIniciais);
+      persistirBackupLocal(valor);
+
+      if (usarBackup) {
+        dirtyRef.current = true;
+        setSalvoEm(new Date(backupLocal.salvoEm));
+        if (onlineRef.current) {
+          setSaveStatus('salvando');
+          queueMicrotask(() => { void salvarAgora().catch(() => undefined); });
+        } else {
+          setSaveStatus('offline');
+        }
+      } else {
+        setSaveStatus('salvo');
+        if (valor.atualizado_em) setSalvoEm(new Date(valor.atualizado_em));
+      }
     } catch (error) {
-      if (montadoRef.current && geracao === inicializacaoRef.current) setSaveStatus('erro');
+      const backupLocal = carregarRascunhoLocal();
+      if (montadoRef.current && geracao === inicializacaoRef.current) {
+        if (backupLocal) {
+          const relatorioLocal: TermografiaRelatorio = {
+            id: backupLocal.relatorio.id,
+            numero_relatorio: backupLocal.relatorio.numero_relatorio,
+            status: backupLocal.relatorio.status,
+            criado_em: backupLocal.relatorio.criado_em,
+            atualizado_em: backupLocal.relatorio.atualizado_em,
+            revisao: 0,
+            ...backupLocal.dados,
+            pontos: backupLocal.pontos,
+          };
+          relatorioRef.current = relatorioLocal;
+          dadosRef.current = backupLocal.dados;
+          pontosRef.current = backupLocal.pontos;
+          setRelatorio(relatorioLocal);
+          setDados(backupLocal.dados);
+          setPontos(backupLocal.pontos);
+          setSalvoEm(new Date(backupLocal.salvoEm));
+          setSaveStatus('offline');
+        } else {
+          setSaveStatus('erro');
+        }
+      }
       throw error;
     } finally {
       if (montadoRef.current && geracao === inicializacaoRef.current) setCarregando(false);
@@ -194,6 +286,7 @@ export function useTermografiaDraft(options: UseTermografiaDraftOptions = {}): U
         };
         filaRef.current = filaRef.current.catch(() => undefined).then(operacao);
         await filaRef.current;
+        limparRascunhoLocal();
         return atual.id;
       } finally {
         finalizandoRef.current = false;

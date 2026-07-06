@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { nomeFotoPonto, recortarImagem } from './images';
+import {
+  nomeFotoOriginalVersionada,
+  nomeFotoPonto,
+  nomeFotoPontoVersionada,
+  recortarImagem,
+} from './images';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -9,6 +14,12 @@ describe('imagens de termografia', () => {
   it('usa o id permanente, não o índice', () => {
     expect(nomeFotoPonto('ponto-abc', 'digital')).toBe('ponto-abc-digital.jpg');
     expect(nomeFotoPonto('ponto-abc', 'termica')).toBe('ponto-abc-termica.jpg');
+  });
+
+  it('gera nomes versionados para evitar sobrescrever a mesma foto', () => {
+    expect(nomeFotoPontoVersionada('ponto-abc', 'digital', 123)).toBe('ponto-abc-123-digital.jpg');
+    expect(nomeFotoPontoVersionada('ponto-abc', 'termica', 456)).toBe('ponto-abc-456-termica.jpg');
+    expect(nomeFotoOriginalVersionada('ponto-abc', 789)).toBe('ponto-abc-789-digital-original.jpg');
   });
 
   it('rejeita área não finita e sempre fecha o bitmap', async () => {

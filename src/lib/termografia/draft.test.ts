@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { deveAplicarResposta, limparPontoPersistido, podeFinalizar } from './draft';
+import {
+  RASCUNHO_LOCAL_KEY,
+  carregarRascunhoLocal,
+  deveAplicarResposta,
+  limparPontoPersistido,
+  limparRascunhoLocal,
+  podeFinalizar,
+  salvarRascunhoLocal,
+} from './draft';
 import type { PontoTransitorio } from './draft';
 
 describe('limparPontoPersistido', () => {
@@ -67,5 +75,79 @@ describe('deveAplicarResposta', () => {
     [6, 5, true],
   ])('compara a versão %i com a última aplicada %i', (resposta, ultimaAplicada, esperado) => {
     expect(deveAplicarResposta(resposta, ultimaAplicada)).toBe(esperado);
+  });
+});
+
+describe('rascunho local', () => {
+  it('salva e carrega o backup local do rascunho', () => {
+    salvarRascunhoLocal({
+      relatorio: {
+        id: 'r1',
+        numero_relatorio: 'RT-202607-001',
+        status: 'rascunho',
+        criado_em: '2026-07-06T10:00:00Z',
+        atualizado_em: '2026-07-06T10:05:00Z',
+      },
+      dados: {
+        cliente_nome: 'Radial',
+        cliente_cnpj: '',
+        cliente_endereco: '',
+        cliente_cidade: '',
+        cliente_uf: 'SP',
+        cliente_cep: '',
+        data_execucao: '2026-07-06',
+        objetivo: 'Inspeção',
+        equipamento: 'Flir',
+        responsavel_nome: 'Roberto',
+        responsavel_crea: '1',
+      },
+      pontos: [{
+        id: 'p1',
+        setor: 'QGBT',
+        local: 'Entrada',
+        inspecionado: true,
+        ocorrencia: false,
+      }],
+      salvoEm: '2026-07-06T10:05:00Z',
+    });
+
+    expect(carregarRascunhoLocal()).toEqual(expect.objectContaining({
+      relatorio: expect.objectContaining({ id: 'r1' }),
+      dados: expect.objectContaining({ cliente_nome: 'Radial' }),
+      pontos: [expect.objectContaining({ id: 'p1' })],
+    }));
+  });
+
+  it('ignora json inválido e permite limpar o backup local', () => {
+    window.localStorage.setItem(RASCUNHO_LOCAL_KEY, '{');
+    expect(carregarRascunhoLocal()).toBeNull();
+
+    salvarRascunhoLocal({
+      relatorio: {
+        id: 'r1',
+        numero_relatorio: 'RT-202607-001',
+        status: 'rascunho',
+        criado_em: '2026-07-06T10:00:00Z',
+        atualizado_em: '2026-07-06T10:05:00Z',
+      },
+      dados: {
+        cliente_nome: 'Radial',
+        cliente_cnpj: '',
+        cliente_endereco: '',
+        cliente_cidade: '',
+        cliente_uf: 'SP',
+        cliente_cep: '',
+        data_execucao: '2026-07-06',
+        objetivo: 'Inspeção',
+        equipamento: 'Flir',
+        responsavel_nome: 'Roberto',
+        responsavel_crea: '1',
+      },
+      pontos: [],
+      salvoEm: '2026-07-06T10:05:00Z',
+    });
+
+    limparRascunhoLocal();
+    expect(window.localStorage.getItem(RASCUNHO_LOCAL_KEY)).toBeNull();
   });
 });
