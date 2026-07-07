@@ -1,9 +1,9 @@
 # Handoff — Contratos e Locações — setup operacional Supabase dev/homolog
 
 **Data:** 2026-07-07  
-**Etapa:** documentação operacional do ambiente Supabase separado de desenvolvimento/homologação  
+**Etapa:** configuração local do ambiente Supabase separado de desenvolvimento/homologação  
 **Branch atual:** `codex/contratos-locacoes-fundacao`  
-**Escopo desta etapa:** registrar o projeto novo confirmado, documentar as variáveis locais que serão apontadas depois e deixar o repositório pronto para a próxima etapa sem tocar produção
+**Escopo desta etapa:** apontar o app local para o projeto novo, confirmar que `.env.local` fica fora do git e deixar o repositório pronto para a próxima etapa sem tocar produção
 
 ## 1. Objetivo da etapa
 
@@ -37,18 +37,18 @@ Também ficou confirmado que o novo projeto não é o backend antigo usado antes
 - backend antigo compartilhado: `https://iurqgskfuupslrghgtej.supabase.co`
 - novo projeto dev/homolog: `https://misfyiznwnuvldoccciw.supabase.co`
 
-### 2.3 O app local ainda não foi apontado para o novo ambiente
+### 2.3 O app local foi apontado para o novo ambiente
 
 O client global do app continua dependendo de:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-Portanto, ainda falta atualizar a configuração local para fazer o app falar com o novo projeto.
+O arquivo `.env.local` já foi ajustado para fazer o app falar com o novo projeto.
 
 ## 3. O que falta para apontar localmente o app
 
-Ainda falta a etapa separada de configuração local:
+Ainda faltava a etapa separada de configuração local até o ajuste desta sessão:
 
 1. registrar o valor da URL nova no ambiente local;
 2. registrar a chave client-side/publishable do projeto novo no ambiente local;
@@ -99,6 +99,10 @@ Nesta etapa, a documentação foi registrada em:
 - `docs/handoffs/2026-07-07-contratos-locacoes-setup-operacional-supabase-dev-homolog.md`
 - `.env.example`
 
+Nesta etapa, a configuração local efetiva ficou em:
+
+- `.env.local`
+
 Regras seguidas:
 
 - não foi registrado segredo real;
@@ -121,13 +125,11 @@ Essa troca **não deve acontecer agora**, mas o fluxo seguro posterior é:
 
 ## 7. Próximos passos em ordem
 
-1. **Ajuste local de configuração**
-   - apontar o app para `https://misfyiznwnuvldoccciw.supabase.co` com a chave publishable correta.
-2. **Aplicação da migration**
+1. **Aplicação da migration**
    - aplicar a migration do módulo somente no projeto novo e somente na etapa autorizada.
-3. **Validação das tabelas/RLS**
+2. **Validação das tabelas/RLS**
    - confirmar criação de tabelas, enums, funções, policies e seed esperado no projeto novo.
-4. **Rerun do QA manual**
+3. **Rerun do QA manual**
    - executar QA manual do módulo contra esse ambiente novo, sem envolver produção.
 
 ## 8. Riscos e cuidados
@@ -135,6 +137,7 @@ Essa troca **não deve acontecer agora**, mas o fluxo seguro posterior é:
 - não confundir o projeto novo com o backend antigo compartilhado;
 - não usar a URL `iurqgskfuupslrghgtej.supabase.co` como destino da migration do módulo;
 - não registrar segredo real em arquivo versionado;
+- não versionar `.env.local`;
 - não usar `service role` como atalho para contornar RLS;
 - não fazer deploy;
 - não tocar produção;
@@ -143,7 +146,7 @@ Essa troca **não deve acontecer agora**, mas o fluxo seguro posterior é:
 ## 9. Ferramentas e limitações operacionais desta etapa
 
 - a ferramenta `rtk` foi verificada e está disponível no ambiente;
-- não foi necessário executar comando ruidoso de longa duração nesta etapa;
+- a verificação local foi executada com `node.exe` para confirmar as variáveis do `.env.local`;
 - a inspeção local continuou concentrada em arquivos do workspace;
 - não houve conexão com Supabase remoto;
 - não houve leitura de credenciais reais fora do workspace.
@@ -151,6 +154,7 @@ Essa troca **não deve acontecer agora**, mas o fluxo seguro posterior é:
 ## 10. Arquivos alterados nesta etapa
 
 - `.gitignore`
+- `.env.local` local, não versionado
 - `docs/ESTADO-ATUAL-PROJETO.md`
 - `docs/handoffs/2026-07-07-contratos-locacoes-setup-operacional-supabase-dev-homolog.md`
 - `.env.example`
@@ -165,14 +169,20 @@ Comandos de inspeção local:
 - `Get-Content -Raw RTK.md`
 - `Get-Content -Raw C:\\Users\\thoma\\.codex\\plugins\\cache\\openai-curated-remote\\superpowers\\6.1.1\\skills\\using-superpowers\\SKILL.md`
 - `Get-Content -Raw C:\\Users\\thoma\\.codex\\plugins\\cache\\openai-curated-remote\\superpowers\\6.1.1\\skills\\writing-plans\\SKILL.md`
+- `Get-Content -Raw src\\lib\\supabase.ts`
+- `Get-Content -Raw src\\lib\\storage.ts`
+- `Get-Content -Raw .env.local`
 - `rg -n --hidden --glob '!node_modules/**' --glob '!.git/**' "Supabase|supabase|project ref|project_ref|anon key|anon_key|service role|service_role|NEXT_PUBLIC_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_ANON_KEY" docs src supabase .`
 - `rg --files --hidden --glob '!node_modules/**' --glob '!.git/**' | rg '(^|\\\\)(\\.env(\\.|$)|env\\.example|\\.env\\.example|\\.env\\.template)'`
+- `git check-ignore -v .env.local`
+- `& 'C:\\Users\\thoma\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe' -e "const fs=require('fs'); const path='.env.local'; const txt=fs.readFileSync(path,'utf8'); const wantUrl='https://misfyiznwnuvldoccciw.supabase.co'; const oldUrl='https://iurqgskfuupslrghgtej.supabase.co'; if(!txt.includes('NEXT_PUBLIC_SUPABASE_URL='+wantUrl)) throw new Error('new URL missing'); if(!txt.includes('NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_Nv7OFKf0IR4qSAymLmUYOQ_2RFi3sLH')) throw new Error('new anon key missing'); if(txt.includes(oldUrl)) throw new Error('old URL still present'); console.log('LOCAL_SUPABASE_OK');"`
 - `git status --short`
 - `git branch --show-current`
 
 Resultado:
 
 - somente inspeção local;
+- a validação local retornou `LOCAL_SUPABASE_OK`;
 - nenhum teste de app executado;
 - nenhum comando Supabase remoto executado.
 
@@ -186,22 +196,23 @@ Resultado:
 - a URL é diferente do backend antigo compartilhado;
 - o ambiente é exclusivo para esse módulo;
 - a documentação do workspace já foi atualizada para registrar esse estado.
+- o app local já aponta para o projeto novo via `.env.local`;
+- `.env.local` está ignorado pelo git;
+- a validação local confirmou a URL nova e a ausência da URL antiga nesse arquivo.
 
 ### Não confirmado
 
 - o valor da chave client-side/publishable;
-- a aplicação local ainda apontando para esse ambiente;
 - a migration aplicada nesse projeto novo;
 - a validação das tabelas/RLS neste projeto novo.
 
 ## 13. Próximo passo exato recomendado
 
-Abrir a próxima etapa para **ajuste local de configuração**:
+Abrir a próxima etapa para **aplicação da migration no ambiente novo**:
 
-- apontar `NEXT_PUBLIC_SUPABASE_URL` para `https://misfyiznwnuvldoccciw.supabase.co`;
-- preencher a chave publishable em `NEXT_PUBLIC_SUPABASE_ANON_KEY` no ambiente local;
-- validar que o app local passou a usar o projeto novo;
-- só depois aplicar a migration no ambiente novo.
+- aplicar a migration do módulo somente no projeto novo e somente na etapa autorizada;
+- depois validar tabelas/RLS;
+- depois rerodar o QA manual.
 
 ## 14. Git / entrega
 

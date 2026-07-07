@@ -83,7 +83,8 @@ O módulo agora tem um projeto Supabase separado e exclusivo para desenvolviment
 - `project URL`: `https://misfyiznwnuvldoccciw.supabase.co`
 - esse projeto é dedicado somente ao módulo `Contratos e Locações`
 - a URL é diferente do backend antigo compartilhado `https://iurqgskfuupslrghgtej.supabase.co`
-- a configuração local ainda não foi apontada para esse ambiente
+- a configuração local já foi apontada para esse ambiente em `.env.local`
+- `.env.local` continua ignorado pelo git
 - as variáveis que serão configuradas na etapa seguinte são:
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` ou chave publishable equivalente
