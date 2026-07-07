@@ -216,7 +216,7 @@ Abrir a próxima etapa para **aplicação da migration no ambiente novo**:
 
 ## 14. Git / entrega
 
-- commit: **não**
+- commit: **sim** (`72bf6a6`)
 - push: **não**
 - deploy: **não**
 - migration: **não**
