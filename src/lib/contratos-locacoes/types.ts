@@ -29,6 +29,10 @@ export type InspectionKind = 'departure' | 'return';
 
 export type SyncState = 'local' | 'uploading' | 'synced' | 'failed';
 
+// Supabase/Postgres commonly returns bigint and numeric columns as strings.
+export type DbBigInt = string;
+export type DbNumeric = string;
+
 export interface Organization {
   id: string;
   name: string;
@@ -97,7 +101,7 @@ export interface CustomerContact {
 export interface Contract {
   id: string;
   organization_id: string;
-  internal_number: number;
+  internal_number: DbBigInt;
   kind: ContractKind;
   customer_id: string;
   site_id: string;
@@ -106,8 +110,8 @@ export interface Contract {
   end_date: string | null;
   recurrence_days: number;
   pricing_model: 'fixed' | 'variable' | 'percentage' | 'fixed_plus_variable';
-  base_amount: number; // stored in cents
-  percentage_rate: number | null; // e.g. 5.5 for 5.5%
+  base_amount: DbBigInt; // stored in cents
+  percentage_rate: DbNumeric | null; // e.g. 5.5 for 5.5%
   status: ContractStatus;
   pause_started_at: string | null;
   pause_reason: string | null;
@@ -126,7 +130,7 @@ export interface RentalItem {
   serial_number: string;
   internal_code: string;
   quantity: number;
-  unit_amount: number; // stored in cents
+  unit_amount: DbBigInt; // stored in cents
   status: RentalItemStatus;
   future_inventory_item_id: string | null;
   created_at: string;
@@ -142,11 +146,11 @@ export interface BillingCycle {
   period_end: string;
   issue_date: string;
   due_date: string;
-  base_amount: number; // stored in cents
-  discount_amount: number; // stored in cents
-  surcharge_amount: number; // stored in cents
-  exemption_amount: number; // stored in cents
-  total_amount: number; // stored in cents
+  base_amount: DbBigInt; // stored in cents
+  discount_amount: DbBigInt; // stored in cents
+  surcharge_amount: DbBigInt; // stored in cents
+  exemption_amount: DbBigInt; // stored in cents
+  total_amount: DbBigInt; // stored in cents
   document_type: 'receipt' | 'nfe' | 'legacy' | 'other';
   document_number: string | null;
   status: BillingStatus;
@@ -164,8 +168,8 @@ export interface BillingLine {
   rental_item_id: string | null;
   description: string;
   quantity: number;
-  unit_amount: number; // stored in cents
-  total_amount: number; // stored in cents
+  unit_amount: DbBigInt; // stored in cents
+  total_amount: DbBigInt; // stored in cents
   kind: BillingLineKind;
   created_at: string;
   updated_at: string;
@@ -176,7 +180,7 @@ export interface Payment {
   organization_id: string;
   billing_cycle_id: string;
   paid_at: string;
-  amount: number; // stored in cents
+  amount: DbBigInt; // stored in cents
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -195,7 +199,7 @@ export interface Inspection {
   existing_damage: string | null;
   return_damage: string | null;
   missing_accessories: string[] | null;
-  estimated_cost: number | null; // stored in cents
+  estimated_cost: DbBigInt | null; // stored in cents
   resolution: string | null;
   created_at: string;
   updated_at: string;
@@ -250,8 +254,8 @@ export interface AuditEvent {
   entity_type: string;
   entity_id: string;
   action: string;
-  old_values: Record<string, any> | null;
-  new_values: Record<string, any> | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -261,7 +265,7 @@ export interface ImportBatch {
   file_name: string;
   checksum: string;
   status: 'pending' | 'success' | 'failed';
-  summary: Record<string, any> | null;
+  summary: Record<string, unknown> | null;
   created_by: string;
   created_at: string;
 }
@@ -275,7 +279,7 @@ export interface ImportRow {
   entity_type: string;
   source_key: string;
   status: 'imported' | 'skipped' | 'failed';
-  errors: Record<string, any> | null;
+  errors: Record<string, unknown> | null;
   imported_entity_id: string | null;
   created_at: string;
 }
