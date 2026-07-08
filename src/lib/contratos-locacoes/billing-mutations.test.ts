@@ -62,6 +62,7 @@ class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
       organization_id: this.organizationId,
       internal_number: '23',
       kind: 'rental',
+      contract_company: 'fontes',
       customer_id: 'customer-1',
       site_id: 'site-1',
       legacy_order_number: 'OS-2026-23',

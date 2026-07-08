@@ -1,4 +1,5 @@
 export type ContractKind = 'rental' | 'energy_management' | 'recurring_service' | 'other';
+export type ContractCompany = 'fontes' | 'radial';
 
 export type ContractStatus =
   | 'draft'
@@ -103,9 +104,16 @@ export interface Contract {
   organization_id: string;
   internal_number: DbBigInt;
   kind: ContractKind;
+  contract_company: ContractCompany;
   customer_id: string;
   site_id: string;
   legacy_order_number: string | null;
+  transport_notes: string | null;
+  has_remittance_invoice: boolean;
+  remittance_invoice_number: string | null;
+  remittance_invoice_issuer: string | null;
+  remittance_invoice_amount: DbBigInt | null; // stored in cents
+  remittance_invoice_issue_date: string | null;
   start_date: string;
   end_date: string | null;
   recurrence_days: number;

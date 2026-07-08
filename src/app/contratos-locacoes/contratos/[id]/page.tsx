@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
+import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { createSupabaseContractsLocacoesReadClient, getContract, type ContractDetail } from '@/lib/contratos-locacoes/queries';
 import { createSupabaseContractsLocacoesMutationClient, pauseContract, reactivateContract } from '@/lib/contratos-locacoes/mutations';
 import { supabase } from '@/lib/supabase';
@@ -133,7 +134,7 @@ export default function ContractDetailPage() {
                       </div>
                       <div className="grid gap-1 text-sm text-gray-500 md:text-right">
                         <span>Qtd: {item.quantity}</span>
-                        <span>Valor unit.: {item.unit_amount}</span>
+                        <span>Valor unit.: {formatBRL(item.unit_amount)}</span>
                         <span>Status: {item.status}</span>
                       </div>
                     </div>

@@ -33,6 +33,7 @@ function makeContract(overrides: Partial<Contract> = {}): Contract {
     organization_id: 'org-1',
     internal_number: '23',
     kind: 'rental',
+    contract_company: 'fontes',
     customer_id: 'customer-1',
     site_id: 'site-1',
     legacy_order_number: 'OS-2026-23',

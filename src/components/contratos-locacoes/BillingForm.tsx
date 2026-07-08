@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatBRL, parseBRL } from '@/lib/contratos-locacoes/money';
 import { billingDraftSchema, type BillingDraftInput } from '@/lib/contratos-locacoes/schemas';
 
 interface BillingFormProps {
@@ -114,7 +115,12 @@ export function BillingForm({ contractOptions, submitLabel, onSubmit }: BillingF
           </label>
           <label className="grid gap-1 text-sm font-medium text-gray-700">
             Valor unitário
-            <input className="rounded-xl border border-gray-300 px-3 py-2" value={form.items[0]?.unit_amount ?? '0'} onChange={(event) => updateItem({ unit_amount: event.target.value })} />
+            <input
+              className="rounded-xl border border-gray-300 px-3 py-2"
+              inputMode="decimal"
+              value={formatBRL(form.items[0]?.unit_amount ?? '0')}
+              onChange={(event) => updateItem({ unit_amount: String(parseBRL(event.target.value)) })}
+            />
           </label>
         </div>
       </div>

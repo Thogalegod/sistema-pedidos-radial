@@ -28,6 +28,7 @@ describe('RentalItemsEditor', () => {
       />
     );
 
+    expect(screen.getByLabelText(/valor unitário/i)).toHaveValue('R$ 0,00');
     fireEvent.change(screen.getAllByLabelText(/descrição do item/i)[0], {
       target: { value: 'Gerador principal' },
     });

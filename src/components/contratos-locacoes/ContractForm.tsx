@@ -3,6 +3,8 @@
 import { useId, useMemo, useState, useTransition } from 'react';
 import { Loader2 } from 'lucide-react';
 import { contractDraftSchema, type ContractDraftInput } from '@/lib/contratos-locacoes/schemas';
+import { formatBRL, parseBRL } from '@/lib/contratos-locacoes/money';
+import { CONTRACT_COMPANY_OPTIONS, getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import type { CustomerSite } from '@/lib/contratos-locacoes/types';
 import type { CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import { useLocalDraft } from '@/lib/contratos-locacoes/use-local-draft';
@@ -28,6 +30,13 @@ function createInitialContract(initialItemId: string): ContractDraftInput {
     customer_id: '',
     site_id: '',
     legacy_order_number: null,
+    contract_company: 'fontes',
+    transport_notes: null,
+    has_remittance_invoice: false,
+    remittance_invoice_number: null,
+    remittance_invoice_issuer: null,
+    remittance_invoice_amount: null,
+    remittance_invoice_issue_date: null,
     start_date: '',
     end_date: null,
     recurrence_days: 30,
@@ -76,6 +85,17 @@ export function ContractForm({
     'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
   const isRental = draft.kind === 'rental';
+  const showOperationalFields = isRental;
+  const hasRemittanceInvoice = draft.has_remittance_invoice;
+  const remittanceIssuerLabel = getContractCompanyLabel(draft.contract_company);
+
+  const clearRemittanceInvoiceFields = () => ({
+    has_remittance_invoice: false,
+    remittance_invoice_number: null,
+    remittance_invoice_issuer: null,
+    remittance_invoice_amount: null,
+    remittance_invoice_issue_date: null,
+  });
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -116,13 +136,27 @@ export function ContractForm({
               className={inputClass}
               id="contract-kind"
               value={draft.kind}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  kind: event.target.value as ContractDraftInput['kind'],
-                  items: event.target.value === 'rental' ? current.items : [],
-                }))
-              }
+              onChange={(event) => {
+                const kind = event.target.value as ContractDraftInput['kind'];
+
+                setDraft((current) => {
+                  if (kind === 'rental') {
+                    return {
+                      ...current,
+                      kind,
+                      items: current.items.length > 0 ? current.items : [createEmptyRentalItem(initialItemId)],
+                    };
+                  }
+
+                  return {
+                    ...current,
+                    kind,
+                    items: [],
+                    transport_notes: null,
+                    ...clearRemittanceInvoiceFields(),
+                  };
+                });
+              }}
             >
               <option value="rental">Locação</option>
               <option value="energy_management">Gestão de energia</option>
@@ -145,6 +179,40 @@ export function ContractForm({
             >
               <option value="draft">Rascunho</option>
               <option value="active">Ativo</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-company">Empresa</label>
+            <select
+              aria-label="Empresa"
+              className={inputClass}
+              id="contract-company"
+              value={draft.contract_company}
+              onChange={(event) => {
+                const contractCompany = event.target.value as ContractDraftInput['contract_company'];
+
+                setDraft((current) => {
+                  const nextDraft = {
+                    ...current,
+                    contract_company: contractCompany,
+                  };
+
+                  if (current.kind === 'rental' && current.has_remittance_invoice) {
+                    return {
+                      ...nextDraft,
+                      remittance_invoice_issuer: getContractCompanyLabel(contractCompany),
+                    };
+                  }
+
+                  return nextDraft;
+                });
+              }}
+            >
+              {CONTRACT_COMPANY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -244,8 +312,14 @@ export function ContractForm({
               aria-label="Valor base"
               className={inputClass}
               id="contract-base-amount"
-              value={draft.base_amount}
-              onChange={(event) => setDraft((current) => ({ ...current, base_amount: event.target.value }))}
+              inputMode="decimal"
+              value={formatBRL(draft.base_amount)}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  base_amount: String(parseBRL(event.target.value)),
+                }))
+              }
             />
           </div>
           <div>
@@ -257,6 +331,126 @@ export function ContractForm({
               onChange={(event) => setDraft((current) => ({ ...current, legacy_order_number: event.target.value || null }))}
             />
           </div>
+          {showOperationalFields ? (
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-transport">Transporte</label>
+              <textarea
+                aria-label="Transporte"
+                className={inputClass}
+                id="contract-transport"
+                rows={2}
+                value={draft.transport_notes ?? ''}
+                onChange={(event) => setDraft((current) => ({ ...current, transport_notes: event.target.value || null }))}
+              />
+
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">Nota fiscal de remessa</h3>
+                    <p className="text-sm text-gray-500">Dado operacional do contrato, sem vínculo com cobrança.</p>
+                  </div>
+                  <div className="min-w-52">
+                    <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-has-remittance">
+                      Tem nota fiscal de remessa?
+                    </label>
+                    <select
+                      aria-label="Tem nota fiscal de remessa?"
+                      className={inputClass}
+                      id="contract-has-remittance"
+                      value={hasRemittanceInvoice ? 'yes' : 'no'}
+                      onChange={(event) =>
+                        setDraft((current) => {
+                          if (event.target.value === 'yes') {
+                            return {
+                              ...current,
+                              has_remittance_invoice: true,
+                              remittance_invoice_issuer: getContractCompanyLabel(current.contract_company),
+                            };
+                          }
+
+                          return {
+                            ...current,
+                            ...clearRemittanceInvoiceFields(),
+                          };
+                        })
+                      }
+                    >
+                      <option value="no">Não</option>
+                      <option value="yes">Sim</option>
+                    </select>
+                  </div>
+                </div>
+
+                {hasRemittanceInvoice ? (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-number">Número da NF</label>
+                      <input
+                        aria-label="Número da NF"
+                        className={inputClass}
+                        id="contract-remittance-number"
+                        value={draft.remittance_invoice_number ?? ''}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            remittance_invoice_number: event.target.value || null,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-issuer">Empresa emissora</label>
+                      <input
+                        aria-label="Empresa emissora"
+                        className={inputClass}
+                        id="contract-remittance-issuer"
+                        readOnly
+                        value={remittanceIssuerLabel}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-amount">Valor da NF</label>
+                      <input
+                        aria-label="Valor da NF"
+                        className={inputClass}
+                        id="contract-remittance-amount"
+                        inputMode="decimal"
+                        value={formatBRL(draft.remittance_invoice_amount)}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            remittance_invoice_amount: String(parseBRL(event.target.value)),
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-date">Data de emissão da NF</label>
+                      <input
+                        aria-label="Data de emissão da NF"
+                        className={inputClass}
+                        id="contract-remittance-date"
+                        type="date"
+                        value={draft.remittance_invoice_issue_date ?? ''}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            remittance_invoice_issue_date: event.target.value || null,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm text-gray-600">
+                    Não houve NF de remessa informada.
+                  </div>
+                )}
+
+                <p className="mt-4 text-xs text-gray-500">Anexo da NF será tratado em etapa futura.</p>
+              </div>
+            </div>
+          ) : null}
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-notes">Observações</label>
             <textarea

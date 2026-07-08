@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getContractCompanyLabel } from './company';
 
 const emptyToNull = (value: unknown) => {
   if (typeof value !== 'string') {
@@ -28,6 +29,9 @@ const normalizeTaxId = (value: unknown) => {
 };
 
 const optionalText = z.preprocess(emptyToNull, z.string().trim().nullable());
+const optionalTextField = z
+  .preprocess(emptyToNull, z.string().trim().nullable().optional())
+  .transform((value) => value ?? null);
 
 const emailField = z.preprocess((value) => {
   const normalized = emptyToNull(value);
@@ -121,6 +125,22 @@ const optionalNumericString = z.preprocess((value) => {
 }, z.string().regex(/^\d+(\.\d+)?$/).nullable());
 
 const optionalDateField = z.preprocess(emptyToNull, z.string().trim().nullable());
+const optionalDateFieldCompat = z
+  .preprocess(emptyToNull, z.string().trim().nullable().optional())
+  .transform((value) => value ?? null);
+
+const optionalMoneyStringField = z.preprocess((value) => {
+  if (typeof value === 'number') {
+    return String(Math.trunc(value));
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}, z.string().regex(/^\d+$/, 'Use apenas centavos inteiros').nullable().optional()).transform((value) => value ?? null);
 
 export const rentalItemDraftSchema = z.object({
   id: z.string().trim().min(1),
@@ -137,9 +157,16 @@ export const rentalItemDraftSchema = z.object({
 
 const contractDraftBaseSchema = z.object({
   kind: z.enum(['rental', 'energy_management', 'recurring_service', 'other']),
+  contract_company: z.enum(['fontes', 'radial']).default('fontes'),
   customer_id: z.string().trim().min(1, 'Cliente é obrigatório'),
   site_id: z.string().trim().min(1, 'Obra/local é obrigatória'),
   legacy_order_number: optionalText,
+  transport_notes: optionalTextField,
+  has_remittance_invoice: z.boolean().default(false),
+  remittance_invoice_number: optionalTextField,
+  remittance_invoice_issuer: optionalTextField,
+  remittance_invoice_amount: optionalMoneyStringField,
+  remittance_invoice_issue_date: optionalDateFieldCompat,
   start_date: z.string().trim().min(1, 'Data de início é obrigatória'),
   end_date: optionalDateField,
   recurrence_days: z.number().int().positive('Recorrência deve ser maior que zero'),
@@ -167,6 +194,46 @@ export const contractDraftSchema = contractDraftBaseSchema.superRefine((value, c
       message: 'Locações precisam de pelo menos um item manual',
     });
   }
+  if (value.has_remittance_invoice) {
+    if (!value.remittance_invoice_number) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['remittance_invoice_number'],
+        message: 'Preencha os dados da nota fiscal de remessa',
+      });
+    }
+
+    if (!value.remittance_invoice_amount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['remittance_invoice_amount'],
+        message: 'Preencha os dados da nota fiscal de remessa',
+      });
+    }
+
+    if (!value.remittance_invoice_issue_date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['remittance_invoice_issue_date'],
+        message: 'Preencha os dados da nota fiscal de remessa',
+      });
+    }
+  }
+}).transform((value) => {
+  if (value.has_remittance_invoice) {
+    return {
+      ...value,
+      remittance_invoice_issuer: getContractCompanyLabel(value.contract_company),
+    };
+  }
+
+  return {
+    ...value,
+    remittance_invoice_number: null,
+    remittance_invoice_issuer: null,
+    remittance_invoice_amount: null,
+    remittance_invoice_issue_date: null,
+  };
 });
 
 export const pauseContractSchema = z.object({

@@ -32,6 +32,26 @@ function readAuthenticatedGrantsMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readRemittanceFieldsMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_add_contract_remittance_fields\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one remittance fields migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
+function readCompanyFieldMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_add_contract_company_field\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one contract company migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
 describe('contracts and rentals migration consistency', () => {
   it('protects internal contract numbering against duplicate generation', () => {
     expect(baseSql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS contracts_org_internal_number_uidx/i);
@@ -114,5 +134,25 @@ describe('contracts and rentals migration consistency', () => {
     expect(baseSql).toMatch(/FOREIGN KEY \(organization_id, customer_id\)\s+REFERENCES customers \(organization_id, id\)/i);
     expect(baseSql).toMatch(/FOREIGN KEY \(organization_id, site_id\)\s+REFERENCES customer_sites \(organization_id, id\)/i);
     expect(baseSql).toMatch(/FOREIGN KEY \(organization_id, contract_id\)\s+REFERENCES contracts \(organization_id, id\)/i);
+  });
+
+  it('adds transport and remittance invoice fields through a dedicated contracts migration', () => {
+    const sql = readRemittanceFieldsMigration();
+
+    expect(sql).toMatch(/ALTER TABLE public\.contracts/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS transport_notes text/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS has_remittance_invoice boolean NOT NULL DEFAULT false/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS remittance_invoice_number text/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS remittance_invoice_issuer text/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS remittance_invoice_amount bigint/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS remittance_invoice_issue_date date/i);
+  });
+
+  it('adds the contract company field with a restricted check constraint', () => {
+    const sql = readCompanyFieldMigration();
+
+    expect(sql).toMatch(/ALTER TABLE public\.contracts/i);
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS contract_company text NOT NULL DEFAULT 'fontes'/i);
+    expect(sql).toMatch(/CHECK \(contract_company IN \('fontes', 'radial'\)\)/i);
   });
 });

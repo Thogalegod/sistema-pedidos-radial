@@ -29,7 +29,8 @@ describe('BillingForm', () => {
     fireEvent.change(screen.getByLabelText(/número do documento/i), { target: { value: 'R260701001' } });
     fireEvent.change(screen.getByLabelText(/descrição da linha/i), { target: { value: 'Locação mensal gerador' } });
     fireEvent.change(screen.getByLabelText(/quantidade/i), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText(/valor unitário/i), { target: { value: '150000' } });
+    fireEvent.change(screen.getByLabelText(/valor unitário/i), { target: { value: 'R$ 1.500,00' } });
+    expect(screen.getByLabelText(/valor unitário/i)).toHaveValue('R$ 1.500,00');
 
     fireEvent.click(screen.getByRole('button', { name: /emitir cobrança/i }));
 

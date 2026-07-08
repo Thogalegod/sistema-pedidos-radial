@@ -80,6 +80,13 @@ class FakeContractMutationClient implements ContractsLocacoesMutationClient {
       customer_id: 'customer-1',
       site_id: 'site-1',
       legacy_order_number: null,
+      contract_company: 'fontes',
+      transport_notes: null,
+      has_remittance_invoice: false,
+      remittance_invoice_number: null,
+      remittance_invoice_issuer: null,
+      remittance_invoice_amount: null,
+      remittance_invoice_issue_date: null,
       start_date: '2026-07-06',
       end_date: null,
       recurrence_days: 30,
@@ -122,9 +129,16 @@ describe('contract mutations', () => {
 
     const result = await createContract(client, {
       kind: 'rental',
+      contract_company: 'radial',
       customer_id: 'customer-1',
       site_id: 'site-1',
       legacy_order_number: 'OS-100',
+      transport_notes: 'Entrega por transportadora X',
+      has_remittance_invoice: true,
+      remittance_invoice_number: 'NF-2026-001',
+      remittance_invoice_issuer: 'Radial Energia LTDA',
+      remittance_invoice_amount: '450000',
+      remittance_invoice_issue_date: '2026-07-04',
       start_date: '2026-07-06',
       end_date: '',
       recurrence_days: 30,
@@ -163,6 +177,13 @@ describe('contract mutations', () => {
 
     expect(result.contract.id).toBe('contract-1');
     expect(client.insertedContract?.organization_id).toBe('org-1');
+    expect((client.insertedContract as Record<string, unknown>)?.contract_company).toBe('radial');
+    expect((client.insertedContract as Record<string, unknown>)?.transport_notes).toBe('Entrega por transportadora X');
+    expect((client.insertedContract as Record<string, unknown>)?.has_remittance_invoice).toBe(true);
+    expect((client.insertedContract as Record<string, unknown>)?.remittance_invoice_number).toBe('NF-2026-001');
+    expect((client.insertedContract as Record<string, unknown>)?.remittance_invoice_issuer).toBe('Radial');
+    expect((client.insertedContract as Record<string, unknown>)?.remittance_invoice_amount).toBe('450000');
+    expect((client.insertedContract as Record<string, unknown>)?.remittance_invoice_issue_date).toBe('2026-07-04');
     expect(client.upsertedItems).toHaveLength(2);
     expect(client.upsertedItems[0].id).toBe('11111111-1111-4111-8111-111111111111');
     expect(client.upsertedItems[1].id).toBe('22222222-2222-4222-8222-222222222222');
@@ -190,9 +211,16 @@ describe('contract mutations', () => {
 
     await createContract(client, {
       kind: 'rental',
+      contract_company: 'fontes',
       customer_id: 'customer-1',
       site_id: 'site-1',
       legacy_order_number: 'OS-101',
+      transport_notes: '',
+      has_remittance_invoice: false,
+      remittance_invoice_number: '',
+      remittance_invoice_issuer: '',
+      remittance_invoice_amount: '',
+      remittance_invoice_issue_date: '',
       start_date: '2026-07-06',
       end_date: '',
       recurrence_days: 30,
@@ -228,6 +256,47 @@ describe('contract mutations', () => {
     ]);
   });
 
+  it('omits transport and remittance fields from non-rental contract payloads', async () => {
+    const client = new FakeContractMutationClient();
+
+    await createContract(client, {
+      kind: 'energy_management',
+      contract_company: 'radial',
+      customer_id: 'customer-1',
+      site_id: 'site-1',
+      legacy_order_number: 'OS-103',
+      transport_notes: 'Não deve sair no payload',
+      has_remittance_invoice: true,
+      remittance_invoice_number: 'NF-999',
+      remittance_invoice_issuer: 'Fornecedor teste',
+      remittance_invoice_amount: '9900',
+      remittance_invoice_issue_date: '2026-07-06',
+      start_date: '2026-07-06',
+      end_date: '',
+      recurrence_days: 30,
+      pricing_model: 'fixed',
+      base_amount: '150000',
+      percentage_rate: '',
+      status: 'draft',
+      notes: '',
+      items: [],
+    });
+
+    expect(client.insertedContract).toMatchObject({
+      kind: 'energy_management',
+      contract_company: 'radial',
+      customer_id: 'customer-1',
+      site_id: 'site-1',
+    });
+    expect(client.insertedContract).not.toHaveProperty('transport_notes');
+    expect(client.insertedContract).not.toHaveProperty('has_remittance_invoice');
+    expect(client.insertedContract).not.toHaveProperty('remittance_invoice_number');
+    expect(client.insertedContract).not.toHaveProperty('remittance_invoice_issuer');
+    expect(client.insertedContract).not.toHaveProperty('remittance_invoice_amount');
+    expect(client.insertedContract).not.toHaveProperty('remittance_invoice_issue_date');
+    expect(client.upsertedItems).toHaveLength(0);
+  });
+
   it('surfaces rental item persistence failures without reporting false success', async () => {
     const client = new FakeContractMutationClient({
       failUpsertItems: 'Não foi possível salvar os itens da locação: invalid input syntax for type uuid',
@@ -237,10 +306,17 @@ describe('contract mutations', () => {
 
     await expect(() =>
       createContract(client, {
-        kind: 'rental',
-        customer_id: 'customer-1',
+      kind: 'rental',
+      contract_company: 'fontes',
+      customer_id: 'customer-1',
         site_id: 'site-1',
         legacy_order_number: 'OS-102',
+        transport_notes: '',
+        has_remittance_invoice: false,
+        remittance_invoice_number: '',
+        remittance_invoice_issuer: '',
+        remittance_invoice_amount: '',
+        remittance_invoice_issue_date: '',
         start_date: '2026-07-06',
         end_date: '',
         recurrence_days: 30,

@@ -46,6 +46,7 @@ describe('money utility', () => {
       expect(formatBRL(1250)).toBe('R$ 12,50');
       expect(formatBRL(100000)).toBe('R$ 1.000,00');
       expect(formatBRL(123456789)).toBe('R$ 1.234.567,89');
+      expect(formatBRL('150000')).toBe('R$ 1.500,00');
     });
 
     it('formats negative values correctly', () => {
@@ -63,10 +64,16 @@ describe('money utility', () => {
       expect(parseBRL('R$1.250,60')).toBe(125060);
     });
 
-    it('parses values without currency symbols or thousands separators', () => {
+    it('parses plain digit values as reais', () => {
       expect(parseBRL('123')).toBe(12300);
+      expect(parseBRL('1500')).toBe(150000);
+      expect(parseBRL('150000')).toBe(15000000);
+    });
+
+    it('parses decimal BRL values without currency symbols', () => {
       expect(parseBRL('123,45')).toBe(12345);
       expect(parseBRL('0,50')).toBe(50);
+      expect(parseBRL('1.500,50')).toBe(150050);
     });
 
     it('handles empty or invalid inputs', () => {

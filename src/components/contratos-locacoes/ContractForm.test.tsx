@@ -86,7 +86,162 @@ describe('ContractForm', () => {
     expect(hydrationMismatchFound).toBe(false);
   });
 
+  it('starts new contracts as rental and keeps operational fields visible only for rental', () => {
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText(/tipo do contrato/i)).toHaveValue('rental');
+    expect(screen.getByLabelText(/^empresa$/i)).toHaveValue('fontes');
+    expect(screen.getByLabelText(/transporte/i)).toBeInTheDocument();
+    expect(screen.getByText(/itens da locação/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/tem nota fiscal de remessa/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/tipo do contrato/i), {
+      target: { value: 'energy_management' },
+    });
+
+    expect(screen.queryByLabelText(/transporte/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/tem nota fiscal de remessa/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/itens da locação/i)).not.toBeInTheDocument();
+  });
+
   it('submits a rental contract with manual items and site contacts', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/tipo do contrato/i), {
+      target: { value: 'rental' },
+    });
+    fireEvent.change(screen.getByLabelText(/cliente/i), {
+      target: { value: 'customer-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
+      target: { value: 'site-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/^empresa$/i), {
+      target: { value: 'radial' },
+    });
+    fireEvent.change(screen.getByLabelText(/início/i), {
+      target: { value: '2026-07-06' },
+    });
+    fireEvent.change(screen.getByLabelText(/transporte/i), {
+      target: { value: 'Retira por conta do cliente' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor base/i), {
+      target: { value: 'R$ 1.500,00' },
+    });
+    expect(screen.getByLabelText(/valor base/i)).toHaveValue('R$ 1.500,00');
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
+    });
+    expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Radial');
+    expect(screen.getByLabelText(/empresa emissora/i)).toHaveAttribute('readonly');
+    fireEvent.change(screen.getByLabelText(/número da nf/i), {
+      target: { value: 'NF-1000' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor da nf/i), {
+      target: { value: 'R$ 3.500,00' },
+    });
+    expect(screen.getByLabelText(/valor da nf/i)).toHaveValue('R$ 3.500,00');
+    fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
+      target: { value: '2026-07-05' },
+    });
+    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
+      target: { value: 'Gerador principal' },
+    });
+    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
+      target: { value: 'Gerador' },
+    });
+    fireEvent.change(screen.getByLabelText(/capacidade/i), {
+      target: { value: '150 kVA' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor unitário/i), {
+      target: { value: 'R$ 450,00' },
+    });
+    expect(screen.getByLabelText(/valor unitário/i)).toHaveValue('R$ 450,00');
+
+    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
+
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
+    expect(handleSubmit.mock.calls[0][0].items).toHaveLength(1);
+    expect(handleSubmit.mock.calls[0][0].contract_company).toBe('radial');
+    expect(handleSubmit.mock.calls[0][0].transport_notes).toBe('Retira por conta do cliente');
+    expect(handleSubmit.mock.calls[0][0].has_remittance_invoice).toBe(true);
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_number).toBe('NF-1000');
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issuer).toBe('Radial');
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_amount).toBe('350000');
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issue_date).toBe('2026-07-05');
+    expect(handleSubmit.mock.calls[0][0].base_amount).toBe('150000');
+    expect(handleSubmit.mock.calls[0][0].items[0]?.unit_amount).toBe('45000');
+  });
+
+  it('mirrors company into remittance issuer and keeps it read only for rental NF', () => {
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/^empresa$/i), {
+      target: { value: 'radial' },
+    });
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
+    });
+
+    const issuerField = screen.getByLabelText(/empresa emissora/i);
+
+    expect(issuerField).toHaveValue('Radial');
+    expect(issuerField).toHaveAttribute('readonly');
+
+    fireEvent.change(screen.getByLabelText(/^empresa$/i), {
+      target: { value: 'fontes' },
+    });
+
+    expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Fontes');
+  });
+
+  it('reveals remittance invoice fields only when set to yes', () => {
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/valor base/i)).toHaveValue('R$ 0,00');
+
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
+    });
+
+    expect(screen.getByLabelText(/número da nf/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/empresa emissora/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/valor da nf/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/data de emissão da nf/i)).toBeInTheDocument();
+  });
+
+  it('clears remittance invoice fields when switched back to no', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -110,9 +265,27 @@ describe('ContractForm', () => {
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
     });
-    fireEvent.change(screen.getByLabelText(/valor base/i), {
-      target: { value: '150000' },
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
     });
+    fireEvent.change(screen.getByLabelText(/número da nf/i), {
+      target: { value: 'NF-1000' },
+    });
+    fireEvent.change(screen.getByLabelText(/empresa emissora/i), {
+      target: { value: 'Radial Energia LTDA' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor da nf/i), {
+      target: { value: 'R$ 3.500,00' },
+    });
+    fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
+      target: { value: '2026-07-05' },
+    });
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'no' },
+    });
+
+    expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
+
     fireEvent.change(screen.getByLabelText(/descrição do item/i), {
       target: { value: 'Gerador principal' },
     });
@@ -123,13 +296,17 @@ describe('ContractForm', () => {
       target: { value: '150 kVA' },
     });
     fireEvent.change(screen.getByLabelText(/valor unitário/i), {
-      target: { value: '45000' },
+      target: { value: 'R$ 450,00' },
     });
 
     fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
 
     await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
-    expect(handleSubmit.mock.calls[0][0].items).toHaveLength(1);
+    expect(handleSubmit.mock.calls[0][0].has_remittance_invoice).toBe(false);
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_number).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issuer).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_amount).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issue_date).toBeNull();
   });
 
   it('shows a conservative conflict warning when the server changed after a local edit', async () => {
@@ -138,9 +315,16 @@ describe('ContractForm', () => {
     saveLocalDraft(storageKey, {
       data: {
         kind: 'rental',
+        contract_company: 'fontes',
         customer_id: 'customer-1',
         site_id: 'site-1',
         legacy_order_number: null,
+        transport_notes: null,
+        has_remittance_invoice: false,
+        remittance_invoice_number: null,
+        remittance_invoice_issuer: null,
+        remittance_invoice_amount: null,
+        remittance_invoice_issue_date: null,
         start_date: '2026-07-10',
         end_date: null,
         recurrence_days: 30,
@@ -166,9 +350,16 @@ describe('ContractForm', () => {
       },
       baseFingerprint: {
         kind: 'rental',
+        contract_company: 'fontes',
         customer_id: 'customer-1',
         site_id: 'site-1',
         legacy_order_number: null,
+        transport_notes: null,
+        has_remittance_invoice: false,
+        remittance_invoice_number: null,
+        remittance_invoice_issuer: null,
+        remittance_invoice_amount: null,
+        remittance_invoice_issue_date: null,
         start_date: '2026-07-01',
         end_date: null,
         recurrence_days: 30,
@@ -201,9 +392,16 @@ describe('ContractForm', () => {
         draftStorageKey={storageKey}
         initialValue={{
           kind: 'rental',
+          contract_company: 'fontes',
           customer_id: 'customer-1',
           site_id: 'site-1',
           legacy_order_number: null,
+          transport_notes: null,
+          has_remittance_invoice: false,
+          remittance_invoice_number: null,
+          remittance_invoice_issuer: null,
+          remittance_invoice_amount: null,
+          remittance_invoice_issue_date: null,
           start_date: '2026-07-06',
           end_date: null,
           recurrence_days: 30,
@@ -233,10 +431,10 @@ describe('ContractForm', () => {
     );
 
     expect(await screen.findByText(/os dados do servidor mudaram/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue('180000')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('R$ 1.800,00')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /restaurar rascunho local/i }));
 
-    expect(await screen.findByDisplayValue('250000')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('R$ 2.500,00')).toBeInTheDocument();
   });
 });

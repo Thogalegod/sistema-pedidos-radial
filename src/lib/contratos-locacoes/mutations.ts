@@ -21,6 +21,7 @@ import type { BillingCycle, BillingLine, Contract, Customer, CustomerContact, Cu
 import { calculateBilling } from './money';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
 import { receiptNumberFromInternalNumber } from './numbering';
+import { getContractCompanyLabel } from './company';
 
 export interface CustomerMutationResult {
   customer: Customer;
@@ -571,10 +572,11 @@ function buildContractRecord(
   organizationId: string,
   payload: ContractDraftInput
 ): Omit<Contract, 'id' | 'created_at' | 'updated_at'> {
-  return {
+  const baseRecord = {
     organization_id: organizationId,
     internal_number: '0',
     kind: payload.kind,
+    contract_company: payload.contract_company,
     customer_id: payload.customer_id,
     site_id: payload.site_id,
     legacy_order_number: payload.legacy_order_number,
@@ -589,6 +591,22 @@ function buildContractRecord(
     pause_reason: null,
     notes: payload.notes,
   };
+
+  if (payload.kind !== 'rental') {
+    return baseRecord as Omit<Contract, 'id' | 'created_at' | 'updated_at'>;
+  }
+
+  return {
+    ...baseRecord,
+    transport_notes: payload.transport_notes,
+    has_remittance_invoice: payload.has_remittance_invoice,
+    remittance_invoice_number: payload.remittance_invoice_number,
+    remittance_invoice_issuer: payload.has_remittance_invoice
+      ? getContractCompanyLabel(payload.contract_company)
+      : null,
+    remittance_invoice_amount: payload.has_remittance_invoice ? payload.remittance_invoice_amount : null,
+    remittance_invoice_issue_date: payload.has_remittance_invoice ? payload.remittance_invoice_issue_date : null,
+  } as Omit<Contract, 'id' | 'created_at' | 'updated_at'>;
 }
 
 function buildRentalItemRecords(
