@@ -40,14 +40,15 @@ CREATE TABLE IF NOT EXISTS customers (
   notes text,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT customers_org_id_uidx UNIQUE (organization_id, id)
 );
 
 -- Customer Sites (Obras/Locais) table
 CREATE TABLE IF NOT EXISTS customer_sites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  customer_id uuid NOT NULL,
   name text NOT NULL,
   address_line text NOT NULL,
   number text NOT NULL,
@@ -59,15 +60,20 @@ CREATE TABLE IF NOT EXISTS customer_sites (
   notes text,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT customer_sites_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT customer_sites_customer_org_fkey
+    FOREIGN KEY (organization_id, customer_id)
+    REFERENCES customers (organization_id, id)
+    ON DELETE CASCADE
 );
 
 -- Customer Contacts table
 CREATE TABLE IF NOT EXISTS customer_contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-  site_id uuid REFERENCES customer_sites(id) ON DELETE SET NULL,
+  customer_id uuid NOT NULL,
+  site_id uuid,
   name text NOT NULL,
   job_title text,
   department text,
@@ -79,7 +85,16 @@ CREATE TABLE IF NOT EXISTS customer_contacts (
   receives_technical boolean NOT NULL DEFAULT false,
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT customer_contacts_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT customer_contacts_customer_org_fkey
+    FOREIGN KEY (organization_id, customer_id)
+    REFERENCES customers (organization_id, id)
+    ON DELETE CASCADE,
+  CONSTRAINT customer_contacts_site_org_fkey
+    FOREIGN KEY (organization_id, site_id)
+    REFERENCES customer_sites (organization_id, id)
+    ON DELETE SET NULL
 );
 
 -- Contracts table
@@ -88,8 +103,8 @@ CREATE TABLE IF NOT EXISTS contracts (
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   internal_number bigint NOT NULL,
   kind contract_kind NOT NULL,
-  customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-  site_id uuid NOT NULL REFERENCES customer_sites(id) ON DELETE RESTRICT,
+  customer_id uuid NOT NULL,
+  site_id uuid NOT NULL,
   legacy_order_number text,
   start_date date NOT NULL,
   end_date date,
@@ -103,14 +118,23 @@ CREATE TABLE IF NOT EXISTS contracts (
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT contracts_end_date_chk CHECK (end_date IS NULL OR end_date >= start_date)
+  CONSTRAINT contracts_end_date_chk CHECK (end_date IS NULL OR end_date >= start_date),
+  CONSTRAINT contracts_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT contracts_customer_org_fkey
+    FOREIGN KEY (organization_id, customer_id)
+    REFERENCES customers (organization_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT contracts_site_org_fkey
+    FOREIGN KEY (organization_id, site_id)
+    REFERENCES customer_sites (organization_id, id)
+    ON DELETE RESTRICT
 );
 
 -- Rental Items table (equipment details on contract)
 CREATE TABLE IF NOT EXISTS rental_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  contract_id uuid NOT NULL,
   description text NOT NULL,
   equipment_type text NOT NULL,
   capacity text NOT NULL,
@@ -121,14 +145,19 @@ CREATE TABLE IF NOT EXISTS rental_items (
   status rental_item_status NOT NULL DEFAULT 'rented',
   future_inventory_item_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rental_items_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT rental_items_contract_org_fkey
+    FOREIGN KEY (organization_id, contract_id)
+    REFERENCES contracts (organization_id, id)
+    ON DELETE CASCADE
 );
 
 -- Billing Cycles table (faturamento recorrente)
 CREATE TABLE IF NOT EXISTS billing_cycles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE RESTRICT,
+  contract_id uuid NOT NULL,
   sequence_number integer NOT NULL CHECK (sequence_number >= 1 AND sequence_number <= 999),
   period_start date NOT NULL,
   period_end date NOT NULL,
@@ -146,42 +175,59 @@ CREATE TABLE IF NOT EXISTS billing_cycles (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT billing_cycles_period_chk CHECK (period_end >= period_start),
-  CONSTRAINT billing_cycles_due_chk CHECK (due_date >= issue_date)
+  CONSTRAINT billing_cycles_due_chk CHECK (due_date >= issue_date),
+  CONSTRAINT billing_cycles_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT billing_cycles_contract_org_fkey
+    FOREIGN KEY (organization_id, contract_id)
+    REFERENCES contracts (organization_id, id)
+    ON DELETE RESTRICT
 );
 
 -- Billing Lines table (items included in billing cycle)
 CREATE TABLE IF NOT EXISTS billing_lines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  billing_cycle_id uuid NOT NULL REFERENCES billing_cycles(id) ON DELETE CASCADE,
-  rental_item_id uuid REFERENCES rental_items(id) ON DELETE SET NULL,
+  billing_cycle_id uuid NOT NULL,
+  rental_item_id uuid,
   description text NOT NULL,
   quantity integer NOT NULL CHECK (quantity > 0),
   unit_amount bigint NOT NULL CHECK (unit_amount >= 0),
   total_amount bigint NOT NULL CHECK (total_amount >= 0),
   kind text NOT NULL CHECK (kind IN ('recurring', 'damage', 'discount', 'surcharge')),
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT billing_lines_billing_cycle_org_fkey
+    FOREIGN KEY (organization_id, billing_cycle_id)
+    REFERENCES billing_cycles (organization_id, id)
+    ON DELETE CASCADE,
+  CONSTRAINT billing_lines_rental_item_org_fkey
+    FOREIGN KEY (organization_id, rental_item_id)
+    REFERENCES rental_items (organization_id, id)
+    ON DELETE SET NULL
 );
 
 -- Payments table
 CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  billing_cycle_id uuid NOT NULL REFERENCES billing_cycles(id) ON DELETE RESTRICT,
+  billing_cycle_id uuid NOT NULL,
   paid_at timestamptz NOT NULL,
   amount bigint NOT NULL CHECK (amount >= 0),
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT payments_billing_cycle_org_fkey
+    FOREIGN KEY (organization_id, billing_cycle_id)
+    REFERENCES billing_cycles (organization_id, id)
+    ON DELETE RESTRICT
 );
 
 -- Inspections table (vistoria de entrada e saída)
 CREATE TABLE IF NOT EXISTS inspections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE RESTRICT,
-  rental_item_id uuid NOT NULL REFERENCES rental_items(id) ON DELETE RESTRICT,
+  contract_id uuid NOT NULL,
+  rental_item_id uuid NOT NULL,
   kind inspection_kind NOT NULL,
   inspected_at timestamptz NOT NULL DEFAULT now(),
   responsible_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
@@ -193,14 +239,23 @@ CREATE TABLE IF NOT EXISTS inspections (
   estimated_cost bigint CHECK (estimated_cost >= 0), -- stored in cents
   resolution text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT inspections_org_id_uidx UNIQUE (organization_id, id),
+  CONSTRAINT inspections_contract_org_fkey
+    FOREIGN KEY (organization_id, contract_id)
+    REFERENCES contracts (organization_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT inspections_rental_item_org_fkey
+    FOREIGN KEY (organization_id, rental_item_id)
+    REFERENCES rental_items (organization_id, id)
+    ON DELETE RESTRICT
 );
 
 -- Inspection Photos table
 CREATE TABLE IF NOT EXISTS inspection_photos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  inspection_id uuid NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+  inspection_id uuid NOT NULL,
   client_idempotency_key text NOT NULL,
   storage_path text NOT NULL,
   thumbnail_path text,
@@ -208,14 +263,18 @@ CREATE TABLE IF NOT EXISTS inspection_photos (
   caption text,
   taken_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT inspection_photos_inspection_org_fkey
+    FOREIGN KEY (organization_id, inspection_id)
+    REFERENCES inspections (organization_id, id)
+    ON DELETE CASCADE
 );
 
 -- Signatures table
 CREATE TABLE IF NOT EXISTS signatures (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  inspection_id uuid NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+  inspection_id uuid NOT NULL,
   client_idempotency_key text NOT NULL,
   storage_path text NOT NULL,
   signer_name text NOT NULL,
@@ -223,22 +282,38 @@ CREATE TABLE IF NOT EXISTS signatures (
   signed_at timestamptz NOT NULL,
   sync_state sync_state NOT NULL DEFAULT 'local',
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT signatures_inspection_org_fkey
+    FOREIGN KEY (organization_id, inspection_id)
+    REFERENCES inspections (organization_id, id)
+    ON DELETE CASCADE
 );
 
 -- Contract Documents table (anexos)
 CREATE TABLE IF NOT EXISTS contract_documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  contract_id uuid NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
-  billing_cycle_id uuid REFERENCES billing_cycles(id) ON DELETE SET NULL,
-  inspection_id uuid REFERENCES inspections(id) ON DELETE SET NULL,
+  contract_id uuid NOT NULL,
+  billing_cycle_id uuid,
+  inspection_id uuid,
   kind text NOT NULL CHECK (kind IN ('order', 'shipping', 'contract', 'receipt_nf', 'payment_proof', 'other')),
   storage_path text NOT NULL,
   file_name text NOT NULL,
   content_type text NOT NULL,
   created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT contract_documents_contract_org_fkey
+    FOREIGN KEY (organization_id, contract_id)
+    REFERENCES contracts (organization_id, id)
+    ON DELETE CASCADE,
+  CONSTRAINT contract_documents_billing_cycle_org_fkey
+    FOREIGN KEY (organization_id, billing_cycle_id)
+    REFERENCES billing_cycles (organization_id, id)
+    ON DELETE SET NULL,
+  CONSTRAINT contract_documents_inspection_org_fkey
+    FOREIGN KEY (organization_id, inspection_id)
+    REFERENCES inspections (organization_id, id)
+    ON DELETE SET NULL
 );
 
 -- Audit Events table
@@ -294,6 +369,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS billing_document_org_uidx
   ON billing_cycles (organization_id, document_number)
   WHERE document_number IS NOT NULL AND status <> 'cancelled';
 
+CREATE UNIQUE INDEX IF NOT EXISTS contracts_org_internal_number_uidx
+  ON contracts (organization_id, internal_number);
+
 -- Unique sequence number of faturamento per contract
 CREATE UNIQUE INDEX IF NOT EXISTS billing_contract_sequence_uidx
   ON billing_cycles (contract_id, sequence_number);
@@ -341,14 +419,28 @@ CREATE TRIGGER set_inspection_photos_updated_at BEFORE UPDATE ON inspection_phot
 CREATE TRIGGER set_signatures_updated_at BEFORE UPDATE ON signatures FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger function to automatically generate internal_number sequentially per organization
+CREATE TABLE IF NOT EXISTS organization_contract_counters (
+  organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  next_internal_number bigint NOT NULL CHECK (next_internal_number >= 1),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE OR REPLACE FUNCTION set_contract_internal_number()
 RETURNS TRIGGER AS $$
+DECLARE
+  generated_number bigint;
 BEGIN
   IF NEW.internal_number IS NULL OR NEW.internal_number = 0 THEN
-    NEW.internal_number := coalesce(
-      (SELECT max(internal_number) FROM contracts WHERE organization_id = NEW.organization_id),
-      0
-    ) + 1;
+    INSERT INTO organization_contract_counters AS counter (organization_id, next_internal_number)
+    VALUES (NEW.organization_id, 2)
+    ON CONFLICT (organization_id)
+    DO UPDATE SET
+      next_internal_number = counter.next_internal_number + 1,
+      updated_at = now()
+    RETURNING counter.next_internal_number - 1
+      INTO generated_number;
+
+    NEW.internal_number := generated_number;
   END IF;
   RETURN NEW;
 END;
@@ -370,11 +462,15 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM organization_members
-    WHERE organization_id = target_org
-      AND user_id = auth.uid()
+    SELECT 1
+    FROM organization_members AS membership
+    WHERE membership.organization_id = target_org
+      AND membership.user_id = auth.uid()
   );
 $$;
+
+REVOKE ALL ON FUNCTION is_organization_member(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION is_organization_member(uuid) TO authenticated;
 
 -- Enable RLS on all tables
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
@@ -406,12 +502,23 @@ CREATE POLICY "Users can select membership details within their organizations" O
   FOR SELECT USING (is_organization_member(organization_id));
 
 CREATE POLICY "Admins can manage organization members" ON organization_members
-  FOR ALL USING (
+  FOR ALL
+  USING (
     EXISTS (
-      SELECT 1 FROM organization_members
-      WHERE organization_id = organization_members.organization_id
-        AND user_id = auth.uid()
-        AND role = 'admin'
+      SELECT 1
+      FROM organization_members AS acting_member
+      WHERE acting_member.organization_id = organization_members.organization_id
+        AND acting_member.user_id = auth.uid()
+        AND acting_member.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM organization_members AS acting_member
+      WHERE acting_member.organization_id = organization_members.organization_id
+        AND acting_member.user_id = auth.uid()
+        AND acting_member.role = 'admin'
     )
   );
 
@@ -486,7 +593,7 @@ CREATE POLICY "Contract Documents UPDATE policy" ON contract_documents FOR UPDAT
 
 -- Audit Events
 CREATE POLICY "Audit Events SELECT policy" ON audit_events FOR SELECT USING (is_organization_member(organization_id));
-CREATE POLICY "Audit Events INSERT policy" ON audit_events FOR INSERT WITH CHECK (is_organization_member(organization_id));
+-- Audit events must be created by trusted server-side code (RPCs or triggers), not directly by clients.
 
 -- Import Batches
 CREATE POLICY "Import Batches SELECT policy" ON import_batches FOR SELECT USING (is_organization_member(organization_id));
