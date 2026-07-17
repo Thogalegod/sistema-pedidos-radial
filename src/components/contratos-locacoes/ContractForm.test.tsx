@@ -61,10 +61,10 @@ describe('ContractForm', () => {
     container.innerHTML = html;
     document.body.appendChild(container);
 
-    let root: ReturnType<typeof hydrateRoot> | null = null;
+    const root: { current: ReturnType<typeof hydrateRoot> | null } = { current: null };
 
     await act(async () => {
-      root = hydrateRoot(
+      root.current = hydrateRoot(
         container,
         <ContractForm
           customers={customers}
@@ -80,7 +80,7 @@ describe('ContractForm', () => {
       call.some((value) => String(value).includes('A tree hydrated but some attributes'))
     );
 
-    root?.unmount();
+    root.current?.unmount();
     consoleErrorSpy.mockRestore();
 
     expect(hydrationMismatchFound).toBe(false);
@@ -109,6 +109,83 @@ describe('ContractForm', () => {
     expect(screen.queryByLabelText(/transporte/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/tem nota fiscal de remessa/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/itens da locação/i)).not.toBeInTheDocument();
+  });
+
+  it('preserves the start date after input and change events when submitting', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/cliente/i), {
+      target: { value: 'customer-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
+      target: { value: 'site-1' },
+    });
+
+    const startDateInput = screen.getByLabelText(/início/i);
+    fireEvent.input(startDateInput, {
+      target: { value: '2026-07-17' },
+    });
+    fireEvent.change(startDateInput, {
+      target: { value: '2026-07-17' },
+    });
+    fireEvent.blur(startDateInput);
+
+    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
+      target: { value: 'Equipamento de QA' },
+    });
+    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
+      target: { value: 'Equipamento' },
+    });
+    fireEvent.change(screen.getByLabelText(/capacidade/i), {
+      target: { value: '1 unidade' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
+
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
+    expect(handleSubmit.mock.calls[0][0].start_date).toBe('2026-07-17');
+    expect(screen.queryByText('Data de início é obrigatória')).not.toBeInTheDocument();
+  });
+
+  it('keeps requiring an empty start date', () => {
+    const handleSubmit = vi.fn();
+
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/cliente/i), {
+      target: { value: 'customer-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
+      target: { value: 'site-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
+      target: { value: 'Equipamento de QA' },
+    });
+    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
+      target: { value: 'Equipamento' },
+    });
+    fireEvent.change(screen.getByLabelText(/capacidade/i), {
+      target: { value: '1 unidade' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
+
+    expect(screen.getByText('Data de início é obrigatória')).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
   });
 
   it('submits a rental contract with manual items and site contacts', async () => {

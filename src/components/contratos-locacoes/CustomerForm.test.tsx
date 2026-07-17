@@ -20,10 +20,10 @@ describe('CustomerForm', () => {
     container.innerHTML = html;
     document.body.appendChild(container);
 
-    let root: ReturnType<typeof hydrateRoot> | null = null;
+    const root: { current: ReturnType<typeof hydrateRoot> | null } = { current: null };
 
     await act(async () => {
-      root = hydrateRoot(container, <CustomerForm submitLabel="Salvar cliente" onSubmit={vi.fn()} />);
+      root.current = hydrateRoot(container, <CustomerForm submitLabel="Salvar cliente" onSubmit={vi.fn()} />);
       await Promise.resolve();
     });
 
@@ -31,7 +31,7 @@ describe('CustomerForm', () => {
       call.some((value) => String(value).includes('A tree hydrated but some attributes'))
     );
 
-    root?.unmount();
+    root.current?.unmount();
     consoleErrorSpy.mockRestore();
 
     expect(hydrationMismatchFound).toBe(false);
