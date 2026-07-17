@@ -12,6 +12,12 @@ describe('ContractSummary', () => {
   it('shows transport and remittance invoice details when the contract has NF data', () => {
     render(
       <ContractSummary
+        remittanceAttachmentSlot={
+          <div>
+            <span>Anexo da NF de remessa</span>
+            <button type="button">Anexar NF</button>
+          </div>
+        }
         detail={{
           contract: {
             id: 'contract-1',
@@ -87,6 +93,55 @@ describe('ContractSummary', () => {
     expect(screen.getByText('R$ 3.500,00')).toBeInTheDocument();
     expect(screen.getByText('2026-07-08')).toBeInTheDocument();
     expect(screen.getByText('R$ 1.500,00')).toBeInTheDocument();
+    expect(screen.getByText(/anexo da nf de remessa/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /anexar nf/i })).toBeInTheDocument();
+  });
+
+  it('does not render the attachment area when remittance NF is disabled', () => {
+    render(
+      <ContractSummary
+        remittanceAttachmentSlot={
+          <div>
+            <span>Anexo da NF de remessa</span>
+          </div>
+        }
+        detail={{
+          contract: {
+            id: 'contract-3',
+            organization_id: 'org-1',
+            internal_number: '125',
+            kind: 'rental',
+            contract_company: 'fontes',
+            customer_id: 'customer-1',
+            site_id: 'site-1',
+            legacy_order_number: null,
+            transport_notes: 'Sem NF nesta locação',
+            has_remittance_invoice: false,
+            remittance_invoice_number: null,
+            remittance_invoice_issuer: null,
+            remittance_invoice_amount: null,
+            remittance_invoice_issue_date: null,
+            start_date: '2026-07-06',
+            end_date: null,
+            recurrence_days: 30,
+            pricing_model: 'fixed',
+            base_amount: '150000',
+            percentage_rate: null,
+            status: 'draft',
+            pause_started_at: null,
+            pause_reason: null,
+            notes: null,
+            created_at: '2026-07-06T00:00:00.000Z',
+            updated_at: '2026-07-06T00:00:00.000Z',
+          },
+          customer: null,
+          site: null,
+          items: [],
+        } as any}
+      />
+    );
+
+    expect(screen.queryByText(/anexo da nf de remessa/i)).not.toBeInTheDocument();
   });
 
   it('hides logistics details for non-rental contracts', () => {

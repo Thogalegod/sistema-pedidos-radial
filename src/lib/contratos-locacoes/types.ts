@@ -247,7 +247,7 @@ export interface ContractDocument {
   contract_id: string;
   billing_cycle_id: string | null;
   inspection_id: string | null;
-  kind: 'order' | 'shipping' | 'contract' | 'receipt_nf' | 'payment_proof' | 'other';
+  kind: 'order' | 'shipping' | 'contract' | 'receipt_nf' | 'payment_proof' | 'remittance_nf' | 'other';
   storage_path: string;
   file_name: string;
   content_type: string;

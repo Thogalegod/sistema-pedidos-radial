@@ -1,12 +1,14 @@
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
+import type { ReactNode } from 'react';
 
 type ContractSummaryProps = {
   detail: ContractDetail;
+  remittanceAttachmentSlot?: ReactNode;
 };
 
-export function ContractSummary({ detail }: ContractSummaryProps) {
+export function ContractSummary({ detail, remittanceAttachmentSlot }: ContractSummaryProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -100,7 +102,7 @@ export function ContractSummary({ detail }: ContractSummaryProps) {
               <div className="text-sm text-gray-600">Sem NF de remessa informada</div>
             )}
           </dl>
-          <p className="mt-4 text-xs text-gray-500">Anexo da NF será tratado em etapa futura.</p>
+          {detail.contract.has_remittance_invoice ? remittanceAttachmentSlot : null}
         </div>
       ) : null}
     </div>

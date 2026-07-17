@@ -52,6 +52,16 @@ function readCompanyFieldMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readRemittanceDocumentMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_add_contract_remittance_document_support\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one remittance document support migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
 describe('contracts and rentals migration consistency', () => {
   it('protects internal contract numbering against duplicate generation', () => {
     expect(baseSql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS contracts_org_internal_number_uidx/i);
@@ -154,5 +164,74 @@ describe('contracts and rentals migration consistency', () => {
     expect(sql).toMatch(/ALTER TABLE public\.contracts/i);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS contract_company text NOT NULL DEFAULT 'fontes'/i);
     expect(sql).toMatch(/CHECK \(contract_company IN \('fontes', 'radial'\)\)/i);
+  });
+
+  it('adds remittance NF document support with private storage and constrained metadata', () => {
+    const sql = readRemittanceDocumentMigration();
+
+    expect(sql).toMatch(/ALTER TABLE public\.contract_documents/i);
+    expect(sql).toMatch(/kind IN \('order', 'shipping', 'contract', 'receipt_nf', 'payment_proof', 'remittance_nf', 'other'\)/i);
+    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS contract_documents_one_remittance_nf_per_contract_uidx/i);
+    expect(sql).toMatch(/GRANT SELECT, INSERT ON public\.contract_documents TO authenticated/i);
+    expect(sql).toMatch(/INSERT INTO storage\.buckets/i);
+    expect(sql).toMatch(/'contratos-locacoes-docs'/i);
+    expect(sql).toMatch(/file_size_limit/i);
+    expect(sql).toMatch(/10485760/i);
+    expect(sql).toMatch(/CREATE POLICY "Contract documents storage read by organization members"/i);
+    expect(sql).toMatch(/CREATE POLICY "Contract documents storage insert by organization members"/i);
+    expect(sql).toMatch(/storage\.objects/i);
+    expect(sql).toMatch(/organization_members/i);
+    expect(sql).toMatch(/bucket_id = 'contratos-locacoes-docs'/i);
+    expect(sql.match(/array_length\(storage\.foldername\(name\), 1\) = 3/gi)).toHaveLength(3);
+    expect(sql).not.toMatch(/array_length\(storage\.foldername\(name\), 1\) >= 3/i);
+    expect(sql).toMatch(/\(storage\.foldername\(name\)\)\[1\]/i);
+    expect(sql).toMatch(/\(storage\.foldername\(name\)\)\[2\]/i);
+    expect(sql).toMatch(/\(storage\.foldername\(name\)\)\[3\] = 'remittance_nf'/i);
+    expect(sql).toMatch(/public\.contracts AS contract/i);
+    expect(sql).toMatch(/contract\.id::text = \(storage\.foldername\(name\)\)\[2\]/i);
+    expect(sql).toMatch(/contract\.organization_id::text = \(storage\.foldername\(name\)\)\[1\]/i);
+
+    const insertPolicy = sql.match(
+      /CREATE POLICY "Contract documents storage insert by organization members"[\s\S]*?WITH CHECK \([\s\S]*?\n\);/i
+    )?.[0];
+
+    expect(insertPolicy).toMatch(/contract\.kind = 'rental'/i);
+    expect(insertPolicy).toMatch(/contract\.has_remittance_invoice = true/i);
+  });
+
+  it('allows storage DELETE only for an orphan owned by the authenticated user', () => {
+    const sql = readRemittanceDocumentMigration();
+
+    expect(sql).toMatch(/CREATE POLICY "Contract documents storage delete orphan uploads by owner"/i);
+    expect(sql).toMatch(/FOR DELETE\s+TO authenticated\s+USING/i);
+    expect(sql).toMatch(/owner_id = auth\.uid\(\)::text/i);
+    expect(sql).toMatch(/NOT EXISTS\s*\([\s\S]*FROM public\.contract_documents AS document/i);
+    expect(sql).toMatch(/document\.kind = 'remittance_nf'/i);
+    expect(sql).toMatch(/document\.storage_path = storage\.objects\.name/i);
+    expect(sql).not.toMatch(/GRANT [^;]*DELETE[^;]*ON storage\.objects/i);
+  });
+
+  it('protects a registered storage object from the orphan cleanup policy', () => {
+    const sql = readRemittanceDocumentMigration();
+
+    expect(sql).toMatch(/NOT EXISTS\s*\([\s\S]*document\.organization_id = contract\.organization_id/i);
+    expect(sql).toMatch(/document\.contract_id = contract\.id/i);
+    expect(sql).toMatch(/document\.storage_path = storage\.objects\.name/i);
+  });
+
+  it('binds orphan cleanup to an existing contract in the same member organization', () => {
+    const sql = readRemittanceDocumentMigration();
+
+    expect(sql).toMatch(/JOIN public\.organization_members AS membership\s+ON membership\.organization_id = contract\.organization_id/i);
+    expect(sql).toMatch(/membership\.user_id = auth\.uid\(\)/i);
+    expect(sql).toMatch(/contract\.organization_id::text = \(storage\.foldername\(name\)\)\[1\]/i);
+    expect(sql).toMatch(/contract\.id::text = \(storage\.foldername\(name\)\)\[2\]/i);
+  });
+
+  it('requires exactly three storage folders and rejects nested remittance paths', () => {
+    const sql = readRemittanceDocumentMigration();
+
+    expect(sql.match(/array_length\(storage\.foldername\(name\), 1\) = 3/gi)).toHaveLength(3);
+    expect(sql).not.toMatch(/array_length\(storage\.foldername\(name\), 1\) (?:>=|>) 3/i);
   });
 });

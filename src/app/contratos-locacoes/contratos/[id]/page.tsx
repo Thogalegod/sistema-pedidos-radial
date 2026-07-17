@@ -6,23 +6,37 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
+import { RemittanceInvoiceAttachmentCard } from '@/components/contratos-locacoes/RemittanceInvoiceAttachmentCard';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { createSupabaseContractsLocacoesReadClient, getContract, type ContractDetail } from '@/lib/contratos-locacoes/queries';
 import { createSupabaseContractsLocacoesMutationClient, pauseContract, reactivateContract } from '@/lib/contratos-locacoes/mutations';
+import {
+  createSupabaseContractsLocacoesRemittanceDocumentClient,
+  getRemittanceInvoiceSignedUrl,
+  loadRemittanceInvoiceDocument,
+  saveRemittanceInvoiceDocument,
+} from '@/lib/contratos-locacoes/remittance-documents';
+import type { ContractDocument } from '@/lib/contratos-locacoes/types';
 import { supabase } from '@/lib/supabase';
 
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
   const contractId = params.id;
   const [detail, setDetail] = useState<ContractDetail | null>(null);
+  const [remittanceDocument, setRemittanceDocument] = useState<ContractDocument | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openingAttachment, setOpeningAttachment] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
       const readClient = createSupabaseContractsLocacoesReadClient(supabase);
       const data = await getContract(readClient, contractId);
+      const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
+      const document = await loadRemittanceInvoiceDocument(documentClient, data.contract);
       setDetail(data);
+      setRemittanceDocument(document);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível carregar o contrato.');
     } finally {
@@ -33,15 +47,18 @@ export default function ContractDetailPage() {
   useEffect(() => {
     let isActive = true;
     const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+    const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
 
     async function loadInitialDetail() {
       try {
         const data = await getContract(readClient, contractId);
+        const document = await loadRemittanceInvoiceDocument(documentClient, data.contract);
         if (!isActive) {
           return;
         }
 
         setDetail(data);
+        setRemittanceDocument(document);
       } catch (error) {
         if (!isActive) {
           return;
@@ -81,6 +98,45 @@ export default function ContractDetailPage() {
     await load();
   };
 
+  const handleUploadAttachment = async (file: File) => {
+    if (!detail) {
+      return;
+    }
+
+    setUploadingAttachment(true);
+    try {
+      const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
+      const document = await saveRemittanceInvoiceDocument(documentClient, detail.contract, file);
+      setRemittanceDocument(document);
+      toast.success('Anexo da NF de remessa salvo com sucesso.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível anexar a NF de remessa.');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const handleOpenAttachment = async () => {
+    if (!remittanceDocument) {
+      return;
+    }
+
+    setOpeningAttachment(true);
+    try {
+      const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
+      const signedUrl = await getRemittanceInvoiceSignedUrl(documentClient, remittanceDocument);
+      const openedWindow = window.open(signedUrl, '_blank', 'noopener,noreferrer');
+
+      if (!openedWindow) {
+        window.location.assign(signedUrl);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível abrir o anexo da NF de remessa.');
+    } finally {
+      setOpeningAttachment(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -117,7 +173,18 @@ export default function ContractDetailPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">Carregando contrato...</div>
       ) : detail ? (
         <>
-          <ContractSummary detail={detail} />
+          <ContractSummary
+            detail={detail}
+            remittanceAttachmentSlot={
+              <RemittanceInvoiceAttachmentCard
+                document={remittanceDocument}
+                onOpen={handleOpenAttachment}
+                onUpload={handleUploadAttachment}
+                opening={openingAttachment}
+                uploading={uploadingAttachment}
+              />
+            }
+          />
 
           <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <h3 className="text-lg font-semibold text-gray-900">Itens da locação</h3>
