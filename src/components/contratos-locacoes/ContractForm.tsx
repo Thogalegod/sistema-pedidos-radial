@@ -391,10 +391,14 @@ export function ContractForm({
                         id="contract-remittance-number"
                         value={draft.remittance_invoice_number ?? ''}
                         onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            remittance_invoice_number: event.target.value || null,
-                          }))
+                          setDraft((current) =>
+                            current.remittance_invoice_issuer !== null
+                              ? {
+                                  ...current,
+                                  remittance_invoice_number: event.target.value || null,
+                                }
+                              : current
+                          )
                         }
                       />
                     </div>
@@ -417,10 +421,14 @@ export function ContractForm({
                         inputMode="decimal"
                         value={formatBRL(draft.remittance_invoice_amount)}
                         onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            remittance_invoice_amount: String(parseBRL(event.target.value)),
-                          }))
+                          setDraft((current) =>
+                            current.remittance_invoice_issuer !== null
+                              ? {
+                                  ...current,
+                                  remittance_invoice_amount: String(parseBRL(event.target.value)),
+                                }
+                              : current
+                          )
                         }
                       />
                     </div>
@@ -433,10 +441,14 @@ export function ContractForm({
                         type="date"
                         value={draft.remittance_invoice_issue_date ?? ''}
                         onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            remittance_invoice_issue_date: event.target.value || null,
-                          }))
+                          setDraft((current) =>
+                            current.remittance_invoice_issuer !== null
+                              ? {
+                                  ...current,
+                                  remittance_invoice_issue_date: event.target.value || null,
+                                }
+                              : current
+                          )
                         }
                       />
                     </div>
