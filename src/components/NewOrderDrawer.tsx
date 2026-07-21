@@ -13,6 +13,7 @@ interface NewOrderDrawerProps {
     title: string;
     client: string;
     address: string;
+    cep: string;
     priority: Priority;
     status: OrderStatus;
   }) => void;
@@ -115,6 +116,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
       title,
       client,
       address: fullAddress || street,
+      cep,
       priority,
       status,
     });

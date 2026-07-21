@@ -13,6 +13,11 @@ import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 import Link from 'next/link';
+import { getCurrentOrganizationId } from '../lib/pedidos-tarefas/organization';
+import {
+  ATTACHMENT_ORPHAN_WARNING,
+  deleteOrderWithAttachments,
+} from '../lib/pedidos-tarefas/attachment-deletion';
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +28,7 @@ export default function Home() {
   const [filterMode, setFilterMode] = useState<'todos' | 'meus'>('todos');
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   // User logic
   const [currentUser, setCurrentUser] = useState<TeamMember>('Thomás');
@@ -43,11 +49,12 @@ export default function Home() {
     }
   }, [session]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (currentOrganizationId: string) => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('pedidos')
-      .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)');
+      .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)')
+      .eq('organization_id', currentOrganizationId);
 
     if (error) {
       console.error('Error fetching orders:', error);
@@ -56,7 +63,7 @@ export default function Home() {
       return;
     }
 
-    const mappedOrders: Order[] = data.map(d => ({
+    const mappedOrders: Order[] = await Promise.all(data.map(async d => ({
       id: d.id,
       orderNumber: d.numero_pedido,
       title: d.projeto,
@@ -94,28 +101,47 @@ export default function Home() {
         usuario: a.usuario,
         criado_em: a.criado_em
       })) || [],
-      anexos: d.anexos?.map((a: any) => ({
-        id: a.id,
-        pedido_id: a.pedido_id,
-        nome_arquivo: a.nome_arquivo,
-        legenda: a.legenda,
-        url: a.url,
-        tipo: a.tipo,
-        criado_em: a.criado_em
-      })) || []
-    }));
+      anexos: await Promise.all(d.anexos?.map(async (a: any) => {
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('anexos-pedidos')
+          .createSignedUrl(a.storage_path, 3600);
+
+        if (signedError) {
+          console.error('Error signing attachment URL:', signedError);
+        }
+
+        return {
+          id: a.id,
+          pedido_id: a.pedido_id,
+          nome_arquivo: a.nome_arquivo,
+          legenda: a.legenda,
+          storage_path: a.storage_path,
+          signed_url: signedData?.signedUrl,
+          tipo: a.tipo,
+          criado_em: a.criado_em
+        };
+      }) || [])
+    })));
 
     setOrders(mappedOrders);
     setIsLoading(false);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
         router.replace('/login');
       } else {
         setSession(session);
-        fetchOrders();
+        try {
+          const currentOrganizationId = await getCurrentOrganizationId(supabase);
+          setOrganizationId(currentOrganizationId);
+          await fetchOrders(currentOrganizationId);
+        } catch (error) {
+          console.error('Error identifying current organization:', error);
+          toast.error('Não foi possível identificar a organização atual');
+          setIsLoading(false);
+        }
       }
     });
 
@@ -181,9 +207,31 @@ export default function Home() {
     });
   }, [tarefasVencidas, tarefasVencemHoje]);
 
+  const requireOrganizationId = () => {
+    if (!organizationId) {
+      toast.error('Organização atual indisponível');
+      return null;
+    }
+
+    return organizationId;
+  };
+
+  const reportMutationError = (
+    error: { message: string } | null,
+    userMessage: string
+  ) => {
+    if (!error) return false;
+
+    console.error(userMessage, error);
+    toast.error(userMessage);
+    return true;
+  };
 
   // Handlers
   const handleToggleTask = async (orderId: string, taskId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     
@@ -193,15 +241,17 @@ export default function Home() {
     const newCompleted = !task.completed;
     const completedAtValue = newCompleted ? new Date().toISOString() : undefined;
 
+    const { error: taskError } = await supabase.from('tarefas').update({
+      concluido: newCompleted,
+      concluida_em: completedAtValue ?? null
+    }).eq('organization_id', currentOrganizationId).eq('id', taskId);
+
+    if (reportMutationError(taskError, 'Erro ao atualizar tarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted, completedAt: completedAtValue } : t)
     } : o));
-
-    await supabase.from('tarefas').update({ 
-      concluido: newCompleted,
-      concluida_em: completedAtValue ?? null
-    }).eq('id', taskId);
 
     const updatedOrder = orders.find(o => o.id === orderId);
     if (updatedOrder) {
@@ -211,41 +261,57 @@ export default function Home() {
       const newStatus = allCompleted ? 'Concluído' : (updatedOrder.status === 'Concluído' ? 'Ação Pendente' : updatedOrder.status);
       
       if (newStatus !== updatedOrder.status) {
+        const { error: statusError } = await supabase.from('pedidos').update({ status: newStatus }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+        if (reportMutationError(statusError, 'Erro ao atualizar status do pedido')) return;
+
         setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus as any } : o));
-        await supabase.from('pedidos').update({ status: newStatus }).eq('id', orderId);
         if (newStatus === 'Concluído') toast.success('Pedido marcado como Concluído!');
       }
     }
   };
 
   const handleSaveNewOrder = async (newOrderData: any) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const toastId = toast.loading('Criando pedido...');
     const { data, error } = await supabase.from('pedidos').insert({
+      organization_id: currentOrganizationId,
       numero_pedido: newOrderData.orderNumber,
       projeto: newOrderData.title,
       cliente: newOrderData.client,
       endereco: newOrderData.address,
+      cep: newOrderData.cep || null,
       prioridade: newOrderData.priority,
       status: newOrderData.status,
     }).select().single();
 
     if (!error && data) {
       toast.success('Pedido criado com sucesso!', { id: toastId });
-      fetchOrders();
+      fetchOrders(currentOrganizationId);
     } else {
       toast.error('Erro ao criar pedido', { id: toastId });
     }
   };
 
   const handleChangePriority = async (orderId: string, newPriority: Priority) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('pedidos').update({ prioridade: newPriority }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+    if (reportMutationError(error, 'Erro ao alterar prioridade')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, priority: newPriority } : o));
-    await supabase.from('pedidos').update({ prioridade: newPriority }).eq('id', orderId);
     toast.success(`Prioridade alterada para ${newPriority}`);
   };
 
   const handleAddTask = async (orderId: string, taskTitle: string, assignee: TeamMember, dueDate?: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const toastId = toast.loading('Adicionando tarefa...');
     const { data, error } = await supabase.from('tarefas').insert({
+      organization_id: currentOrganizationId,
       pedido_id: orderId,
       descricao: taskTitle,
       responsavel: assignee,
@@ -253,6 +319,15 @@ export default function Home() {
     }).select().single();
 
     if (!error && data) {
+      const order = orders.find(o => o.id === orderId);
+      if (order && order.status === 'Concluído') {
+        const { error: statusError } = await supabase.from('pedidos').update({ status: 'Ação Pendente' }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+        if (reportMutationError(statusError, 'Tarefa criada, mas o status do pedido não foi atualizado')) {
+          await fetchOrders(currentOrganizationId);
+          return;
+        }
+      }
+
       setOrders(prev => prev.map(o => {
         if (o.id !== orderId) return o;
         const newStatus = o.status === 'Concluído' ? 'Ação Pendente' : o.status;
@@ -262,10 +337,6 @@ export default function Home() {
           tasks: [...o.tasks, { id: data.id, title: data.descricao, completed: false, assignee: data.responsavel, dueDate: data.vencimento || undefined }]
         };
       }));
-      const order = orders.find(o => o.id === orderId);
-      if (order && order.status === 'Concluído') {
-        await supabase.from('pedidos').update({ status: 'Ação Pendente' }).eq('id', orderId);
-      }
       toast.success('Tarefa adicionada!', { id: toastId });
     } else {
       toast.error('Erro ao adicionar', { id: toastId });
@@ -273,26 +344,37 @@ export default function Home() {
   };
 
   const handleEditTaskTitle = async (orderId: string, taskId: string, newTitle: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('tarefas').update({ descricao: newTitle }).eq('organization_id', currentOrganizationId).eq('id', taskId);
+    if (reportMutationError(error, 'Erro ao atualizar tarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => t.id === taskId ? { ...t, title: newTitle } : t)
     } : o));
-    await supabase.from('tarefas').update({ descricao: newTitle }).eq('id', taskId);
     toast.success('Tarefa atualizada');
   };
 
   const handleEditTaskDueDate = async (orderId: string, taskId: string, newDueDate: string | undefined) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('tarefas').update({ vencimento: newDueDate || null }).eq('organization_id', currentOrganizationId).eq('id', taskId);
+    if (reportMutationError(error, 'Erro ao atualizar prazo da tarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => t.id === taskId ? { ...t, dueDate: newDueDate } : t)
     } : o));
-    await supabase.from('tarefas').update({ vencimento: newDueDate || null }).eq('id', taskId);
     toast.success('Prazo da tarefa atualizado');
   };
 
   const handleEditOrderField = async (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: newValue } : o));
-    
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const dbColumnMap: Record<string, string> = {
       orderNumber: 'numero_pedido',
       title: 'projeto',
@@ -300,25 +382,88 @@ export default function Home() {
       address: 'endereco'
     };
 
-    await supabase.from('pedidos').update({ [dbColumnMap[field]]: newValue }).eq('id', orderId);
+    const { error } = await supabase.from('pedidos').update({ [dbColumnMap[field]]: newValue }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+    if (reportMutationError(error, 'Erro ao atualizar pedido')) return;
+
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: newValue } : o));
     toast.success('Informação atualizada');
   };
 
   const handleDeleteTask = async (orderId: string, taskId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('tarefas').delete().eq('organization_id', currentOrganizationId).eq('id', taskId);
+    if (reportMutationError(error, 'Erro ao remover tarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, tasks: o.tasks.filter(t => t.id !== taskId) } : o));
-    await supabase.from('tarefas').delete().eq('id', taskId);
     toast.success('Tarefa removida');
   };
 
   const handleDeleteOrder = async (orderId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    try {
+      await deleteOrderWithAttachments({
+        listStoragePaths: async () => {
+          const { data, error } = await supabase
+            .from('anexos')
+            .select('storage_path')
+            .eq('organization_id', currentOrganizationId)
+            .eq('pedido_id', orderId);
+
+          if (error) throw error;
+          return (data || []).map(attachment => attachment.storage_path);
+        },
+        deleteAttachmentMetadata: async storagePaths => {
+          const { error } = await supabase
+            .from('anexos')
+            .delete()
+            .eq('organization_id', currentOrganizationId)
+            .eq('pedido_id', orderId)
+            .in('storage_path', storagePaths);
+
+          if (error) throw error;
+        },
+        deleteStorageObjects: async storagePaths => {
+          const { error } = await supabase.storage
+            .from('anexos-pedidos')
+            .remove(storagePaths);
+
+          if (error) throw error;
+        },
+        deleteOrder: async () => {
+          const { error } = await supabase
+            .from('pedidos')
+            .delete()
+            .eq('organization_id', currentOrganizationId)
+            .eq('id', orderId);
+
+          if (error) throw error;
+        },
+      });
+    } catch (error) {
+      console.error('Erro ao remover pedido e anexos:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao remover pedido e anexos');
+      await fetchOrders(currentOrganizationId);
+      return;
+    }
+
     setSelectedOrderId(null);
     setOrders(prev => prev.filter(o => o.id !== orderId));
-    await supabase.from('pedidos').delete().eq('id', orderId);
     toast.success('Pedido deletado');
   };
 
   const handleAddSubtarefa = async (orderId: string, taskId: string, descricao: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const { data, error } = await supabase.from('subtarefas').insert({
+      organization_id: currentOrganizationId,
       tarefa_id: taskId,
       descricao,
       concluida: false
@@ -344,7 +489,20 @@ export default function Home() {
   };
 
   const handleToggleSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
-    let newConcluida = false;
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const subtask = orders
+      .find(order => order.id === orderId)
+      ?.tasks.find(task => task.id === taskId)
+      ?.subtarefas?.find(candidate => candidate.id === subtaskId);
+
+    if (!subtask) return;
+
+    const newConcluida = !subtask.concluida;
+    const { error } = await supabase.from('subtarefas').update({ concluida: newConcluida }).eq('organization_id', currentOrganizationId).eq('id', subtaskId);
+    if (reportMutationError(error, 'Erro ao atualizar subtarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => {
@@ -353,17 +511,21 @@ export default function Home() {
           ...t,
           subtarefas: t.subtarefas?.map(s => {
             if (s.id !== subtaskId) return s;
-            newConcluida = !s.concluida;
             return { ...s, concluida: newConcluida };
           })
         };
       })
     } : o));
 
-    await supabase.from('subtarefas').update({ concluida: newConcluida }).eq('id', subtaskId);
   };
 
   const handleDeleteSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('subtarefas').delete().eq('organization_id', currentOrganizationId).eq('id', subtaskId);
+    if (reportMutationError(error, 'Erro ao remover subtarefa')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => t.id === taskId ? {
@@ -371,11 +533,14 @@ export default function Home() {
         subtarefas: t.subtarefas?.filter(s => s.id !== subtaskId)
       } : t)
     } : o));
-    await supabase.from('subtarefas').delete().eq('id', subtaskId);
   };
 
   const handleAddComentarioTarefa = async (orderId: string, taskId: string, texto: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const { data, error } = await supabase.from('comentarios_tarefa').insert({
+      organization_id: currentOrganizationId,
       tarefa_id: taskId,
       texto,
       usuario: currentUser
@@ -401,6 +566,12 @@ export default function Home() {
   };
 
   const handleDeleteComentarioTarefa = async (orderId: string, taskId: string, comentarioId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('comentarios_tarefa').delete().eq('organization_id', currentOrganizationId).eq('id', comentarioId);
+    if (reportMutationError(error, 'Erro ao remover nota')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
       tasks: o.tasks.map(t => t.id === taskId ? {
@@ -408,13 +579,16 @@ export default function Home() {
         comentarios: t.comentarios?.filter(c => c.id !== comentarioId)
       } : t)
     } : o));
-    await supabase.from('comentarios_tarefa').delete().eq('id', comentarioId);
   };
 
 
   const handleAddAtividade = async (orderId: string, descricao: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const toastId = toast.loading('Salvando registro...');
     const { data, error } = await supabase.from('atividades').insert({
+      organization_id: currentOrganizationId,
       pedido_id: orderId,
       descricao,
       usuario: currentUser
@@ -440,12 +614,20 @@ export default function Home() {
   };
 
   const handleDeleteAtividade = async (orderId: string, atividadeId: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error } = await supabase.from('atividades').delete().eq('organization_id', currentOrganizationId).eq('id', atividadeId);
+    if (reportMutationError(error, 'Erro ao remover registro')) return;
+
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, atividades: o.atividades?.filter(a => a.id !== atividadeId) } : o));
-    await supabase.from('atividades').delete().eq('id', atividadeId);
     toast.success('Registro removido');
   };
 
   const handleUploadFiles = async (orderId: string, stagedFiles: { file: File, legenda: string }[]) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
     const toastId = toast.loading(`Enviando ${stagedFiles.length} arquivo(s)...`);
     let uploadsSuccess = 0;
 
@@ -472,9 +654,9 @@ export default function Home() {
 
       const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `${orderId}/${fileName}`;
+      const filePath = `${currentOrganizationId}/${orderId}/${fileName}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('anexos-pedidos')
         .upload(filePath, fileToUpload);
 
@@ -484,31 +666,45 @@ export default function Home() {
         continue;
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from('anexos-pedidos')
-        .getPublicUrl(filePath);
-
       const { data: anexoData, error: dbError } = await supabase.from('anexos').insert({
+        organization_id: currentOrganizationId,
         pedido_id: orderId,
         nome_arquivo: originalFile.name,
         legenda: legenda || null,
         tipo: fileToUpload.type || 'unknown',
-        url: publicUrlData.publicUrl
+        storage_path: filePath
       }).select().single();
 
       if (dbError) {
         console.error('Database Error:', dbError);
+        const { error: cleanupError } = await supabase.storage
+          .from('anexos-pedidos')
+          .remove([filePath]);
+
+        if (cleanupError) {
+          console.error('Error cleaning orphan upload:', cleanupError);
+        }
         toast.error(`Erro Banco de Dados: ${dbError.message}`, { id: toastId });
       }
 
       if (!dbError && anexoData) {
         uploadsSuccess++;
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('anexos-pedidos')
+          .createSignedUrl(filePath, 3600);
+
+        if (signedError) {
+          console.error('Error signing uploaded attachment URL:', signedError);
+        }
         
         setOrders(prev => prev.map(o => {
           if (o.id !== orderId) return o;
           return {
             ...o,
-            anexos: [...(o.anexos || []), anexoData]
+            anexos: [...(o.anexos || []), {
+              ...anexoData,
+              signed_url: signedData?.signedUrl
+            }]
           };
         }));
       }
@@ -521,15 +717,32 @@ export default function Home() {
     }
   };
 
-  const handleDeleteAnexo = async (orderId: string, anexoId: string, url: string) => {
-    const urlParts = url.split('/anexos-pedidos/');
-    if (urlParts.length > 1) {
-      const filePath = urlParts[1];
-      await supabase.storage.from('anexos-pedidos').remove([filePath]);
+  const handleDeleteAnexo = async (orderId: string, anexoId: string, storagePath: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return;
+
+    const { error: dbError } = await supabase
+      .from('anexos')
+      .delete()
+      .eq('organization_id', currentOrganizationId)
+      .eq('id', anexoId);
+
+    if (dbError) {
+      toast.error('Erro ao remover metadados do arquivo');
+      return;
     }
-    
+
+    const { error: storageError } = await supabase.storage
+      .from('anexos-pedidos')
+      .remove([storagePath]);
+
+    if (storageError) {
+      console.error('Storage delete error:', storageError);
+      toast.error(ATTACHMENT_ORPHAN_WARNING);
+      return;
+    }
+
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, anexos: o.anexos?.filter(a => a.id !== anexoId) } : o));
-    await supabase.from('anexos').delete().eq('id', anexoId);
     toast.success('Arquivo removido');
   };
 

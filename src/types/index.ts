@@ -41,7 +41,8 @@ export interface Anexo {
   pedido_id: string;
   nome_arquivo: string;
   legenda?: string;
-  url: string;
+  storage_path: string;
+  signed_url?: string;
   tipo: string;
   criado_em: string;
 }

@@ -18,7 +18,7 @@ interface OrderDrawerProps {
   onDeleteAtividade: (orderId: string, atividadeId: string) => void;
   onEditOrderField?: (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => Promise<void>;
   onUploadFiles?: (orderId: string, stagedFiles: { file: File, legenda: string }[]) => Promise<void>;
-  onDeleteAnexo?: (orderId: string, anexoId: string, url: string) => Promise<void>;
+  onDeleteAnexo?: (orderId: string, anexoId: string, storagePath: string) => Promise<void>;
   onEditTaskTitle: (orderId: string, taskId: string, newTitle: string) => Promise<void>;
   onEditTaskDueDate?: (orderId: string, taskId: string, newDueDate: string | undefined) => Promise<void>;
   onAddSubtarefa?: (orderId: string, taskId: string, descricao: string) => Promise<void>;
@@ -904,14 +904,26 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                       const isPdf = anexo.tipo.includes('pdf');
                       return (
                         <div key={anexo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
-                          <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="block w-full aspect-square relative">
+                          <a
+                            href={anexo.signed_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-disabled={!anexo.signed_url}
+                            className="block w-full aspect-square relative"
+                          >
                             {isPdf ? (
                               <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white">
                                 <FileText className="w-10 h-10 text-red-500 mb-2" />
                                 <span className="text-[10px] font-medium text-gray-600 text-center truncate w-full px-2">{anexo.nome_arquivo}</span>
                               </div>
                             ) : (
-                              <img src={anexo.url} alt={anexo.nome_arquivo} className="absolute inset-0 w-full h-full object-cover" />
+                              anexo.signed_url ? (
+                                <img src={anexo.signed_url} alt={anexo.nome_arquivo} className="absolute inset-0 w-full h-full object-cover" />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center p-2 bg-white text-xs text-gray-500 text-center">
+                                  Prévia indisponível
+                                </div>
+                              )
                             )}
                           </a>
                           {anexo.legenda && (
@@ -925,7 +937,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                               onClick={(e) => {
                                 e.preventDefault();
                                 if (window.confirm('Deseja excluir este anexo permanentemente?')) {
-                                  onDeleteAnexo(order.id, anexo.id, anexo.url);
+                                  onDeleteAnexo(order.id, anexo.id, anexo.storage_path);
                                 }
                               }}
                               className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-600 text-white rounded-full transition-colors shadow-sm z-10 backdrop-blur-sm"
