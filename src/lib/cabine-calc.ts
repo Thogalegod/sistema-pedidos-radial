@@ -71,7 +71,6 @@ export interface CabineInput {
   responsavelNome?: string;
   responsavelCrea?: string;
   artNumero?: string;
-  artArquivoUrl?: string | null;
 
   // Seed para determinismo
   seed?: string;

@@ -2,15 +2,35 @@
 
 import { supabase } from '@/lib/supabase';
 import { calcularCabine, CabineInput } from '@/lib/cabine-calc';
+import {
+  CABINE_DOCUMENT_BUCKET,
+  buildCabineDocumentPath,
+  deleteCabineReportThenDocument,
+} from '@/lib/cabine/documents';
+import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
 import { revalidatePath } from 'next/cache';
 
-export async function criarRelatorioCabine(input: CabineInput, access_token?: string, refresh_token?: string) {
+async function setSession(access_token?: string, refresh_token?: string) {
   if (access_token && refresh_token) {
-    await supabase.auth.setSession({ access_token, refresh_token });
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) throw new Error(`Não foi possível autenticar a sessão: ${error.message}`);
   }
+}
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+async function getCabineContext(access_token?: string, refresh_token?: string) {
+  await setSession(access_token, refresh_token);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('Não autenticado');
+
+  const organizationId = await getCurrentOrganizationId(supabase);
+  return { user, organizationId };
+}
+
+export async function criarRelatorioCabine(input: CabineInput, access_token?: string, refresh_token?: string) {
+  const { user, organizationId } = await getCabineContext(access_token, refresh_token);
 
   const valoresCalculados = calcularCabine(input);
 
@@ -20,6 +40,7 @@ export async function criarRelatorioCabine(input: CabineInput, access_token?: st
   const { count } = await supabase
     .from('relatorios_cabine')
     .select('*', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
     .gte('criado_em', inicioMes);
 
   const seq = String((count ?? 0) + 1).padStart(3, '0');
@@ -29,6 +50,7 @@ export async function criarRelatorioCabine(input: CabineInput, access_token?: st
   const { data, error } = await supabase
     .from('relatorios_cabine')
     .insert({
+      organization_id: organizationId,
       numero_relatorio: numeroRelatorio,
       criado_por: user.id,
       cliente_nome: input.clienteNome,
@@ -80,7 +102,7 @@ export async function criarRelatorioCabine(input: CabineInput, access_token?: st
       trafo_numero_serie: input.trafoNumeroSerie,
       trafo_fabricante: input.trafoFabricante,
       art_numero: input.artNumero,
-      art_arquivo_url: input.artArquivoUrl,
+      art_storage_path: null,
       revisao: input.revisao ?? 0,
       valores_calculados: valoresCalculados,
       status: 'gerado',
@@ -90,22 +112,26 @@ export async function criarRelatorioCabine(input: CabineInput, access_token?: st
 
   if (error) throw new Error(`Erro ao salvar: ${error.message}`);
   revalidatePath('/cabine');
-  return { numeroRelatorio, id: data.id };
+  return { numeroRelatorio, id: data.id, organizationId };
 }
 
 export async function listarRelatoriosCabine() {
+  const organizationId = await getCurrentOrganizationId(supabase);
   const { data, error } = await supabase
     .from('relatorios_cabine')
     .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em')
+    .eq('organization_id', organizationId)
     .order('criado_em', { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
 
 export async function buscarRelatorioCabine(id: string) {
+  const organizationId = await getCurrentOrganizationId(supabase);
   const { data, error } = await supabase
     .from('relatorios_cabine')
     .select('*')
+    .eq('organization_id', organizationId)
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -113,26 +139,80 @@ export async function buscarRelatorioCabine(id: string) {
 }
 
 export async function cancelarRelatorioCabine(id: string, access_token?: string, refresh_token?: string) {
-  if (access_token && refresh_token) {
-    await supabase.auth.setSession({ access_token, refresh_token });
-  }
+  const { organizationId } = await getCabineContext(access_token, refresh_token);
   const { error } = await supabase
     .from('relatorios_cabine')
     .update({ status: 'cancelado' })
+    .eq('organization_id', organizationId)
     .eq('id', id);
   if (error) throw error;
   revalidatePath('/cabine');
   revalidatePath(`/cabine/${id}`);
 }
 
-export async function deletarRelatorioCabine(id: string, access_token?: string, refresh_token?: string) {
-  if (access_token && refresh_token) {
-    await supabase.auth.setSession({ access_token, refresh_token });
+export async function vincularArtCabine(
+  id: string,
+  expectedOrganizationId: string,
+  storagePath: string,
+  access_token?: string,
+  refresh_token?: string
+) {
+  const { organizationId } = await getCabineContext(access_token, refresh_token);
+  if (organizationId !== expectedOrganizationId) {
+    throw new Error('A organização do relatório não corresponde à sessão autenticada');
   }
-  const { error } = await supabase
+
+  const fileName = storagePath.split('/')[2] ?? '';
+  if (storagePath !== buildCabineDocumentPath(organizationId, id, fileName)) {
+    throw new Error('Path inválido para a ART do relatório');
+  }
+
+  const { data, error } = await supabase
     .from('relatorios_cabine')
-    .delete()
-    .eq('id', id);
-  if (error) throw error;
-  revalidatePath('/cabine');
+    .update({ art_storage_path: storagePath })
+    .eq('organization_id', organizationId)
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Não foi possível vincular a ART: ${error?.message ?? 'relatório não encontrado'}`);
+  }
+
+  revalidatePath(`/cabine/${id}`);
+}
+
+export async function deletarRelatorioCabine(id: string, access_token?: string, refresh_token?: string) {
+  const { organizationId } = await getCabineContext(access_token, refresh_token);
+  const { data: report, error: readError } = await supabase
+    .from('relatorios_cabine')
+    .select('art_storage_path')
+    .eq('organization_id', organizationId)
+    .eq('id', id)
+    .single();
+
+  if (readError || !report) {
+    throw new Error(`Não foi possível localizar o relatório: ${readError?.message ?? 'não encontrado'}`);
+  }
+
+  try {
+    await deleteCabineReportThenDocument({
+      artStoragePath: report.art_storage_path,
+      deleteReport: async () => {
+        const { error } = await supabase
+          .from('relatorios_cabine')
+          .delete()
+          .eq('organization_id', organizationId)
+          .eq('id', id);
+        if (error) throw new Error(`Falha ao excluir o relatório: ${error.message}`);
+      },
+      removeDocument: async (storagePath) => {
+        const { error } = await supabase.storage.from(CABINE_DOCUMENT_BUCKET).remove([storagePath]);
+        if (error) throw new Error(error.message);
+      },
+    });
+  } finally {
+    revalidatePath('/cabine');
+    revalidatePath(`/cabine/${id}`);
+  }
 }

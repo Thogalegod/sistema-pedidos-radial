@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { FileCheck, Search, X, Eye } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
 
 type CabineRelatorioRow = {
   id: string;
@@ -22,13 +23,27 @@ export default function CabineListPage() {
   const [busca, setBusca] = useState('');
 
   useEffect(() => {
-    supabase.from('relatorios_cabine')
-      .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em')
-      .order('criado_em', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) setRelatorios(data);
-        setLoading(false);
-      });
+    let active = true;
+
+    async function loadReports() {
+      try {
+        const organizationId = await getCurrentOrganizationId(supabase);
+        const { data, error } = await supabase
+          .from('relatorios_cabine')
+          .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em')
+          .eq('organization_id', organizationId)
+          .order('criado_em', { ascending: false });
+
+        if (active && !error && data) setRelatorios(data);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadReports();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filtrados = relatorios

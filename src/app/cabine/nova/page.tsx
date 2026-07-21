@@ -4,12 +4,16 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
-import { criarRelatorioCabine } from '../actions';
+import { criarRelatorioCabine, vincularArtCabine } from '../actions';
 import { CabineInput } from '@/lib/cabine-calc';
+import {
+  CABINE_DOCUMENT_BUCKET,
+  CABINE_DOCUMENT_MAX_BYTES,
+  uploadAndAttachCabineArt,
+} from '@/lib/cabine/documents';
 import { ArrowLeft, ArrowRight, Loader2, Save, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import { uploadArquivo } from '@/lib/storage';
 
 type TipoCabine = 'convencional' | 'simplificada';
 
@@ -45,6 +49,16 @@ export default function NovaCabinePage() {
   const handleArtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf')) {
+        toast.error('Selecione um arquivo PDF para a ART.');
+        e.target.value = '';
+        return;
+      }
+      if (file.size > CABINE_DOCUMENT_MAX_BYTES) {
+        toast.error('O PDF da ART deve ter no máximo 10 MiB.');
+        e.target.value = '';
+        return;
+      }
       setArtFile(file);
       setArtNome(file.name);
     }
@@ -120,17 +134,11 @@ export default function NovaCabinePage() {
 
     setUploadando(true);
     setLoading(true);
+    let createdReport: Awaited<ReturnType<typeof criarRelatorioCabine>> | null = null;
     try {
-      let artUrl = null;
-      if (artFile) {
-        const timestamp = Date.now();
-        const caminho = await uploadArquivo(artFile, 'arts', `art-${timestamp}.pdf`);
-        artUrl = caminho;
-      }
-
       const input: CabineInput = {
         clienteNome, clienteEndereco, clienteCidade, clienteUf, clienteCep, clienteCnpj, dataExecucao,
-        responsavelNome, responsavelCrea, artNumero, artArquivoUrl: artUrl,
+        responsavelNome, responsavelCrea, artNumero,
         caboDe, caboPara, caboSecao, caboIsolacao, caboComprimento, caboTerminais, caboEmendas, caboInstalacao,
         caboTemperatura: temperatura === '' ? undefined : Number(temperatura),
         caboUmidade: umidade === '' ? undefined : Number(umidade), caboClima: clima,
@@ -152,13 +160,59 @@ export default function NovaCabinePage() {
       };
 
       const { data: { session } } = await supabase.auth.getSession();
-      
-      const res = await criarRelatorioCabine(input, session?.access_token, session?.refresh_token);
+
+      createdReport = await criarRelatorioCabine(
+        input,
+        session?.access_token,
+        session?.refresh_token
+      );
+
+      if (artFile) {
+        await uploadAndAttachCabineArt({
+          organizationId: createdReport.organizationId,
+          reportId: createdReport.id,
+          fileName: `art-${Date.now()}.pdf`,
+          uploadDocument: async (storagePath) => {
+            const { error } = await supabase.storage
+              .from(CABINE_DOCUMENT_BUCKET)
+              .upload(storagePath, artFile, {
+                upsert: false,
+                contentType: 'application/pdf',
+              });
+            if (error) throw new Error(`Falha no upload da ART: ${error.message}`);
+          },
+          attachDocument: async (storagePath) => {
+            await vincularArtCabine(
+              createdReport!.id,
+              createdReport!.organizationId,
+              storagePath,
+              session?.access_token,
+              session?.refresh_token
+            );
+          },
+          removeDocument: async (storagePath) => {
+            const { error } = await supabase.storage
+              .from(CABINE_DOCUMENT_BUCKET)
+              .remove([storagePath]);
+            if (error) throw new Error(`Falha no cleanup da ART: ${error.message}`);
+          },
+        });
+      }
+
       toast.success('Relatório criado com sucesso!');
-      setUploadando(false);
-      router.push(`/cabine/${res.id}`);
+      router.push(`/cabine/${createdReport.id}`);
     } catch (e: unknown) {
-      toast.error('Erro ao salvar relatório: ' + (e instanceof Error ? e.message : 'erro desconhecido'));
+      const message = e instanceof Error ? e.message : 'erro desconhecido';
+      if (createdReport) {
+        toast.error(
+          `O relatório ${createdReport.numeroRelatorio} foi criado sem ART. ${message}`,
+          { duration: 12000 }
+        );
+        router.push(`/cabine/${createdReport.id}`);
+      } else {
+        toast.error(`Erro ao salvar relatório: ${message}`);
+      }
+    } finally {
       setLoading(false);
       setUploadando(false);
     }
