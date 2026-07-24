@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   CABINE_DOCUMENT_SIGNED_URL_TTL_SECONDS,
+  assertCabineDocumentRemoved,
   buildCabineDocumentPath,
   deleteCabineReportThenDocument,
   getCabineDocumentSignedUrl,
@@ -106,6 +107,21 @@ describe('Cabine ART upload compensation', () => {
 });
 
 describe('Cabine report deletion ordering', () => {
+  it('rejects a successful Storage response that did not remove the requested path', () => {
+    expect(() =>
+      assertCabineDocumentRemoved(storagePath, { data: [], error: null })
+    ).toThrow('Storage não confirmou a remoção da ART');
+  });
+
+  it('accepts Storage confirmation only for the requested path', () => {
+    expect(() =>
+      assertCabineDocumentRemoved(storagePath, {
+        data: [{ name: storagePath }],
+        error: null,
+      })
+    ).not.toThrow();
+  });
+
   it('deletes the report before removing the preserved Storage path', async () => {
     const events: string[] = [];
 
@@ -142,6 +158,17 @@ describe('Cabine report deletion ordering', () => {
         removeDocument: async () => {
           throw new Error('storage delete failed');
         },
+      })
+    ).rejects.toThrow('Relatório excluído, mas pode ter restado um objeto órfão no Storage');
+  });
+
+  it('signals a possible orphan when Storage returns an empty removal result', async () => {
+    await expect(
+      deleteCabineReportThenDocument({
+        artStoragePath: storagePath,
+        deleteReport: async () => undefined,
+        removeDocument: async (path) =>
+          assertCabineDocumentRemoved(path, { data: [], error: null }),
       })
     ).rejects.toThrow('Relatório excluído, mas pode ter restado um objeto órfão no Storage');
   });

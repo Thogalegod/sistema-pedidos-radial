@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { calcularCabine, CabineInput } from '@/lib/cabine-calc';
 import {
   CABINE_DOCUMENT_BUCKET,
+  assertCabineDocumentRemoved,
   buildCabineDocumentPath,
   deleteCabineReportThenDocument,
 } from '@/lib/cabine/documents';
@@ -140,14 +141,21 @@ export async function buscarRelatorioCabine(id: string) {
 
 export async function cancelarRelatorioCabine(id: string, access_token?: string, refresh_token?: string) {
   const { organizationId } = await getCabineContext(access_token, refresh_token);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('relatorios_cabine')
     .update({ status: 'cancelado' })
     .eq('organization_id', organizationId)
-    .eq('id', id);
-  if (error) throw error;
+    .eq('id', id)
+    .select('id, status')
+    .single();
+  if (error || !data) {
+    throw new Error(
+      `Não foi possível cancelar o relatório: ${error?.message ?? 'não encontrado na organização'}`
+    );
+  }
   revalidatePath('/cabine');
   revalidatePath(`/cabine/${id}`);
+  return { id: data.id, status: data.status };
 }
 
 export async function vincularArtCabine(
@@ -195,22 +203,44 @@ export async function deletarRelatorioCabine(id: string, access_token?: string, 
     throw new Error(`Não foi possível localizar o relatório: ${readError?.message ?? 'não encontrado'}`);
   }
 
+  let reportDeleted = false;
+
   try {
     await deleteCabineReportThenDocument({
       artStoragePath: report.art_storage_path,
       deleteReport: async () => {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('relatorios_cabine')
           .delete()
           .eq('organization_id', organizationId)
-          .eq('id', id);
-        if (error) throw new Error(`Falha ao excluir o relatório: ${error.message}`);
+          .eq('id', id)
+          .select('id')
+          .single();
+        if (error || !data) {
+          throw new Error(
+            `Falha ao excluir o relatório: ${error?.message ?? 'não encontrado na organização'}`
+          );
+        }
+        reportDeleted = true;
       },
       removeDocument: async (storagePath) => {
-        const { error } = await supabase.storage.from(CABINE_DOCUMENT_BUCKET).remove([storagePath]);
-        if (error) throw new Error(error.message);
+        const result = await supabase.storage.from(CABINE_DOCUMENT_BUCKET).remove([storagePath]);
+        assertCabineDocumentRemoved(storagePath, result);
       },
     });
+    return { reportDeleted: true, storageDeleted: true } as const;
+  } catch (error) {
+    if (reportDeleted) {
+      const message = error instanceof Error ? error.message : 'erro desconhecido';
+      return {
+        reportDeleted: true,
+        storageDeleted: false,
+        error: message.includes('objeto órfão')
+          ? message
+          : `Relatório excluído, mas pode ter restado um objeto órfão no Storage: ${message}`,
+      } as const;
+    }
+    throw error;
   } finally {
     revalidatePath('/cabine');
     revalidatePath(`/cabine/${id}`);

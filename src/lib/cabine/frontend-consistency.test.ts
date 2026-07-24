@@ -62,4 +62,49 @@ describe('Relatórios de Cabine frontend consistency', () => {
     expect(source).toMatch(/deleteReport:[\s\S]*\.delete\(\)/i);
     expect(source).toMatch(/removeDocument:[\s\S]*storage[\s\S]*\.remove/i);
   });
+
+  it('confirms cancellation within the organization and rejects false success', () => {
+    const source = read('src/app/cabine/actions.ts');
+    const start = source.indexOf('export async function cancelarRelatorioCabine');
+    const end = source.indexOf('export async function vincularArtCabine');
+    const cancellation = source.slice(start, end);
+
+    expect(cancellation).toMatch(/update\(\{ status: 'cancelado' \}\)/i);
+    expect(cancellation).toMatch(/\.eq\('organization_id', organizationId\)/i);
+    expect(cancellation).toMatch(/\.eq\('id', id\)/i);
+    expect(cancellation).toMatch(/\.select\('id, status'\)[\s\S]*\.single\(\)/i);
+    expect(cancellation).toMatch(/Não foi possível cancelar o relatório/i);
+  });
+
+  it('exposes visible cancel and delete actions wired to user feedback', () => {
+    const source = read('src/app/cabine/page.tsx');
+
+    expect(source).toMatch(/cancelCabineReportFromUi/i);
+    expect(source).toMatch(/deleteCabineReportFromUi/i);
+    expect(source).toMatch(/Cancelar relatório/i);
+    expect(source).toMatch(/Excluir relatório/i);
+    expect(source).toMatch(/toast\.success/i);
+    expect(source).toMatch(/toast\.error/i);
+    expect(source).toMatch(/setRelatorios\(current => current\.filter/i);
+  });
+
+  it('uses an accessible in-page confirmation instead of a browser-native dialog', () => {
+    const source = read('src/app/cabine/page.tsx');
+
+    expect(source).toMatch(/role="dialog"/i);
+    expect(source).toMatch(/aria-modal="true"/i);
+    expect(source).toMatch(/Confirmar cancelamento/i);
+    expect(source).toMatch(/Confirmar exclusão/i);
+    expect(source).not.toMatch(/window\.confirm/i);
+  });
+
+  it('confirms the database row was deleted before reporting Storage success', () => {
+    const source = read('src/app/cabine/actions.ts');
+    const start = source.indexOf('export async function deletarRelatorioCabine');
+    const deletion = source.slice(start);
+
+    expect(deletion).toMatch(/\.delete\(\)[\s\S]*\.eq\('organization_id', organizationId\)[\s\S]*\.eq\('id', id\)[\s\S]*\.select\('id'\)[\s\S]*\.single\(\)/i);
+    expect(deletion).toMatch(/reportDeleted: true, storageDeleted: true/i);
+    expect(deletion).toMatch(/reportDeleted: true,[\s\S]*storageDeleted: false,[\s\S]*objeto órfão/i);
+  });
 });

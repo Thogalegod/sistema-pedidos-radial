@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +20,20 @@ function readCoreMigration() {
 
 function readStorageMigration() {
   return readMigration(/_relatorios_cabine_storage\.sql$/i, 'Cabine storage');
+}
+
+function readOrphanCleanupSelectMigration() {
+  return readMigration(
+    /_fix_cabine_orphan_cleanup_select\.sql$/i,
+    'Cabine orphan cleanup SELECT'
+  );
+}
+
+function migrationSha256(suffix: RegExp) {
+  const [filename] = readdirSync(migrationsDir).filter((candidate) => suffix.test(candidate));
+  const contents = readFileSync(path.join(migrationsDir, filename));
+
+  return createHash('sha256').update(contents).digest('hex');
 }
 
 describe('relatorios de cabine migration consistency', () => {
@@ -138,8 +153,70 @@ describe('relatorios de cabine migration consistency', () => {
     expect(sql).not.toMatch(/CREATE POLICY[^;]*FOR UPDATE/i);
   });
 
+  it('selects only unreferenced Cabine objects for authenticated organization cleanup', () => {
+    const sql = readOrphanCleanupSelectMigration();
+
+    expect(sql).toMatch(
+      /DROP POLICY IF EXISTS\s+"Cabine orphan documents selectable for cleanup by organization members"\s+ON storage\.objects;/i
+    );
+    expect(sql).toMatch(
+      /CREATE POLICY\s+"Cabine orphan documents selectable for cleanup by organization members"\s+ON storage\.objects\s+FOR SELECT\s+TO authenticated\s+USING/i
+    );
+    expect(sql).toMatch(/bucket_id = 'documentos-cabine'/i);
+    expect(sql).toMatch(/array_length\(storage\.foldername\(name\), 1\) = 2/i);
+    expect(sql).toMatch(
+      /\(storage\.foldername\(name\)\)\[2\]\s*~\*\s*'\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}-\[1-5\]\[0-9a-f\]\{3\}-\[89ab\]\[0-9a-f\]\{3\}-\[0-9a-f\]\{12\}\$'/i
+    );
+    expect(sql).toMatch(
+      /storage\.allow_any_operation\s*\(\s*ARRAY\[\s*'storage\.object\.delete'\s*,\s*'storage\.object\.delete_many'\s*\]\s*\)/i
+    );
+
+    for (const forbiddenOperation of [
+      'storage.object.get_authenticated',
+      'storage.object.get_signed',
+      'storage.object.sign',
+      'storage.object.list',
+    ]) {
+      expect(sql).not.toContain(`'${forbiddenOperation}'`);
+    }
+  });
+
+  it('blocks other organizations and keeps referenced objects protected', () => {
+    const sql = readOrphanCleanupSelectMigration();
+
+    expect(sql).toMatch(
+      /EXISTS\s*\([\s\S]*FROM public\.organizations AS organization[\s\S]*organization\.id::text = \(storage\.foldername\(name\)\)\[1\][\s\S]*public\.is_organization_member\(organization\.id\)[\s\S]*\)/i
+    );
+    expect(sql).toMatch(
+      /NOT EXISTS\s*\([\s\S]*FROM public\.relatorios_cabine AS referenced_report[\s\S]*referenced_report\.organization_id::text\s*=\s*\(storage\.foldername\(name\)\)\[1\][\s\S]*referenced_report\.art_storage_path = storage\.objects\.name[\s\S]*\)/i
+    );
+    expect(sql).not.toMatch(/owner_id/i);
+    expect(sql).not.toMatch(/service_role|\banon\b|USING\s*\(\s*true\s*\)/i);
+  });
+
+  it('leaves the applied core, registered-read and orphan-delete policies unchanged', () => {
+    const storageSql = readStorageMigration();
+    const cleanupSql = readOrphanCleanupSelectMigration();
+
+    expect(migrationSha256(/_relatorios_cabine_core\.sql$/i)).toBe(
+      '23ea72172452f5c45fd4a6992b604f95b8e88a286017c7031c5a99218596628b'
+    );
+    expect(migrationSha256(/_relatorios_cabine_storage\.sql$/i)).toBe(
+      '7feec990859a6bd5ffc08d70bdef5dc6d915c244fab497625e3d88858649c992'
+    );
+    expect(storageSql).toMatch(
+      /CREATE POLICY "Cabine documents storage read by organization members"[\s\S]*FOR SELECT[\s\S]*report\.art_storage_path = storage\.objects\.name/i
+    );
+    expect(storageSql).toMatch(
+      /CREATE POLICY "Cabine documents storage delete by organization members"[\s\S]*FOR DELETE[\s\S]*NOT EXISTS/i
+    );
+    expect(cleanupSql).not.toMatch(
+      /Cabine documents storage (?:read|delete) by organization members/i
+    );
+  });
+
   it('contains none of the prohibited access or cross-module patterns', () => {
-    const sql = `${readCoreMigration()}\n${readStorageMigration()}`;
+    const sql = `${readCoreMigration()}\n${readStorageMigration()}\n${readOrphanCleanupSelectMigration()}`;
 
     expect(sql).not.toMatch(/service_role/i);
     expect(sql).not.toMatch(/iurqgskfuupslrghgtej/i);

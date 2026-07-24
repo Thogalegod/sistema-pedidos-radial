@@ -4,6 +4,19 @@ export const CABINE_DOCUMENT_BUCKET = 'documentos-cabine';
 
 type PathOperation = (path: string) => Promise<unknown>;
 
+export function assertCabineDocumentRemoved(
+  storagePath: string,
+  result: {
+    data: Array<{ name: string }> | null;
+    error: { message: string } | null;
+  }
+) {
+  if (result.error) throw new Error(result.error.message);
+  if (!result.data?.some((removedObject) => removedObject.name === storagePath)) {
+    throw new Error(`Storage não confirmou a remoção da ART em ${storagePath}`);
+  }
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function buildCabineDocumentPath(
