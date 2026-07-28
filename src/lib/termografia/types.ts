@@ -6,6 +6,73 @@ export type TermografiaClassificacao =
   | 'Crítico';
 
 export type TermografiaRisco = 'Baixo' | 'Médio' | 'Alto';
+export type TermografiaStatus = 'gerado' | 'revisado' | 'emitido' | 'cancelado';
+export type TermografiaArquivoTipo = 'digital' | 'termica';
+
+export interface TermografiaReportRow {
+  id: string;
+  organization_id: string;
+  legacy_id?: string | null;
+  numero_relatorio: string;
+  report_year: number;
+  sequence_number: number;
+  criado_em: string;
+  updated_at: string;
+  created_by?: string | null;
+  status: TermografiaStatus;
+  customer_id?: string | null;
+  site_id?: string | null;
+  contact_id?: string | null;
+  cliente_nome: string;
+  cliente_endereco?: string | null;
+  cliente_cidade?: string | null;
+  cliente_uf?: string | null;
+  cliente_cep?: string | null;
+  cliente_cnpj?: string | null;
+  data_execucao: string;
+  objetivo?: string | null;
+  equipamento?: string | null;
+  responsavel_nome?: string | null;
+  responsavel_crea?: string | null;
+  revisao: number;
+}
+
+export interface TermografiaPointRow {
+  id: string;
+  organization_id: string;
+  report_id: string;
+  ordem: number;
+  setor: string;
+  local: string;
+  equipamento?: string | null;
+  componente?: string | null;
+  inspecionado: boolean;
+  ocorrencia: boolean;
+  temperatura?: string | null;
+  data_hora_foto?: string | null;
+  classificacao?: TermografiaClassificacao | null;
+  risco?: TermografiaRisco | null;
+  diagnostico?: string | null;
+  recomendacao?: string | null;
+  conclusao?: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+}
+
+export interface TermografiaFileRow {
+  id: string;
+  organization_id: string;
+  report_id: string;
+  point_id: string;
+  tipo: TermografiaArquivoTipo;
+  storage_path: string;
+  file_name: string;
+  content_type: string;
+  tamanho_bytes?: number | null;
+  created_at: string;
+  created_by?: string | null;
+}
 
 export interface TermografiaPonto {
   id: string;
@@ -21,10 +88,13 @@ export interface TermografiaPonto {
   conclusao?: string;
   fotoDigitalUrl?: string | null;
   fotoTermicaUrl?: string | null;
+  fotoDigitalArquivoId?: string | null;
+  fotoTermicaArquivoId?: string | null;
 }
 
 export interface TermografiaRelatorio {
   id: string;
+  organization_id: string;
   numero_relatorio: string;
   criado_em: string;
   status: string;
