@@ -4,7 +4,9 @@ import {
   createManutencaoPreventiva,
   createSupabaseManutencaoPreventivaClient,
   createTransformadorCabine,
+  getFichaTransformadorById,
   getFichaTransformador,
+  listManutencoesPreventivasByCabine,
   listCabineEquipamentos,
   listCabinesBySite,
   resolveSingleOrganizationId,
@@ -18,6 +20,7 @@ const SITE_ID = '00000000-0000-4000-8000-000000000004';
 const CABINE_ID = '00000000-0000-4000-8000-000000000005';
 const EQUIPAMENTO_ID = '00000000-0000-4000-8000-000000000006';
 const MANUTENCAO_ID = '00000000-0000-4000-8000-000000000007';
+const FICHA_ID = '00000000-0000-4000-8000-000000000008';
 
 class FakeClient implements ManutencaoPreventivaClient {
   readonly organizationId = ORGANIZATION_ID;
@@ -25,6 +28,8 @@ class FakeClient implements ManutencaoPreventivaClient {
   insertedEquipamento: Parameters<ManutencaoPreventivaClient['insertCabineEquipamento']>[0] | null = null;
   insertedManutencao: Parameters<ManutencaoPreventivaClient['insertManutencaoPreventiva']>[0] | null = null;
   upsertedFicha: Parameters<ManutencaoPreventivaClient['upsertFichaTransformador']>[0] | null = null;
+  listedManutencoes = false;
+  loadedFichaById = false;
 
   async getCurrentOrganizationId() {
     return this.organizationId;
@@ -57,9 +62,16 @@ class FakeClient implements ManutencaoPreventivaClient {
     return { id: MANUTENCAO_ID, created_by: USER_ID, created_at: 'now', updated_at: 'now', ...record };
   }
 
+  async listManutencoesPreventivasByCabine(organizationId: string, cabineId: string) {
+    expect(organizationId).toBe(ORGANIZATION_ID);
+    expect(cabineId).toBe(CABINE_ID);
+    this.listedManutencoes = true;
+    return [];
+  }
+
   async upsertFichaTransformador(record: Parameters<ManutencaoPreventivaClient['upsertFichaTransformador']>[0]) {
     this.upsertedFicha = record;
-    return { id: '00000000-0000-4000-8000-000000000008', created_by: USER_ID, created_at: 'now', updated_at: 'now', ...record };
+    return { id: FICHA_ID, created_by: USER_ID, created_at: 'now', updated_at: 'now', ...record };
   }
 
   async getFichaTransformador(organizationId: string, manutencaoId: string, equipamentoId: string) {
@@ -67,6 +79,22 @@ class FakeClient implements ManutencaoPreventivaClient {
     expect(manutencaoId).toBe(MANUTENCAO_ID);
     expect(equipamentoId).toBe(EQUIPAMENTO_ID);
     return null;
+  }
+
+  async getFichaTransformadorById(organizationId: string, fichaId: string) {
+    expect(organizationId).toBe(ORGANIZATION_ID);
+    expect(fichaId).toBe(FICHA_ID);
+    this.loadedFichaById = true;
+    return {
+      id: FICHA_ID,
+      organization_id: ORGANIZATION_ID,
+      manutencao_id: MANUTENCAO_ID,
+      equipamento_id: EQUIPAMENTO_ID,
+      dados_ficha: { data: { tag: 'TR-01' } },
+      created_by: USER_ID,
+      created_at: 'now',
+      updated_at: 'now',
+    };
   }
 }
 
@@ -93,12 +121,14 @@ describe('manutencao preventiva queries and mutations', () => {
       ano_referencia: 2026,
       data_execucao: '2026-07-31',
     });
+    await listManutencoesPreventivasByCabine(client, CABINE_ID);
     await saveFichaTransformador(client, {
       manutencao_id: MANUTENCAO_ID,
       equipamento_id: EQUIPAMENTO_ID,
       dados_ficha: { tag: 'TR-01' },
     });
     await getFichaTransformador(client, MANUTENCAO_ID, EQUIPAMENTO_ID);
+    await getFichaTransformadorById(client, FICHA_ID);
 
     expect(client.insertedCabine).toMatchObject({
       organization_id: ORGANIZATION_ID,
@@ -132,6 +162,8 @@ describe('manutencao preventiva queries and mutations', () => {
     expect(client.insertedEquipamento).not.toHaveProperty('created_by');
     expect(client.insertedManutencao).not.toHaveProperty('created_by');
     expect(client.upsertedFicha).not.toHaveProperty('created_by');
+    expect(client.listedManutencoes).toBe(true);
+    expect(client.loadedFichaById).toBe(true);
   });
 
   it('requires exactly one organization membership', () => {
@@ -173,10 +205,12 @@ describe('manutencao preventiva queries and mutations', () => {
 
     expect(Object.keys(client).sort()).toEqual([
       'getCurrentOrganizationId',
+      'getFichaTransformadorById',
       'getFichaTransformador',
       'insertCabineEquipamento',
       'insertCabinePrimaria',
       'insertManutencaoPreventiva',
+      'listManutencoesPreventivasByCabine',
       'listCabineEquipamentos',
       'listCabinesBySite',
       'upsertFichaTransformador',

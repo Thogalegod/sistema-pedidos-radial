@@ -1,25 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
-type InspectionStatus = 'C' | 'N/C' | 'N/A';
-
-type Snapshot = {
-  data: Record<string, string>;
-  photos: { placa?: string; equipamento?: string };
-  selectedTaps: string[];
-  visualItems: string[];
-  visualStatus: Record<string, InspectionStatus>;
-  insulationRows: Array<{ id: string; position: string; voltage: string; current: string }>;
-  occurrences: Array<{ id: string; priority: string; text: string; source?: string }>;
-  coolingType: string;
-  ttrConnections: string[];
-  windingRows: Array<{ winding: string; connection: string }>;
-  oilRows: Array<{ test: string; method: string; specified: string; result: string }>;
-};
+import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabase';
+import {
+  buildFichaTransformadorSearchParams,
+  emptyFichaTransformadorSnapshot,
+  isValidFichaTransformadorId,
+  normalizeFichaTransformadorSnapshot,
+  type FichaTransformadorSnapshot,
+  type InspectionStatus,
+} from '@/lib/manutencao-preventiva/ficha-transformador';
+import {
+  createSupabaseManutencaoPreventivaClient,
+  getFichaTransformador,
+  getFichaTransformadorById,
+} from '@/lib/manutencao-preventiva/queries-mutations';
 
 const reportIndex = [
   ['1', 'Informações gerais'],
@@ -43,20 +42,6 @@ const priorityStyles: Record<string, string> = {
   Média: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   Alta: 'bg-orange-100 text-orange-800 border-orange-200',
   Crítica: 'bg-red-100 text-red-700 border-red-200',
-};
-
-const emptySnapshot: Snapshot = {
-  data: {},
-  photos: {},
-  selectedTaps: [],
-  visualItems: [],
-  visualStatus: {},
-  insulationRows: [],
-  occurrences: [],
-  coolingType: 'Óleo isolante',
-  ttrConnections: [],
-  windingRows: [],
-  oilRows: [],
 };
 
 function PageHeader({ page }: { page: string }) {
@@ -101,11 +86,99 @@ function ReportPage({ children, page }: { children: React.ReactNode; page: strin
 }
 
 export default function FichaTransformadorVisualizarPage() {
-  const [snapshot] = useState<Snapshot>(() => {
-    if (typeof window === 'undefined') return emptySnapshot;
-    const raw = window.localStorage.getItem('radial:ficha-transformador-preview');
-    return raw ? JSON.parse(raw) as Snapshot : emptySnapshot;
-  });
+  const [snapshot, setSnapshot] = useState<FichaTransformadorSnapshot>(emptyFichaTransformadorSnapshot);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [contextIds, setContextIds] = useState<{ manutencaoId: string; equipamentoId: string; fichaId?: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const setLoadError = (message: string) => {
+      setContextIds(null);
+      setError(message);
+      setLoading(false);
+      toast.error(message);
+    };
+
+    const load = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const fichaId = params.get('fichaId') ?? '';
+      const manutencaoId = params.get('manutencaoId') ?? '';
+      const equipamentoId = params.get('equipamentoId') ?? '';
+      const hasPairParam = Boolean(manutencaoId || equipamentoId);
+
+      if (!fichaId && !hasPairParam) {
+        setLoadError('Ficha não informada para visualização.');
+        return;
+      }
+
+      if (hasPairParam && (!manutencaoId || !equipamentoId)) {
+        setLoadError('Informe manutenção e transformador juntos para visualizar a ficha.');
+        return;
+      }
+
+      const invalidIds = [
+        fichaId && ['fichaId', fichaId],
+        manutencaoId && ['manutencaoId', manutencaoId],
+        equipamentoId && ['equipamentoId', equipamentoId],
+      ].filter((entry): entry is [string, string] => Boolean(entry))
+        .filter(([, value]) => !isValidFichaTransformadorId(value));
+
+      if (invalidIds.length > 0) {
+        setLoadError(`Identificador inválido: ${invalidIds[0][0]}.`);
+        return;
+      }
+
+      try {
+        const client = createSupabaseManutencaoPreventivaClient(supabase);
+        const persisted = fichaId
+          ? await getFichaTransformadorById(client, fichaId)
+          : await getFichaTransformador(client, manutencaoId, equipamentoId);
+
+        if (cancelled) return;
+
+        if (!persisted) {
+          setLoadError('Ficha do transformador não encontrada.');
+          return;
+        }
+
+        if (
+          hasPairParam
+          && (
+            persisted.manutencao_id !== manutencaoId
+            || persisted.equipamento_id !== equipamentoId
+          )
+        ) {
+          setLoadError('Os IDs da URL não correspondem à ficha persistida.');
+          return;
+        }
+
+        setSnapshot(normalizeFichaTransformadorSnapshot(persisted.dados_ficha));
+        setContextIds({
+          manutencaoId: persisted.manutencao_id,
+          equipamentoId: persisted.equipamento_id,
+          fichaId: persisted.id,
+        });
+      } catch (loadError) {
+        if (!cancelled) {
+          const message = loadError instanceof Error ? loadError.message : 'Não foi possível carregar a ficha do transformador.';
+          setError(message);
+          toast.error(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const meggerChartData = useMemo(() => snapshot.insulationRows.map((row) => ({
     name: row.position.replace('Massa', 'M'),
@@ -141,7 +214,7 @@ export default function FichaTransformadorVisualizarPage() {
       `}</style>
 
       <div className="no-print max-w-5xl mx-auto mb-4 flex items-center justify-between">
-        <Link href="/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador" className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
+        <Link href={contextIds ? `/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador?${buildFichaTransformadorSearchParams(contextIds)}` : '/relatorios-tecnicos/cabine-primaria/manutencao-preventiva'} className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
           <ArrowLeft size={16} />
           Voltar ao preenchimento
         </Link>
@@ -150,6 +223,12 @@ export default function FichaTransformadorVisualizarPage() {
           Imprimir / PDF
         </button>
       </div>
+
+      {(loading || error) && (
+        <div className="no-print max-w-5xl mx-auto mb-4 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+          {loading ? 'Carregando ficha persistida...' : error}
+        </div>
+      )}
 
       <ReportPage page="1">
         <div className="h-[220mm] flex flex-col justify-between">

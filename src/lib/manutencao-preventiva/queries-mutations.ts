@@ -66,8 +66,10 @@ export interface ManutencaoPreventivaClient {
   listCabineEquipamentos(organizationId: string, cabineId: string): Promise<CabineEquipamento[]>;
   insertCabineEquipamento(record: CabineEquipamentoInsert): Promise<CabineEquipamento>;
   insertManutencaoPreventiva(record: ManutencaoPreventivaInsert): Promise<ManutencaoPreventiva>;
+  listManutencoesPreventivasByCabine(organizationId: string, cabineId: string): Promise<ManutencaoPreventiva[]>;
   upsertFichaTransformador(record: ManutencaoFichaTransformadorUpsert): Promise<ManutencaoFichaTransformador>;
   getFichaTransformador(organizationId: string, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaTransformador | null>;
+  getFichaTransformadorById(organizationId: string, fichaId: string): Promise<ManutencaoFichaTransformador | null>;
 }
 
 export function createSupabaseManutencaoPreventivaClient(
@@ -152,6 +154,22 @@ export function createSupabaseManutencaoPreventivaClient(
       return ensureData(data as ManutencaoPreventiva | null, error, 'Não foi possível criar a manutenção preventiva');
     },
 
+    async listManutencoesPreventivasByCabine(organizationId, cabineId) {
+      const { data, error } = await client
+        .from('manutencoes_preventivas')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('cabine_id', cabineId)
+        .order('ano_referencia', { ascending: false })
+        .order('data_execucao', { ascending: false });
+
+      return ensureData(
+        (data ?? []) as ManutencaoPreventiva[] | null,
+        error,
+        'Não foi possível listar manutenções preventivas'
+      );
+    },
+
     async upsertFichaTransformador(record) {
       const { data, error } = await client
         .from('manutencao_fichas_transformador')
@@ -169,6 +187,21 @@ export function createSupabaseManutencaoPreventivaClient(
         .eq('organization_id', organizationId)
         .eq('manutencao_id', manutencaoId)
         .eq('equipamento_id', equipamentoId)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Não foi possível carregar a ficha do transformador: ${error.message}`);
+      }
+
+      return (data ?? null) as ManutencaoFichaTransformador | null;
+    },
+
+    async getFichaTransformadorById(organizationId, fichaId) {
+      const { data, error } = await client
+        .from('manutencao_fichas_transformador')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('id', fichaId)
         .maybeSingle();
 
       if (error) {
@@ -255,6 +288,14 @@ export async function createManutencaoPreventiva(
   });
 }
 
+export async function listManutencoesPreventivasByCabine(
+  client: ManutencaoPreventivaClient,
+  cabineId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.listManutencoesPreventivasByCabine(organizationId, cabineId);
+}
+
 export async function saveFichaTransformador(
   client: ManutencaoPreventivaClient,
   rawPayload: ManutencaoFichaTransformadorDraftInput
@@ -277,4 +318,12 @@ export async function getFichaTransformador(
 ) {
   const organizationId = await client.getCurrentOrganizationId();
   return client.getFichaTransformador(organizationId, manutencaoId, equipamentoId);
+}
+
+export async function getFichaTransformadorById(
+  client: ManutencaoPreventivaClient,
+  fichaId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.getFichaTransformadorById(organizationId, fichaId);
 }
