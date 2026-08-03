@@ -1,6 +1,6 @@
 export type CabinePrimariaTipo = 'convencional' | 'simplificada';
 export type CabinePrimariaStatus = 'ativa' | 'inativa';
-export type CabineEquipamentoTipo = 'transformador';
+export type CabineEquipamentoTipo = 'transformador' | 'disjuntor_15kv';
 export type CabineEquipamentoStatus = 'ativo' | 'inativo';
 export type ManutencaoPreventivaStatus = 'rascunho' | 'concluida' | 'cancelada';
 
@@ -54,6 +54,17 @@ export interface ManutencaoPreventiva {
 }
 
 export interface ManutencaoFichaTransformador {
+  id: string;
+  organization_id: string;
+  manutencao_id: string;
+  equipamento_id: string;
+  dados_ficha: JsonObject;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManutencaoFichaDisjuntor {
   id: string;
   organization_id: string;
   manutencao_id: string;

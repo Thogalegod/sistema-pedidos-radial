@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cabineEquipamentoDraftSchema,
   cabinePrimariaDraftSchema,
+  manutencaoFichaDisjuntorDraftSchema,
   manutencaoFichaTransformadorDraftSchema,
   manutencaoPreventivaDraftSchema,
 } from './schemas';
@@ -74,6 +75,36 @@ describe('manutencao preventiva schemas', () => {
       observacoes: null,
     });
     expect(ficha.dados_ficha).toEqual({ visualStatus: { Limpeza: 'C' } });
+  });
+
+  it('normalizes disjuntor equipment and sheet payloads', () => {
+    const equipamento = cabineEquipamentoDraftSchema.parse({
+      cabine_id: CABINE_ID,
+      tipo: 'DISJUNTOR_15KV',
+      tag: ' DJ-01 ',
+      descricao: '',
+      fabricante: ' Fabricante QA ',
+      modelo: '',
+      numero_serie: '',
+      potencia_kva: '',
+      status: undefined,
+      dados_tecnicos: { tensao_nominal: '15 kV' },
+    });
+    const ficha = manutencaoFichaDisjuntorDraftSchema.parse({
+      manutencao_id: MANUTENCAO_ID,
+      equipamento_id: EQUIPAMENTO_ID,
+      dados_ficha: { data: { tag: 'DJ-01' } },
+    });
+
+    expect(equipamento).toMatchObject({
+      tipo: 'disjuntor_15kv',
+      tag: 'DJ-01',
+      fabricante: 'Fabricante QA',
+      potencia_kva: null,
+      status: 'ativo',
+      dados_tecnicos: { tensao_nominal: '15 kV' },
+    });
+    expect(ficha.dados_ficha).toEqual({ data: { tag: 'DJ-01' } });
   });
 
   it('rejects non-transformer sheets and invalid maintenance years', () => {

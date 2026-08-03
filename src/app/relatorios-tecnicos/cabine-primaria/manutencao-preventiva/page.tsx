@@ -34,10 +34,15 @@ import {
   buildFichaTransformadorSearchParams,
 } from '@/lib/manutencao-preventiva/ficha-transformador';
 import {
+  buildFichaDisjuntorSearchParams,
+} from '@/lib/manutencao-preventiva/ficha-disjuntor';
+import {
   createCabinePrimaria,
+  createDisjuntorCabine,
   createManutencaoPreventiva,
   createSupabaseManutencaoPreventivaClient,
   createTransformadorCabine,
+  listDisjuntoresCabine,
   listCabineEquipamentos,
   listCabinesBySite,
   listManutencoesPreventivasByCabine,
@@ -54,7 +59,7 @@ const sectionClass = 'bg-white p-5 rounded-xl shadow-sm border border-gray-200';
 
 const equipmentItems = [
   { name: 'Transformadores', status: 'Primeira ficha' },
-  { name: 'Disjuntores 15 kV', status: 'Depois' },
+  { name: 'Disjuntores 15 kV', status: 'Em integração' },
   { name: 'Chaves seccionadoras', status: 'Depois' },
   { name: 'Para-raios', status: 'Depois' },
   { name: 'TC / TP', status: 'Depois' },
@@ -98,11 +103,13 @@ export default function ManutencaoPreventivaCabinePage() {
   const [sites, setSites] = useState<CustomerSite[]>([]);
   const [cabines, setCabines] = useState<CabinePrimaria[]>([]);
   const [equipamentos, setEquipamentos] = useState<CabineEquipamento[]>([]);
+  const [disjuntores, setDisjuntores] = useState<CabineEquipamento[]>([]);
   const [manutencoes, setManutencoes] = useState<ManutencaoPreventiva[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [selectedCabineId, setSelectedCabineId] = useState('');
   const [selectedEquipamentoId, setSelectedEquipamentoId] = useState('');
+  const [selectedDisjuntorId, setSelectedDisjuntorId] = useState('');
   const [selectedManutencaoId, setSelectedManutencaoId] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [loadingSites, setLoadingSites] = useState(false);
@@ -136,6 +143,12 @@ export default function ManutencaoPreventivaCabinePage() {
     numero_serie: '',
     potencia_kva: '',
   });
+  const [disjuntorDraft, setDisjuntorDraft] = useState({
+    tag: '',
+    fabricante: '',
+    modelo: '',
+    numero_serie: '',
+  });
   const [manutencaoDraft, setManutencaoDraft] = useState({
     ano_referencia: String(currentYear()),
     data_execucao: todayIsoDate(),
@@ -152,6 +165,10 @@ export default function ManutencaoPreventivaCabinePage() {
     () => manutencoes.find((manutencao) => manutencao.id === selectedManutencaoId) ?? null,
     [manutencoes, selectedManutencaoId]
   );
+  const selectedDisjuntor = useMemo(
+    () => disjuntores.find((disjuntor) => disjuntor.id === selectedDisjuntorId) ?? null,
+    [disjuntores, selectedDisjuntorId]
+  );
   const fichaHref = useMemo(() => {
     if (!selectedManutencao || !selectedEquipamento) return '';
     if (
@@ -167,6 +184,21 @@ export default function ManutencaoPreventivaCabinePage() {
       equipamentoId: selectedEquipamento.id,
     })}`;
   }, [selectedCabineId, selectedEquipamento, selectedManutencao]);
+  const fichaDisjuntorHref = useMemo(() => {
+    if (!selectedManutencao || !selectedDisjuntor) return '';
+    if (
+      selectedDisjuntor.cabine_id !== selectedCabineId
+      || selectedManutencao.cabine_id !== selectedCabineId
+      || selectedDisjuntor.cabine_id !== selectedManutencao.cabine_id
+    ) {
+      return '';
+    }
+
+    return `/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-disjuntor?${buildFichaDisjuntorSearchParams({
+      manutencaoId: selectedManutencao.id,
+      equipamentoId: selectedDisjuntor.id,
+    })}`;
+  }, [selectedCabineId, selectedDisjuntor, selectedManutencao]);
 
   const getStrictOrganizationId = async () => {
     const client = createSupabaseManutencaoPreventivaClient(supabase);
@@ -204,8 +236,10 @@ export default function ManutencaoPreventivaCabinePage() {
 
   const clearFromCabine = () => {
     setEquipamentos([]);
+    setDisjuntores([]);
     setManutencoes([]);
     setSelectedEquipamentoId('');
+    setSelectedDisjuntorId('');
     setSelectedManutencaoId('');
   };
 
@@ -363,17 +397,22 @@ export default function ManutencaoPreventivaCabinePage() {
       setLoadingEquipamentos(true);
       try {
         const client = createSupabaseManutencaoPreventivaClient(supabase);
-        const [equipamentosData, manutencoesData] = await Promise.all([
+        const [equipamentosData, disjuntoresData, manutencoesData] = await Promise.all([
           listCabineEquipamentos(client, selectedCabineId),
+          listDisjuntoresCabine(client, selectedCabineId),
           listManutencoesPreventivasByCabine(client, selectedCabineId),
         ]);
         const transformadores = equipamentosData.filter((equipamento) => equipamento.tipo === 'transformador' && equipamento.status === 'ativo');
 
         if (!cancelled) {
           setEquipamentos(transformadores);
+          setDisjuntores(disjuntoresData);
           setManutencoes(manutencoesData);
           setSelectedEquipamentoId((current) => (
             transformadores.some((equipamento) => equipamento.id === current) ? current : transformadores[0]?.id || ''
+          ));
+          setSelectedDisjuntorId((current) => (
+            disjuntoresData.some((disjuntor) => disjuntor.id === current) ? current : disjuntoresData[0]?.id || ''
           ));
           setSelectedManutencaoId((current) => (
             manutencoesData.some((manutencao) => manutencao.id === current) ? current : manutencoesData[0]?.id || ''
@@ -512,6 +551,31 @@ export default function ManutencaoPreventivaCabinePage() {
       toast.success('Transformador cadastrado.');
     }).catch((error) => {
       toast.error(error instanceof Error ? error.message : 'Não foi possível cadastrar o transformador.');
+    });
+  };
+
+  const handleCreateDisjuntor = async () => {
+    if (!selectedCabineId) return;
+
+    await runWithSaving(async () => {
+      const client = createSupabaseManutencaoPreventivaClient(supabase);
+      const created = await createDisjuntorCabine(client, {
+        cabine_id: selectedCabineId,
+        tipo: 'disjuntor_15kv',
+        tag: disjuntorDraft.tag,
+        fabricante: disjuntorDraft.fabricante,
+        numero_serie: disjuntorDraft.numero_serie,
+        dados_tecnicos: {
+          modelo: disjuntorDraft.modelo,
+        },
+      });
+
+      setDisjuntores((current) => [...current, created].sort((a, b) => a.tag.localeCompare(b.tag)));
+      setSelectedDisjuntorId(created.id);
+      setDisjuntorDraft({ tag: '', fabricante: '', modelo: '', numero_serie: '' });
+      toast.success('Disjuntor 15 kV cadastrado.');
+    }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível cadastrar o disjuntor.');
     });
   };
 
@@ -724,6 +788,51 @@ export default function ManutencaoPreventivaCabinePage() {
               </button>
             </div>
           </section>
+
+          <section className={sectionClass}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                <Wrench size={22} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Disjuntor 15 kV</h2>
+                <p className="text-sm text-gray-500">Segunda ficha integrada à manutenção preventiva.</p>
+              </div>
+            </div>
+
+            <label className={labelClass}>Disjuntor cadastrado</label>
+            <select value={selectedDisjuntorId} onChange={(event) => setSelectedDisjuntorId(event.target.value)} className={inputClass} disabled={!selectedCabineId || loadingEquipamentos}>
+              <option value="">{loadingEquipamentos ? 'Carregando disjuntores...' : 'Selecione'}</option>
+              {disjuntores.map((disjuntor) => {
+                const modelo = typeof disjuntor.dados_tecnicos.modelo === 'string'
+                  ? disjuntor.dados_tecnicos.modelo
+                  : '';
+
+                return (
+                  <option key={disjuntor.id} value={disjuntor.id}>
+                    {disjuntor.tag}{modelo ? ` - ${modelo}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input value={disjuntorDraft.tag} onChange={(event) => setDisjuntorDraft((current) => ({ ...current, tag: event.target.value }))} placeholder="TAG do disjuntor" className={inputClass} />
+              <input value={disjuntorDraft.fabricante} onChange={(event) => setDisjuntorDraft((current) => ({ ...current, fabricante: event.target.value }))} placeholder="Fabricante do disjuntor" className={inputClass} />
+              <input value={disjuntorDraft.modelo} onChange={(event) => setDisjuntorDraft((current) => ({ ...current, modelo: event.target.value }))} placeholder="Modelo do disjuntor" className={inputClass} />
+              <input value={disjuntorDraft.numero_serie} onChange={(event) => setDisjuntorDraft((current) => ({ ...current, numero_serie: event.target.value }))} placeholder="Nº série do disjuntor" className={inputClass} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={handleCreateDisjuntor} disabled={saving || !selectedCabineId} className="inline-flex items-center gap-2 bg-purple-700 hover:bg-purple-800 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                <Plus size={16} />
+                Salvar disjuntor
+              </button>
+              <button type="button" onClick={() => fichaDisjuntorHref && router.push(fichaDisjuntorHref)} disabled={!fichaDisjuntorHref || loadingEquipamentos} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                Abrir ficha do disjuntor <ArrowRight size={16} />
+              </button>
+            </div>
+          </section>
         </div>
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -734,7 +843,7 @@ export default function ManutencaoPreventivaCabinePage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Equipamentos da cabine</h2>
-                <p className="text-sm text-gray-500">Só transformador foi integrado nesta etapa.</p>
+                <p className="text-sm text-gray-500">Transformador integrado; disjuntor 15 kV em integração local.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -744,6 +853,8 @@ export default function ManutencaoPreventivaCabinePage() {
                   className={`px-3 py-1 rounded-full text-sm font-medium ${
                     item.status === 'Primeira ficha'
                       ? 'bg-green-100 text-green-700'
+                      : item.status === 'Em integração'
+                        ? 'bg-purple-100 text-purple-700'
                       : 'bg-gray-100 text-gray-600'
                   }`}
                 >
@@ -768,6 +879,7 @@ export default function ManutencaoPreventivaCabinePage() {
               <div><b>site_id:</b> {selectedSiteId || '-'}</div>
               <div><b>cabine_id:</b> {selectedCabineId || '-'}</div>
               <div><b>equipamento_id:</b> {selectedEquipamentoId || '-'}</div>
+              <div><b>disjuntor_id:</b> {selectedDisjuntorId || '-'}</div>
               <div><b>manutencao_id:</b> {selectedManutencaoId || '-'}</div>
             </div>
           </div>

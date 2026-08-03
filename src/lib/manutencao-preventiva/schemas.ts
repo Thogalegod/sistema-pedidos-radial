@@ -37,7 +37,7 @@ export const cabinePrimariaDraftSchema = z.object({
 
 export const cabineEquipamentoDraftSchema = z.object({
   cabine_id: uuidSchema,
-  tipo: z.preprocess(lowerText, z.enum(['transformador'])),
+  tipo: z.preprocess(lowerText, z.enum(['transformador', 'disjuntor_15kv'])),
   tag: z.string().trim().min(1, 'TAG do equipamento é obrigatória'),
   descricao: optionalText,
   fabricante: optionalText,
@@ -70,7 +70,14 @@ export const manutencaoFichaTransformadorDraftSchema = z.object({
   dados_ficha: jsonObjectSchema,
 });
 
+export const manutencaoFichaDisjuntorDraftSchema = z.object({
+  manutencao_id: uuidSchema,
+  equipamento_id: uuidSchema,
+  dados_ficha: jsonObjectSchema,
+});
+
 export type CabinePrimariaDraftInput = z.input<typeof cabinePrimariaDraftSchema>;
 export type CabineEquipamentoDraftInput = z.input<typeof cabineEquipamentoDraftSchema>;
 export type ManutencaoPreventivaDraftInput = z.input<typeof manutencaoPreventivaDraftSchema>;
 export type ManutencaoFichaTransformadorDraftInput = z.input<typeof manutencaoFichaTransformadorDraftSchema>;
+export type ManutencaoFichaDisjuntorDraftInput = z.input<typeof manutencaoFichaDisjuntorDraftSchema>;

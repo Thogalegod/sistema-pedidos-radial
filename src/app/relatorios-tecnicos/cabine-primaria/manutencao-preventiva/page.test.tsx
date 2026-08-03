@@ -1,6 +1,6 @@
 'use client';
 
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ManutencaoPreventivaCabinePage from './page';
 import {
@@ -10,17 +10,21 @@ import {
 } from '@/lib/contratos-locacoes/queries';
 import {
   createCabinePrimaria,
+  createDisjuntorCabine,
   createManutencaoPreventiva,
   createSupabaseManutencaoPreventivaClient,
   createTransformadorCabine,
+  listDisjuntoresCabine,
   listCabineEquipamentos,
   listCabinesBySite,
   listManutencoesPreventivasByCabine,
 } from '@/lib/manutencao-preventiva/queries-mutations';
 
+const pushMock = vi.fn();
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
   }),
 }));
 
@@ -54,9 +58,11 @@ vi.mock('@/lib/contratos-locacoes/mutations', () => ({
 
 vi.mock('@/lib/manutencao-preventiva/queries-mutations', () => ({
   createCabinePrimaria: vi.fn(),
+  createDisjuntorCabine: vi.fn(),
   createManutencaoPreventiva: vi.fn(),
   createSupabaseManutencaoPreventivaClient: vi.fn(),
   createTransformadorCabine: vi.fn(),
+  listDisjuntoresCabine: vi.fn(),
   listCabineEquipamentos: vi.fn(),
   listCabinesBySite: vi.fn(),
   listManutencoesPreventivasByCabine: vi.fn(),
@@ -129,6 +135,23 @@ const equipamento = {
   updated_at: '2026-08-03T00:00:00.000Z',
 };
 
+const disjuntor = {
+  id: 'disjuntor-1',
+  organization_id: 'org-1',
+  cabine_id: cabine.id,
+  tipo: 'disjuntor_15kv' as const,
+  tag: 'DJ-QA',
+  descricao: null,
+  fabricante: 'Fabricante QA',
+  numero_serie: 'SER-DJ-QA',
+  potencia_kva: null,
+  status: 'ativo' as const,
+  dados_tecnicos: {},
+  created_by: 'user-1',
+  created_at: '2026-08-03T00:00:00.000Z',
+  updated_at: '2026-08-03T00:00:00.000Z',
+};
+
 const manutencao = {
   id: 'manutencao-1',
   organization_id: 'org-1',
@@ -164,14 +187,17 @@ describe('ManutencaoPreventivaCabinePage', () => {
     });
     vi.mocked(listCabinesBySite).mockResolvedValue([cabine]);
     vi.mocked(listCabineEquipamentos).mockResolvedValue([equipamento]);
+    vi.mocked(listDisjuntoresCabine).mockResolvedValue([disjuntor]);
     vi.mocked(listManutencoesPreventivasByCabine).mockResolvedValue([manutencao]);
     vi.mocked(createCabinePrimaria).mockResolvedValue(cabine);
     vi.mocked(createTransformadorCabine).mockResolvedValue(equipamento);
+    vi.mocked(createDisjuntorCabine).mockResolvedValue(disjuntor);
     vi.mocked(createManutencaoPreventiva).mockResolvedValue(manutencao);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    pushMock.mockClear();
     document.body.innerHTML = '';
   });
 
@@ -185,5 +211,49 @@ describe('ManutencaoPreventivaCabinePage', () => {
 
     await waitFor(() => expect(getSelects()[4]).toHaveValue(equipamento.id));
     expect(getSelects()[5]).toHaveValue(manutencao.id);
+  });
+
+  it('opens the disjuntor sheet with real maintenance and equipment ids', async () => {
+    render(<ManutencaoPreventivaCabinePage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /abrir ficha do disjuntor/i })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: /abrir ficha do disjuntor/i }));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      '/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-disjuntor?manutencaoId=manutencao-1&equipamentoId=disjuntor-1'
+    );
+  });
+
+  it('creates one disjuntor when the save button is double-clicked', async () => {
+    render(<ManutencaoPreventivaCabinePage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /salvar disjuntor/i })).toBeEnabled());
+
+    fireEvent.change(screen.getByPlaceholderText('TAG do disjuntor'), {
+      target: { value: 'DJ-02' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Fabricante do disjuntor'), {
+      target: { value: 'Fabricante QA' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Modelo do disjuntor'), {
+      target: { value: '15KV-MOD' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Nº série do disjuntor'), {
+      target: { value: 'SER-DJ-02' },
+    });
+
+    const saveButton = screen.getByRole('button', { name: /salvar disjuntor/i });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(createDisjuntorCabine).toHaveBeenCalledTimes(1));
+    expect(createDisjuntorCabine).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      cabine_id: cabine.id,
+      tipo: 'disjuntor_15kv',
+      tag: 'DJ-02',
+      fabricante: 'Fabricante QA',
+      dados_tecnicos: expect.objectContaining({ modelo: '15KV-MOD' }),
+    }));
   });
 });

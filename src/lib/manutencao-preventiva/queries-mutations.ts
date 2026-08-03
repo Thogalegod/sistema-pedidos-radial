@@ -3,15 +3,18 @@ import {
   cabineEquipamentoDraftSchema,
   cabinePrimariaDraftSchema,
   manutencaoFichaTransformadorDraftSchema,
+  manutencaoFichaDisjuntorDraftSchema,
   manutencaoPreventivaDraftSchema,
   type CabineEquipamentoDraftInput,
   type CabinePrimariaDraftInput,
   type ManutencaoFichaTransformadorDraftInput,
+  type ManutencaoFichaDisjuntorDraftInput,
   type ManutencaoPreventivaDraftInput,
 } from './schemas';
 import type {
   CabineEquipamento,
   CabinePrimaria,
+  ManutencaoFichaDisjuntor,
   ManutencaoFichaTransformador,
   ManutencaoPreventiva,
 } from './types';
@@ -44,6 +47,10 @@ type ManutencaoFichaTransformadorUpsert = Omit<
   ManutencaoFichaTransformador,
   'id' | 'created_by' | 'created_at' | 'updated_at'
 >;
+type ManutencaoFichaDisjuntorUpsert = Omit<
+  ManutencaoFichaDisjuntor,
+  'id' | 'created_by' | 'created_at' | 'updated_at'
+>;
 
 export function resolveSingleOrganizationId(
   memberships: Array<{ organization_id: string }>
@@ -70,6 +77,9 @@ export interface ManutencaoPreventivaClient {
   upsertFichaTransformador(record: ManutencaoFichaTransformadorUpsert): Promise<ManutencaoFichaTransformador>;
   getFichaTransformador(organizationId: string, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaTransformador | null>;
   getFichaTransformadorById(organizationId: string, fichaId: string): Promise<ManutencaoFichaTransformador | null>;
+  upsertFichaDisjuntor(record: ManutencaoFichaDisjuntorUpsert): Promise<ManutencaoFichaDisjuntor>;
+  getFichaDisjuntor(organizationId: string, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaDisjuntor | null>;
+  getFichaDisjuntorById(organizationId: string, fichaId: string): Promise<ManutencaoFichaDisjuntor | null>;
 }
 
 export function createSupabaseManutencaoPreventivaClient(
@@ -210,6 +220,47 @@ export function createSupabaseManutencaoPreventivaClient(
 
       return (data ?? null) as ManutencaoFichaTransformador | null;
     },
+
+    async upsertFichaDisjuntor(record) {
+      const { data, error } = await client
+        .from('manutencao_fichas_disjuntor')
+        .upsert(record, { onConflict: 'organization_id,manutencao_id,equipamento_id' })
+        .select('*')
+        .single();
+
+      return ensureData(data as ManutencaoFichaDisjuntor | null, error, 'Não foi possível salvar a ficha do disjuntor');
+    },
+
+    async getFichaDisjuntor(organizationId, manutencaoId, equipamentoId) {
+      const { data, error } = await client
+        .from('manutencao_fichas_disjuntor')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('manutencao_id', manutencaoId)
+        .eq('equipamento_id', equipamentoId)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Não foi possível carregar a ficha do disjuntor: ${error.message}`);
+      }
+
+      return (data ?? null) as ManutencaoFichaDisjuntor | null;
+    },
+
+    async getFichaDisjuntorById(organizationId, fichaId) {
+      const { data, error } = await client
+        .from('manutencao_fichas_disjuntor')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('id', fichaId)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Não foi possível carregar a ficha do disjuntor: ${error.message}`);
+      }
+
+      return (data ?? null) as ManutencaoFichaDisjuntor | null;
+    },
   };
 }
 
@@ -255,6 +306,10 @@ export async function createTransformadorCabine(
   const payload = cabineEquipamentoDraftSchema.parse(rawPayload);
   const organizationId = await client.getCurrentOrganizationId();
 
+  if (payload.tipo !== 'transformador') {
+    throw new Error('Tipo de equipamento inválido para ficha de transformador');
+  }
+
   return client.insertCabineEquipamento({
     organization_id: organizationId,
     cabine_id: payload.cabine_id,
@@ -267,6 +322,41 @@ export async function createTransformadorCabine(
     status: payload.status,
     dados_tecnicos: payload.dados_tecnicos,
   });
+}
+
+export async function createDisjuntorCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  const payload = cabineEquipamentoDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+
+  if (payload.tipo !== 'disjuntor_15kv') {
+    throw new Error('Tipo de equipamento inválido para ficha de disjuntor');
+  }
+
+  return client.insertCabineEquipamento({
+    organization_id: organizationId,
+    cabine_id: payload.cabine_id,
+    tipo: payload.tipo,
+    tag: payload.tag,
+    descricao: payload.descricao,
+    fabricante: payload.fabricante,
+    numero_serie: payload.numero_serie,
+    potencia_kva: payload.potencia_kva,
+    status: payload.status,
+    dados_tecnicos: payload.dados_tecnicos,
+  });
+}
+
+export async function listDisjuntoresCabine(
+  client: ManutencaoPreventivaClient,
+  cabineId: string
+) {
+  const equipamentos = await listCabineEquipamentos(client, cabineId);
+  return equipamentos.filter((equipamento) => (
+    equipamento.tipo === 'disjuntor_15kv' && equipamento.status === 'ativo'
+  ));
 }
 
 export async function createManutencaoPreventiva(
@@ -326,4 +416,36 @@ export async function getFichaTransformadorById(
 ) {
   const organizationId = await client.getCurrentOrganizationId();
   return client.getFichaTransformadorById(organizationId, fichaId);
+}
+
+export async function saveFichaDisjuntor(
+  client: ManutencaoPreventivaClient,
+  rawPayload: ManutencaoFichaDisjuntorDraftInput
+) {
+  const payload = manutencaoFichaDisjuntorDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+
+  return client.upsertFichaDisjuntor({
+    organization_id: organizationId,
+    manutencao_id: payload.manutencao_id,
+    equipamento_id: payload.equipamento_id,
+    dados_ficha: payload.dados_ficha,
+  });
+}
+
+export async function getFichaDisjuntor(
+  client: ManutencaoPreventivaClient,
+  manutencaoId: string,
+  equipamentoId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.getFichaDisjuntor(organizationId, manutencaoId, equipamentoId);
+}
+
+export async function getFichaDisjuntorById(
+  client: ManutencaoPreventivaClient,
+  fichaId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.getFichaDisjuntorById(organizationId, fichaId);
 }
