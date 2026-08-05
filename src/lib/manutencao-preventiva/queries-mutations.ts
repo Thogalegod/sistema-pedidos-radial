@@ -4,16 +4,23 @@ import {
   cabinePrimariaDraftSchema,
   manutencaoFichaTransformadorDraftSchema,
   manutencaoFichaDisjuntorDraftSchema,
+  manutencaoFichaComplementarDraftSchema,
   manutencaoPreventivaDraftSchema,
   type CabineEquipamentoDraftInput,
   type CabinePrimariaDraftInput,
   type ManutencaoFichaTransformadorDraftInput,
   type ManutencaoFichaDisjuntorDraftInput,
+  type ManutencaoFichaComplementarDraftInput,
   type ManutencaoPreventivaDraftInput,
 } from './schemas';
 import type {
+  FichaComplementarTableName,
+  FichaComplementarTipo,
+} from './fichas-complementares';
+import type {
   CabineEquipamento,
   CabinePrimaria,
+  ManutencaoFichaComplementar,
   ManutencaoFichaDisjuntor,
   ManutencaoFichaTransformador,
   ManutencaoPreventiva,
@@ -51,6 +58,32 @@ type ManutencaoFichaDisjuntorUpsert = Omit<
   ManutencaoFichaDisjuntor,
   'id' | 'created_by' | 'created_at' | 'updated_at'
 >;
+type ManutencaoFichaComplementarUpsert = Omit<
+  ManutencaoFichaComplementar,
+  'id' | 'created_by' | 'created_at' | 'updated_at'
+> & { tableName: FichaComplementarTableName };
+
+async function deleteExactlyOneById(
+  client: SupabaseClient,
+  tableName: 'cabines_primarias' | 'manutencoes_preventivas',
+  organizationId: string,
+  recordId: string,
+  label: string
+) {
+  const { count, error } = await client
+    .from(tableName)
+    .delete({ count: 'exact' })
+    .eq('organization_id', organizationId)
+    .eq('id', recordId);
+
+  if (error) {
+    throw new Error(`Não foi possível excluir ${label}: ${error.message}`);
+  }
+
+  if (count !== 1) {
+    throw new Error(`Não foi possível excluir ${label}: o registro não foi excluído ou o usuário não possui permissão.`);
+  }
+}
 
 export function resolveSingleOrganizationId(
   memberships: Array<{ organization_id: string }>
@@ -70,9 +103,11 @@ export interface ManutencaoPreventivaClient {
   getCurrentOrganizationId(): Promise<string>;
   listCabinesBySite(organizationId: string, siteId: string): Promise<CabinePrimaria[]>;
   insertCabinePrimaria(record: CabinePrimariaInsert): Promise<CabinePrimaria>;
+  deleteCabinePrimaria(organizationId: string, cabineId: string): Promise<void>;
   listCabineEquipamentos(organizationId: string, cabineId: string): Promise<CabineEquipamento[]>;
   insertCabineEquipamento(record: CabineEquipamentoInsert): Promise<CabineEquipamento>;
   insertManutencaoPreventiva(record: ManutencaoPreventivaInsert): Promise<ManutencaoPreventiva>;
+  deleteManutencaoPreventiva(organizationId: string, manutencaoId: string): Promise<void>;
   listManutencoesPreventivasByCabine(organizationId: string, cabineId: string): Promise<ManutencaoPreventiva[]>;
   upsertFichaTransformador(record: ManutencaoFichaTransformadorUpsert): Promise<ManutencaoFichaTransformador>;
   getFichaTransformador(organizationId: string, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaTransformador | null>;
@@ -80,6 +115,10 @@ export interface ManutencaoPreventivaClient {
   upsertFichaDisjuntor(record: ManutencaoFichaDisjuntorUpsert): Promise<ManutencaoFichaDisjuntor>;
   getFichaDisjuntor(organizationId: string, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaDisjuntor | null>;
   getFichaDisjuntorById(organizationId: string, fichaId: string): Promise<ManutencaoFichaDisjuntor | null>;
+  upsertFichaComplementar(record: ManutencaoFichaComplementarUpsert): Promise<ManutencaoFichaComplementar>;
+  getFichaComplementar(organizationId: string, tableName: FichaComplementarTableName, manutencaoId: string, equipamentoId: string): Promise<ManutencaoFichaComplementar | null>;
+  getFichaComplementarById(organizationId: string, tableName: FichaComplementarTableName, fichaId: string): Promise<ManutencaoFichaComplementar | null>;
+  validateFichaComplementarIds(organizationId: string, tipo: FichaComplementarTipo, manutencaoId: string, equipamentoId: string): Promise<boolean>;
 }
 
 export function createSupabaseManutencaoPreventivaClient(
@@ -133,6 +172,10 @@ export function createSupabaseManutencaoPreventivaClient(
       return ensureData(data as CabinePrimaria | null, error, 'Não foi possível criar a cabine');
     },
 
+    async deleteCabinePrimaria(organizationId, cabineId) {
+      await deleteExactlyOneById(client, 'cabines_primarias', organizationId, cabineId, 'a cabine');
+    },
+
     async listCabineEquipamentos(organizationId, cabineId) {
       const { data, error } = await client
         .from('cabine_equipamentos')
@@ -162,6 +205,16 @@ export function createSupabaseManutencaoPreventivaClient(
         .single();
 
       return ensureData(data as ManutencaoPreventiva | null, error, 'Não foi possível criar a manutenção preventiva');
+    },
+
+    async deleteManutencaoPreventiva(organizationId, manutencaoId) {
+      await deleteExactlyOneById(
+        client,
+        'manutencoes_preventivas',
+        organizationId,
+        manutencaoId,
+        'a manutenção preventiva'
+      );
     },
 
     async listManutencoesPreventivasByCabine(organizationId, cabineId) {
@@ -261,6 +314,84 @@ export function createSupabaseManutencaoPreventivaClient(
 
       return (data ?? null) as ManutencaoFichaDisjuntor | null;
     },
+
+    async upsertFichaComplementar(record) {
+      const { tableName, ...payload } = record;
+      const { data, error } = await client
+        .from(tableName)
+        .upsert(payload, { onConflict: 'organization_id,manutencao_id,equipamento_id' })
+        .select('*')
+        .single();
+
+      return ensureData(data as ManutencaoFichaComplementar | null, error, 'Não foi possível salvar a ficha');
+    },
+
+    async getFichaComplementar(organizationId, tableName, manutencaoId, equipamentoId) {
+      const { data, error } = await client
+        .from(tableName)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('manutencao_id', manutencaoId)
+        .eq('equipamento_id', equipamentoId)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Não foi possível carregar a ficha: ${error.message}`);
+      }
+
+      return (data ?? null) as ManutencaoFichaComplementar | null;
+    },
+
+    async getFichaComplementarById(organizationId, tableName, fichaId) {
+      const { data, error } = await client
+        .from(tableName)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('id', fichaId)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Não foi possível carregar a ficha: ${error.message}`);
+      }
+
+      return (data ?? null) as ManutencaoFichaComplementar | null;
+    },
+
+    async validateFichaComplementarIds(organizationId, tipo, manutencaoId, equipamentoId) {
+      const [{ data: maintenance, error: maintenanceError }, { data: equipment, error: equipmentError }] = await Promise.all([
+        client
+          .from('manutencoes_preventivas')
+          .select('id,cabine_id')
+          .eq('organization_id', organizationId)
+          .eq('id', manutencaoId)
+          .maybeSingle(),
+        client
+          .from('cabine_equipamentos')
+          .select('id,cabine_id,tipo,status')
+          .eq('organization_id', organizationId)
+          .eq('id', equipamentoId)
+          .maybeSingle(),
+      ]);
+
+      if (maintenanceError) {
+        throw new Error(`Não foi possível validar a manutenção: ${maintenanceError.message}`);
+      }
+
+      if (equipmentError) {
+        throw new Error(`Não foi possível validar o equipamento: ${equipmentError.message}`);
+      }
+
+      const maintenanceRecord = maintenance as { cabine_id?: string } | null;
+      const equipmentRecord = equipment as { cabine_id?: string; tipo?: string; status?: string } | null;
+
+      return Boolean(
+        maintenanceRecord
+        && equipmentRecord
+        && equipmentRecord.tipo === tipo
+        && equipmentRecord.status === 'ativo'
+        && equipmentRecord.cabine_id === maintenanceRecord.cabine_id
+      );
+    },
   };
 }
 
@@ -289,6 +420,14 @@ export async function createCabinePrimaria(
     status: payload.status,
     observacoes: payload.observacoes,
   });
+}
+
+export async function deleteCabinePrimaria(
+  client: ManutencaoPreventivaClient,
+  cabineId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  await client.deleteCabinePrimaria(organizationId, cabineId);
 }
 
 export async function listCabineEquipamentos(
@@ -349,6 +488,68 @@ export async function createDisjuntorCabine(
   });
 }
 
+async function createComplementaryEquipment(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput,
+  expectedTipo: FichaComplementarTipo,
+  label: string
+) {
+  const payload = cabineEquipamentoDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+
+  if (payload.tipo !== expectedTipo) {
+    throw new Error(`Tipo de equipamento inválido para ficha de ${label}`);
+  }
+
+  return client.insertCabineEquipamento({
+    organization_id: organizationId,
+    cabine_id: payload.cabine_id,
+    tipo: payload.tipo,
+    tag: payload.tag,
+    descricao: payload.descricao,
+    fabricante: payload.fabricante,
+    numero_serie: payload.numero_serie,
+    potencia_kva: payload.potencia_kva,
+    status: payload.status,
+    dados_tecnicos: payload.dados_tecnicos,
+  });
+}
+
+export async function createChaveSeccionadoraCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  return createComplementaryEquipment(client, rawPayload, 'chave_seccionadora', 'chave seccionadora');
+}
+
+export async function createParaRaiosCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  return createComplementaryEquipment(client, rawPayload, 'para_raios', 'para-raios');
+}
+
+export async function createTcTpCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  return createComplementaryEquipment(client, rawPayload, 'tc_tp', 'TC/TP');
+}
+
+export async function createCaboMediaTensaoCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  return createComplementaryEquipment(client, rawPayload, 'cabo_media_tensao', 'cabos de média tensão');
+}
+
+export async function createAterramentoCabine(
+  client: ManutencaoPreventivaClient,
+  rawPayload: CabineEquipamentoDraftInput
+) {
+  return createComplementaryEquipment(client, rawPayload, 'aterramento', 'aterramento');
+}
+
 export async function listDisjuntoresCabine(
   client: ManutencaoPreventivaClient,
   cabineId: string
@@ -356,6 +557,17 @@ export async function listDisjuntoresCabine(
   const equipamentos = await listCabineEquipamentos(client, cabineId);
   return equipamentos.filter((equipamento) => (
     equipamento.tipo === 'disjuntor_15kv' && equipamento.status === 'ativo'
+  ));
+}
+
+export async function listEquipamentosComplementaresCabine(
+  client: ManutencaoPreventivaClient,
+  cabineId: string,
+  tipo: FichaComplementarTipo
+) {
+  const equipamentos = await listCabineEquipamentos(client, cabineId);
+  return equipamentos.filter((equipamento) => (
+    equipamento.tipo === tipo && equipamento.status === 'ativo'
   ));
 }
 
@@ -384,6 +596,14 @@ export async function listManutencoesPreventivasByCabine(
 ) {
   const organizationId = await client.getCurrentOrganizationId();
   return client.listManutencoesPreventivasByCabine(organizationId, cabineId);
+}
+
+export async function deleteManutencaoPreventiva(
+  client: ManutencaoPreventivaClient,
+  manutencaoId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  await client.deleteManutencaoPreventiva(organizationId, manutencaoId);
 }
 
 export async function saveFichaTransformador(
@@ -448,4 +668,50 @@ export async function getFichaDisjuntorById(
 ) {
   const organizationId = await client.getCurrentOrganizationId();
   return client.getFichaDisjuntorById(organizationId, fichaId);
+}
+
+export async function saveFichaComplementar(
+  client: ManutencaoPreventivaClient,
+  tableName: FichaComplementarTableName,
+  rawPayload: ManutencaoFichaComplementarDraftInput
+) {
+  const payload = manutencaoFichaComplementarDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+
+  return client.upsertFichaComplementar({
+    tableName,
+    organization_id: organizationId,
+    manutencao_id: payload.manutencao_id,
+    equipamento_id: payload.equipamento_id,
+    dados_ficha: payload.dados_ficha,
+  });
+}
+
+export async function getFichaComplementar(
+  client: ManutencaoPreventivaClient,
+  tableName: FichaComplementarTableName,
+  manutencaoId: string,
+  equipamentoId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.getFichaComplementar(organizationId, tableName, manutencaoId, equipamentoId);
+}
+
+export async function getFichaComplementarById(
+  client: ManutencaoPreventivaClient,
+  tableName: FichaComplementarTableName,
+  fichaId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.getFichaComplementarById(organizationId, tableName, fichaId);
+}
+
+export async function validateFichaComplementarIds(
+  client: ManutencaoPreventivaClient,
+  tipo: FichaComplementarTipo,
+  manutencaoId: string,
+  equipamentoId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  return client.validateFichaComplementarIds(organizationId, tipo, manutencaoId, equipamentoId);
 }

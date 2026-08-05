@@ -107,6 +107,30 @@ describe('manutencao preventiva schemas', () => {
     expect(ficha.dados_ficha).toEqual({ data: { tag: 'DJ-01' } });
   });
 
+  it('accepts the five remaining equipment types and their sheet payloads', () => {
+    for (const tipo of [
+      'chave_seccionadora',
+      'para_raios',
+      'tc_tp',
+      'cabo_media_tensao',
+      'aterramento',
+    ]) {
+      const equipamento = cabineEquipamentoDraftSchema.parse({
+        cabine_id: CABINE_ID,
+        tipo,
+        tag: ' EQ-01 ',
+        dados_tecnicos: { modelo: 'Modelo QA' },
+      });
+
+      expect(equipamento).toMatchObject({
+        tipo,
+        tag: 'EQ-01',
+        status: 'ativo',
+        dados_tecnicos: { modelo: 'Modelo QA' },
+      });
+    }
+  });
+
   it('rejects non-transformer sheets and invalid maintenance years', () => {
     expect(() =>
       cabineEquipamentoDraftSchema.parse({

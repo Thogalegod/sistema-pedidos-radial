@@ -22,6 +22,32 @@ function readDisjuntorMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readFichasComplementaresMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_manutencao_preventiva_fichas_complementares\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one manutencao preventiva fichas complementares migration').toHaveLength(1);
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
+function readDeletionMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_manutencao_preventiva_exclusao_autenticada\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one manutencao preventiva authenticated deletion migration').toHaveLength(1);
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
+function readAllMigrations() {
+  return readdirSync(migrationsDir)
+    .filter((filename) => filename.endsWith('.sql'))
+    .sort()
+    .map((filename) => readFileSync(path.join(migrationsDir, filename), 'utf8'))
+    .join('\n');
+}
+
 describe('manutencao preventiva cabine migration consistency', () => {
   it('creates only the approved base tables without storage or numbering', () => {
     const sql = readMigration();
@@ -139,5 +165,84 @@ describe('manutencao preventiva cabine migration consistency', () => {
     expect(sql).toMatch(/CREATE POLICY "manutencao_fichas_disjuntor insert by organization members"[\s\S]*public\.is_organization_member\(organization_id\)[\s\S]*created_by = auth\.uid\(\)/i);
     expect(sql).toMatch(/CREATE POLICY "manutencao_fichas_disjuntor update by organization members"/i);
     expect(sql).not.toMatch(/storage\.buckets|storage\.objects|FOR DELETE|TO anon|service_role|USING\s*\(\s*true\s*\)|WITH CHECK\s*\(\s*true\s*\)/i);
+  });
+
+  it('proposes one consolidated local migration for the five remaining sheets', () => {
+    const sql = readFichasComplementaresMigration();
+    const tableNames = [
+      'manutencao_fichas_chave_seccionadora',
+      'manutencao_fichas_para_raios',
+      'manutencao_fichas_tc_tp',
+      'manutencao_fichas_cabos_media_tensao',
+      'manutencao_fichas_aterramento',
+    ];
+
+    expect(sql).toMatch(/ALTER TABLE public\.cabine_equipamentos[\s\S]*DROP CONSTRAINT cabine_equipamentos_tipo_check,[\s\S]*ADD CONSTRAINT cabine_equipamentos_tipo_check[\s\S]*CHECK \(tipo IN \('transformador', 'disjuntor_15kv', 'chave_seccionadora', 'para_raios', 'tc_tp', 'cabo_media_tensao', 'aterramento'\)\)/i);
+
+    for (const table of tableNames) {
+      const suffix = table.replace(/^manutencao_fichas_/, '');
+      expect(sql).toMatch(new RegExp(`CREATE TABLE public\\.${table}`, 'i'));
+      expect(sql).toMatch(new RegExp(`${table}_org_id_uidx[\\s\\S]*UNIQUE \\(organization_id, id\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`${table}_dados_ficha_object_check[\\s\\S]*CHECK \\(jsonb_typeof\\(dados_ficha\\) = 'object'\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE UNIQUE INDEX ${table}_org_manutencao_equipamento_uidx[\\s\\S]*\\(organization_id, manutencao_id, equipamento_id\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE INDEX ${table}_org_equipamento_idx[\\s\\S]*\\(organization_id, equipamento_id\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE OR REPLACE FUNCTION public\\.validate_manutencao_ficha_${suffix}\\(\\)[\\s\\S]*SET search_path = public, pg_temp`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE TRIGGER protect_${table}_created_by_trig[\\s\\S]*EXECUTE FUNCTION public\\.protect_created_by\\(\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE TRIGGER validate_${table}_trig[\\s\\S]*EXECUTE FUNCTION public\\.validate_manutencao_ficha_${suffix}\\(\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE TRIGGER set_${table}_updated_at[\\s\\S]*EXECUTE FUNCTION public\\.update_updated_at_column\\(\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`ALTER TABLE public\\.${table} ENABLE ROW LEVEL SECURITY`, 'i'));
+      expect(sql).toMatch(new RegExp(`GRANT SELECT, INSERT, UPDATE ON public\\.${table} TO authenticated`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE POLICY "${table} select by organization members"`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE POLICY "${table} insert by organization members"[\\s\\S]*public\\.is_organization_member\\(organization_id\\)[\\s\\S]*created_by = auth\\.uid\\(\\)`, 'i'));
+      expect(sql).toMatch(new RegExp(`CREATE POLICY "${table} update by organization members"`, 'i'));
+    }
+
+    expect(sql).toMatch(/equipment\.tipo <> 'chave_seccionadora'/i);
+    expect(sql).toMatch(/equipment\.tipo <> 'para_raios'/i);
+    expect(sql).toMatch(/equipment\.tipo <> 'tc_tp'/i);
+    expect(sql).toMatch(/equipment\.tipo <> 'cabo_media_tensao'/i);
+    expect(sql).toMatch(/equipment\.tipo <> 'aterramento'/i);
+    expect(sql.match(/equipment\.cabine_id <> maintenance\.cabine_id/gi)).toHaveLength(5);
+    expect(sql).not.toMatch(/SECURITY DEFINER|storage\.buckets|storage\.objects|GRANT DELETE|FOR DELETE|TO anon|service_role|USING\s*\(\s*true\s*\)|WITH CHECK\s*\(\s*true\s*\)/i);
+  });
+
+  it('adds authenticated delete only for maintenances and primary cabines', () => {
+    const sql = readDeletionMigration();
+    const childTables = [
+      'cabine_equipamentos',
+      'manutencao_fichas_transformador',
+      'manutencao_fichas_disjuntor',
+      'manutencao_fichas_chave_seccionadora',
+      'manutencao_fichas_para_raios',
+      'manutencao_fichas_tc_tp',
+      'manutencao_fichas_cabos_media_tensao',
+      'manutencao_fichas_aterramento',
+    ];
+
+    expect(sql).toMatch(/GRANT DELETE ON public\.manutencoes_preventivas TO authenticated/i);
+    expect(sql).toMatch(/GRANT DELETE ON public\.cabines_primarias TO authenticated/i);
+    expect(sql).toMatch(/CREATE POLICY "manutencoes_preventivas delete by organization admins"[\s\S]*ON public\.manutencoes_preventivas[\s\S]*FOR DELETE TO authenticated[\s\S]*public\.is_organization_member\(organization_id\)[\s\S]*public\.is_organization_admin\(organization_id\)/i);
+    expect(sql).toMatch(/CREATE POLICY "cabines_primarias delete by organization admins"[\s\S]*ON public\.cabines_primarias[\s\S]*FOR DELETE TO authenticated[\s\S]*public\.is_organization_member\(organization_id\)[\s\S]*public\.is_organization_admin\(organization_id\)/i);
+    expect(sql).not.toMatch(/TO anon|service_role|USING\s*\(\s*true\s*\)|WITH CHECK\s*\(\s*true\s*\)/i);
+
+    for (const table of childTables) {
+      expect(sql).not.toMatch(new RegExp(`GRANT DELETE ON public\\.${table}`, 'i'));
+      expect(sql).not.toMatch(new RegExp(`ON public\\.${table}[\\s\\S]*FOR DELETE`, 'i'));
+    }
+  });
+
+  it('keeps cleanup cascades scoped to temporary maintenance and cabine children', () => {
+    const sql = readAllMigrations();
+
+    expect(sql).toMatch(/manutencao_fichas_transformador_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_disjuntor_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_chave_seccionadora_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_para_raios_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_tc_tp_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_cabos_media_tensao_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencao_fichas_aterramento_manutencao_org_fkey[\s\S]*REFERENCES public\.manutencoes_preventivas \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/cabine_equipamentos_cabine_org_fkey[\s\S]*REFERENCES public\.cabines_primarias \(organization_id, id\)[\s\S]*ON DELETE CASCADE/i);
+    expect(sql).toMatch(/manutencoes_preventivas_cabine_org_fkey[\s\S]*REFERENCES public\.cabines_primarias \(organization_id, id\)[\s\S]*ON DELETE RESTRICT/i);
+    expect(readDeletionMigration()).not.toMatch(/DELETE ON public\.customers|DELETE ON public\.customer_sites/i);
   });
 });

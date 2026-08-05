@@ -13,6 +13,7 @@ import {
   Layers3,
   Plus,
   RefreshCw,
+  Trash2,
   Wrench,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -37,11 +38,24 @@ import {
   buildFichaDisjuntorSearchParams,
 } from '@/lib/manutencao-preventiva/ficha-disjuntor';
 import {
+  buildFichaComplementarSearchParams,
+  fichaComplementarDefinitions,
+  type FichaComplementarTipo,
+} from '@/lib/manutencao-preventiva/fichas-complementares';
+import {
+  createAterramentoCabine,
   createCabinePrimaria,
+  createCaboMediaTensaoCabine,
+  createChaveSeccionadoraCabine,
   createDisjuntorCabine,
   createManutencaoPreventiva,
+  createParaRaiosCabine,
   createSupabaseManutencaoPreventivaClient,
+  createTcTpCabine,
   createTransformadorCabine,
+  deleteCabinePrimaria,
+  deleteManutencaoPreventiva,
+  listEquipamentosComplementaresCabine,
   listDisjuntoresCabine,
   listCabineEquipamentos,
   listCabinesBySite,
@@ -59,13 +73,46 @@ const sectionClass = 'bg-white p-5 rounded-xl shadow-sm border border-gray-200';
 
 const equipmentItems = [
   { name: 'Transformadores', status: 'Primeira ficha' },
-  { name: 'Disjuntores 15 kV', status: 'Em integração' },
-  { name: 'Chaves seccionadoras', status: 'Depois' },
-  { name: 'Para-raios', status: 'Depois' },
-  { name: 'TC / TP', status: 'Depois' },
-  { name: 'Cabos de média tensão', status: 'Depois' },
-  { name: 'Aterramento', status: 'Depois' },
+  { name: 'Disjuntores 15 kV', status: 'Concluído' },
+  { name: 'Chaves seccionadoras', status: 'Concluído' },
+  { name: 'Para-raios', status: 'Concluído' },
+  { name: 'TC / TP', status: 'Concluído' },
+  { name: 'Cabos de média tensão', status: 'Concluído' },
+  { name: 'Aterramento', status: 'Concluído' },
 ];
+
+const complementaryCreateHandlers = {
+  chave_seccionadora: createChaveSeccionadoraCabine,
+  para_raios: createParaRaiosCabine,
+  tc_tp: createTcTpCabine,
+  cabo_media_tensao: createCaboMediaTensaoCabine,
+  aterramento: createAterramentoCabine,
+} as const;
+
+type ComplementaryDrafts = Record<FichaComplementarTipo, Record<string, string>>;
+type ComplementaryEquipments = Record<FichaComplementarTipo, CabineEquipamento[]>;
+type ComplementarySelections = Record<FichaComplementarTipo, string>;
+
+function createEmptyComplementaryDrafts(): ComplementaryDrafts {
+  return Object.fromEntries(
+    fichaComplementarDefinitions.map((definition) => [
+      definition.tipo,
+      Object.fromEntries(definition.minimumFields.map((field) => [field.key, ''])),
+    ])
+  ) as ComplementaryDrafts;
+}
+
+function createEmptyComplementaryEquipments(): ComplementaryEquipments {
+  return Object.fromEntries(
+    fichaComplementarDefinitions.map((definition) => [definition.tipo, [] as CabineEquipamento[]])
+  ) as ComplementaryEquipments;
+}
+
+function createEmptyComplementarySelections(): ComplementarySelections {
+  return Object.fromEntries(
+    fichaComplementarDefinitions.map((definition) => [definition.tipo, ''])
+  ) as ComplementarySelections;
+}
 
 const reportSections = [
   'Capa e dados do cliente',
@@ -104,12 +151,14 @@ export default function ManutencaoPreventivaCabinePage() {
   const [cabines, setCabines] = useState<CabinePrimaria[]>([]);
   const [equipamentos, setEquipamentos] = useState<CabineEquipamento[]>([]);
   const [disjuntores, setDisjuntores] = useState<CabineEquipamento[]>([]);
+  const [complementaryEquipments, setComplementaryEquipments] = useState<ComplementaryEquipments>(createEmptyComplementaryEquipments);
   const [manutencoes, setManutencoes] = useState<ManutencaoPreventiva[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [selectedCabineId, setSelectedCabineId] = useState('');
   const [selectedEquipamentoId, setSelectedEquipamentoId] = useState('');
   const [selectedDisjuntorId, setSelectedDisjuntorId] = useState('');
+  const [selectedComplementaryIds, setSelectedComplementaryIds] = useState<ComplementarySelections>(createEmptyComplementarySelections);
   const [selectedManutencaoId, setSelectedManutencaoId] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [loadingSites, setLoadingSites] = useState(false);
@@ -149,6 +198,7 @@ export default function ManutencaoPreventivaCabinePage() {
     modelo: '',
     numero_serie: '',
   });
+  const [complementaryDrafts, setComplementaryDrafts] = useState<ComplementaryDrafts>(createEmptyComplementaryDrafts);
   const [manutencaoDraft, setManutencaoDraft] = useState({
     ano_referencia: String(currentYear()),
     data_execucao: todayIsoDate(),
@@ -157,6 +207,10 @@ export default function ManutencaoPreventivaCabinePage() {
     observacoes: '',
   });
 
+  const selectedCabine = useMemo(
+    () => cabines.find((cabine) => cabine.id === selectedCabineId) ?? null,
+    [cabines, selectedCabineId]
+  );
   const selectedEquipamento = useMemo(
     () => equipamentos.find((equipamento) => equipamento.id === selectedEquipamentoId) ?? null,
     [equipamentos, selectedEquipamentoId]
@@ -169,6 +223,16 @@ export default function ManutencaoPreventivaCabinePage() {
     () => disjuntores.find((disjuntor) => disjuntor.id === selectedDisjuntorId) ?? null,
     [disjuntores, selectedDisjuntorId]
   );
+  const selectedComplementaryEquipments = useMemo(() => (
+    Object.fromEntries(
+      fichaComplementarDefinitions.map((definition) => [
+        definition.tipo,
+        complementaryEquipments[definition.tipo].find((equipamento) => (
+          equipamento.id === selectedComplementaryIds[definition.tipo]
+        )) ?? null,
+      ])
+    ) as Record<FichaComplementarTipo, CabineEquipamento | null>
+  ), [complementaryEquipments, selectedComplementaryIds]);
   const fichaHref = useMemo(() => {
     if (!selectedManutencao || !selectedEquipamento) return '';
     if (
@@ -199,6 +263,30 @@ export default function ManutencaoPreventivaCabinePage() {
       equipamentoId: selectedDisjuntor.id,
     })}`;
   }, [selectedCabineId, selectedDisjuntor, selectedManutencao]);
+  const complementaryFichaHrefs = useMemo(() => (
+    Object.fromEntries(
+      fichaComplementarDefinitions.map((definition) => {
+        const equipamento = selectedComplementaryEquipments[definition.tipo];
+        if (!selectedManutencao || !equipamento) return [definition.tipo, ''];
+        if (
+          equipamento.cabine_id !== selectedCabineId
+          || selectedManutencao.cabine_id !== selectedCabineId
+          || equipamento.cabine_id !== selectedManutencao.cabine_id
+        ) {
+          return [definition.tipo, ''];
+        }
+
+        return [
+          definition.tipo,
+          `/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/${definition.routeSegment}?${buildFichaComplementarSearchParams({
+            manutencaoId: selectedManutencao.id,
+            equipamentoId: equipamento.id,
+          })}`,
+        ];
+      })
+    ) as Record<FichaComplementarTipo, string>
+  ), [selectedCabineId, selectedComplementaryEquipments, selectedManutencao]);
+  const canDeleteSelectedCabine = Boolean(selectedCabine && manutencoes.length === 0);
 
   const getStrictOrganizationId = async () => {
     const client = createSupabaseManutencaoPreventivaClient(supabase);
@@ -237,9 +325,11 @@ export default function ManutencaoPreventivaCabinePage() {
   const clearFromCabine = () => {
     setEquipamentos([]);
     setDisjuntores([]);
+    setComplementaryEquipments(createEmptyComplementaryEquipments());
     setManutencoes([]);
     setSelectedEquipamentoId('');
     setSelectedDisjuntorId('');
+    setSelectedComplementaryIds(createEmptyComplementarySelections());
     setSelectedManutencaoId('');
   };
 
@@ -388,8 +478,12 @@ export default function ManutencaoPreventivaCabinePage() {
     const load = async () => {
       if (!selectedCabineId) {
         setEquipamentos([]);
+        setDisjuntores([]);
+        setComplementaryEquipments(createEmptyComplementaryEquipments());
         setManutencoes([]);
         setSelectedEquipamentoId('');
+        setSelectedDisjuntorId('');
+        setSelectedComplementaryIds(createEmptyComplementarySelections());
         setSelectedManutencaoId('');
         return;
       }
@@ -397,22 +491,50 @@ export default function ManutencaoPreventivaCabinePage() {
       setLoadingEquipamentos(true);
       try {
         const client = createSupabaseManutencaoPreventivaClient(supabase);
-        const [equipamentosData, disjuntoresData, manutencoesData] = await Promise.all([
+        const [
+          equipamentosData,
+          disjuntoresData,
+          manutencoesData,
+          ...complementaryLists
+        ] = await Promise.all([
           listCabineEquipamentos(client, selectedCabineId),
           listDisjuntoresCabine(client, selectedCabineId),
           listManutencoesPreventivasByCabine(client, selectedCabineId),
+          ...fichaComplementarDefinitions.map((definition) => (
+            listEquipamentosComplementaresCabine(client, selectedCabineId, definition.tipo)
+          )),
         ]);
         const transformadores = equipamentosData.filter((equipamento) => equipamento.tipo === 'transformador' && equipamento.status === 'ativo');
+        const complementaryByType = Object.fromEntries(
+          fichaComplementarDefinitions.map((definition, index) => [
+            definition.tipo,
+            complementaryLists[index] ?? [],
+          ])
+        ) as ComplementaryEquipments;
 
         if (!cancelled) {
           setEquipamentos(transformadores);
           setDisjuntores(disjuntoresData);
+          setComplementaryEquipments(complementaryByType);
           setManutencoes(manutencoesData);
           setSelectedEquipamentoId((current) => (
             transformadores.some((equipamento) => equipamento.id === current) ? current : transformadores[0]?.id || ''
           ));
           setSelectedDisjuntorId((current) => (
             disjuntoresData.some((disjuntor) => disjuntor.id === current) ? current : disjuntoresData[0]?.id || ''
+          ));
+          setSelectedComplementaryIds((current) => (
+            Object.fromEntries(
+              fichaComplementarDefinitions.map((definition) => {
+                const list = complementaryByType[definition.tipo];
+                return [
+                  definition.tipo,
+                  list.some((equipamento) => equipamento.id === current[definition.tipo])
+                    ? current[definition.tipo]
+                    : list[0]?.id || '',
+                ];
+              })
+            ) as ComplementarySelections
           ));
           setSelectedManutencaoId((current) => (
             manutencoesData.some((manutencao) => manutencao.id === current) ? current : manutencoesData[0]?.id || ''
@@ -579,6 +701,42 @@ export default function ManutencaoPreventivaCabinePage() {
     });
   };
 
+  const handleCreateComplementaryEquipment = async (tipo: FichaComplementarTipo) => {
+    if (!selectedCabineId) return;
+
+    await runWithSaving(async () => {
+      const definition = fichaComplementarDefinitions.find((item) => item.tipo === tipo);
+      if (!definition) return;
+
+      const draft = complementaryDrafts[tipo];
+      const [tagField, ...technicalFields] = definition.minimumFields;
+      const client = createSupabaseManutencaoPreventivaClient(supabase);
+      const createEquipment = complementaryCreateHandlers[tipo];
+      const created = await createEquipment(client, {
+        cabine_id: selectedCabineId,
+        tipo,
+        tag: draft[tagField.key],
+        fabricante: draft.fabricante,
+        dados_tecnicos: Object.fromEntries(
+          technicalFields.map((field) => [field.key, draft[field.key]])
+        ),
+      });
+
+      setComplementaryEquipments((current) => ({
+        ...current,
+        [tipo]: [...current[tipo], created].sort((a, b) => a.tag.localeCompare(b.tag)),
+      }));
+      setSelectedComplementaryIds((current) => ({ ...current, [tipo]: created.id }));
+      setComplementaryDrafts((current) => ({
+        ...current,
+        [tipo]: Object.fromEntries(definition.minimumFields.map((field) => [field.key, ''])),
+      }));
+      toast.success(`${definition.equipmentLabel} cadastrado.`);
+    }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível cadastrar o equipamento.');
+    });
+  };
+
   const handleCreateManutencao = async () => {
     if (!selectedCabineId) return;
 
@@ -598,6 +756,59 @@ export default function ManutencaoPreventivaCabinePage() {
       toast.success('Manutenção preventiva criada.');
     }).catch((error) => {
       toast.error(error instanceof Error ? error.message : 'Não foi possível criar a manutenção preventiva.');
+    });
+  };
+
+  const handleDeleteManutencao = async () => {
+    if (!selectedManutencao) return;
+
+    const confirmed = window.confirm(
+      'Excluir manutenção preventiva?\n\nA manutenção e suas fichas serão removidas. Esta ação não exclui a cabine, o cliente ou a obra/local.'
+    );
+    if (!confirmed) return;
+
+    const manutencaoId = selectedManutencao.id;
+    await runWithSaving(async () => {
+      const client = createSupabaseManutencaoPreventivaClient(supabase);
+      await deleteManutencaoPreventiva(client, manutencaoId);
+
+      setManutencoes((current) => {
+        const next = current.filter((manutencao) => manutencao.id !== manutencaoId);
+        setSelectedManutencaoId((currentSelected) => (
+          currentSelected === manutencaoId ? next[0]?.id || '' : currentSelected
+        ));
+        return next;
+      });
+      toast.success('Manutenção preventiva excluída.');
+    }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a manutenção preventiva.');
+    });
+  };
+
+  const handleDeleteCabine = async () => {
+    if (!selectedCabine || !canDeleteSelectedCabine) return;
+
+    const confirmed = window.confirm(
+      'Excluir cabine primária?\n\nA cabine e seus equipamentos serão removidos. Cliente e obra/local serão preservados.'
+    );
+    if (!confirmed) return;
+
+    const cabineId = selectedCabine.id;
+    await runWithSaving(async () => {
+      const client = createSupabaseManutencaoPreventivaClient(supabase);
+      await deleteCabinePrimaria(client, cabineId);
+
+      setCabines((current) => {
+        const next = current.filter((cabine) => cabine.id !== cabineId);
+        setSelectedCabineId((currentSelected) => (
+          currentSelected === cabineId ? next[0]?.id || '' : currentSelected
+        ));
+        return next;
+      });
+      clearFromCabine();
+      toast.success('Cabine primária excluída.');
+    }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a cabine primária.');
     });
   };
 
@@ -709,10 +920,21 @@ export default function ManutencaoPreventivaCabinePage() {
               </select>
               <input value={cabineDraft.observacoes} onChange={(event) => setCabineDraft((current) => ({ ...current, observacoes: event.target.value }))} placeholder="Observações" className={inputClass} />
             </div>
-            <button type="button" onClick={handleCreateCabine} disabled={saving || !selectedCustomerId || !selectedSiteId} className="mt-3 inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
-              <Plus size={16} />
-              Salvar cabine
-            </button>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button type="button" onClick={handleCreateCabine} disabled={saving || !selectedCustomerId || !selectedSiteId} className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                <Plus size={16} />
+                Salvar cabine
+              </button>
+              <button type="button" onClick={handleDeleteCabine} disabled={saving || !canDeleteSelectedCabine} className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                <Trash2 size={16} />
+                Excluir cabine
+              </button>
+            </div>
+            {selectedCabine && manutencoes.length > 0 ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Exclua as manutenções vinculadas antes de excluir a cabine.
+              </p>
+            ) : null}
           </section>
 
           <section className={sectionClass}>
@@ -783,6 +1005,10 @@ export default function ManutencaoPreventivaCabinePage() {
                 <Plus size={16} />
                 Criar manutenção
               </button>
+              <button type="button" onClick={handleDeleteManutencao} disabled={saving || !selectedManutencao} className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                <Trash2 size={16} />
+                Excluir manutenção
+              </button>
               <button type="button" onClick={() => fichaHref && router.push(fichaHref)} disabled={!fichaHref || loadingEquipamentos} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
                 Abrir ficha do transformador <ArrowRight size={16} />
               </button>
@@ -833,6 +1059,75 @@ export default function ManutencaoPreventivaCabinePage() {
               </button>
             </div>
           </section>
+
+          {fichaComplementarDefinitions.map((definition) => {
+            const selectedId = selectedComplementaryIds[definition.tipo];
+            const draft = complementaryDrafts[definition.tipo];
+            const href = complementaryFichaHrefs[definition.tipo];
+
+            return (
+              <section key={definition.tipo} className={sectionClass}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-11 h-11 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center">
+                    <Wrench size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{definition.equipmentLabel}</h2>
+                    <p className="text-sm text-gray-500">Ficha integrada à manutenção preventiva da cabine.</p>
+                  </div>
+                </div>
+
+                <label className={labelClass}>{definition.equipmentLabel} cadastrado</label>
+                <select
+                  value={selectedId}
+                  onChange={(event) => setSelectedComplementaryIds((current) => ({ ...current, [definition.tipo]: event.target.value }))}
+                  className={inputClass}
+                  disabled={!selectedCabineId || loadingEquipamentos}
+                >
+                  <option value="">{loadingEquipamentos ? `Carregando ${definition.equipmentLabel.toLowerCase()}...` : 'Selecione'}</option>
+                  {complementaryEquipments[definition.tipo].map((equipamento) => {
+                    const modelo = typeof equipamento.dados_tecnicos.modelo === 'string'
+                      ? equipamento.dados_tecnicos.modelo
+                      : '';
+
+                    return (
+                      <option key={equipamento.id} value={equipamento.id}>
+                        {equipamento.tag}{modelo ? ` - ${modelo}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {definition.minimumFields.map((field) => (
+                    <input
+                      key={field.key}
+                      value={draft[field.key]}
+                      onChange={(event) => setComplementaryDrafts((current) => ({
+                        ...current,
+                        [definition.tipo]: {
+                          ...current[definition.tipo],
+                          [field.key]: event.target.value,
+                        },
+                      }))}
+                      placeholder={field.label}
+                      className={inputClass}
+                    />
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" onClick={() => handleCreateComplementaryEquipment(definition.tipo)} disabled={saving || !selectedCabineId} className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    <Plus size={16} />
+                    {definition.createLabel}
+                  </button>
+                  <button type="button" onClick={() => href && router.push(href)} disabled={!href || loadingEquipamentos} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    {definition.openLabel} <ArrowRight size={16} />
+                  </button>
+                </div>
+              </section>
+            );
+          })}
         </div>
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -843,7 +1138,7 @@ export default function ManutencaoPreventivaCabinePage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Equipamentos da cabine</h2>
-                <p className="text-sm text-gray-500">Transformador integrado; disjuntor 15 kV em integração local.</p>
+                <p className="text-sm text-gray-500">Todas as fichas de manutenção preventiva estão integradas localmente.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -853,8 +1148,8 @@ export default function ManutencaoPreventivaCabinePage() {
                   className={`px-3 py-1 rounded-full text-sm font-medium ${
                     item.status === 'Primeira ficha'
                       ? 'bg-green-100 text-green-700'
-                      : item.status === 'Em integração'
-                        ? 'bg-purple-100 text-purple-700'
+                      : item.status === 'Concluído'
+                        ? 'bg-blue-100 text-blue-700'
                       : 'bg-gray-100 text-gray-600'
                   }`}
                 >
@@ -880,6 +1175,11 @@ export default function ManutencaoPreventivaCabinePage() {
               <div><b>cabine_id:</b> {selectedCabineId || '-'}</div>
               <div><b>equipamento_id:</b> {selectedEquipamentoId || '-'}</div>
               <div><b>disjuntor_id:</b> {selectedDisjuntorId || '-'}</div>
+              {fichaComplementarDefinitions.map((definition) => (
+                <div key={definition.tipo}>
+                  <b>{definition.tipo}_id:</b> {selectedComplementaryIds[definition.tipo] || '-'}
+                </div>
+              ))}
               <div><b>manutencao_id:</b> {selectedManutencaoId || '-'}</div>
             </div>
           </div>
@@ -913,7 +1213,7 @@ export default function ManutencaoPreventivaCabinePage() {
               <div className="flex-1">
                 <h2 className="font-bold text-gray-900">Histórico por cabine</h2>
                 <p className="text-sm text-gray-500">
-                  A lista de manutenções é carregada por `cabine_id`; a ficha do transformador é salva por `manutencao_id` e `equipamento_id`.
+                  A lista de manutenções é carregada por cabine_id; as fichas são salvas por manutencao_id e equipamento_id.
                 </p>
               </div>
               <CheckCircle2 size={18} className="text-green-600 hidden sm:block" />
