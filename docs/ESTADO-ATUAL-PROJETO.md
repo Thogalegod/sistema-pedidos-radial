@@ -1,140 +1,112 @@
 # Estado atual do projeto
 
-Última atualização manual deste arquivo: 2026-07-07
+Última atualização manual deste arquivo: 2026-08-17
 
 ## Objetivo deste arquivo
 
 Dar contexto rápido para qualquer agente continuar o projeto sem depender do histórico inteiro do chat.
 
-## Módulos em foco no momento
+## Ambientes Supabase atuais
 
-### 1. Termografia
+- **IURQ** `iurqgskfuupslrghgtej`: desenvolvimento/homologação e projeto Supabase linkado para os trabalhos atuais.
+- **MISFY** `misfyiznwnuvldoccciw`: futura produção protegida. Não aplicar migrations, QA funcional ou alterações sem etapa explícita de preparação de produção.
+- O ambiente local de desenvolvimento deve apontar para o IURQ, nunca para o MISFY por padrão.
 
-Este foi o módulo mais recentemente trabalhado e já teve correções implementadas, testadas, enviadas ao GitHub e publicadas em produção.
+## Módulos já trabalhados e consolidados nesta linha de desenvolvimento
 
-#### Correções já feitas
+Os seguintes módulos já receberam implementação, correções e validações ao longo das branches acumuladas que antecedem o PR atual:
 
-- correção do preview das fotos na termografia;
-- correção do fluxo de marcar componentes na foto digital;
-- inclusão de rascunho local simples para reduzir perda ao sair ou voltar do navegador;
-- ajuste do marcador para trabalhar com um único círculo vermelho redimensionável/reposicionável;
-- correção do salvamento de imagens anotadas/recortadas/substituídas usando versionamento de nomes de arquivo, evitando erro de overwrite e problemas com RLS.
+- Contratos e Locações;
+- Pedidos e Tarefas;
+- Relatórios de Cabine;
+- Termografia;
+- Inspeções / Relatórios de Transformador;
+- Manutenção Preventiva da Cabine Primária.
 
-#### Arquivos já alterados na termografia
+Esses módulos não devem ser reabertos sem regressão concreta ou nova necessidade funcional.
 
-- `src/app/termografia/nova/page.tsx`
-- `src/app/termografia/[id]/page.tsx`
-- `src/components/termografia/PhotoAnnotationDialog.tsx`
-- `src/components/termografia/PhotoAnnotationDialog.test.tsx`
-- `src/hooks/useTermografiaDraft.ts`
-- `src/hooks/useTermografiaDraft.test.tsx`
-- `src/hooks/geracao-relatorio.test.tsx`
-- `src/lib/termografia/draft.ts`
-- `src/lib/termografia/draft.test.ts`
-- `src/lib/termografia/images.ts`
-- `src/lib/termografia/images.test.ts`
+## Controle de Locações — estado atual
 
-#### Validação já confirmada
+A branch atual de desenvolvimento é:
 
-- `npm test` passou na etapa de correção da termografia;
-- `npx tsc --noEmit` passou na etapa de correção da termografia.
+`codex/controle-locacoes`
 
-#### Git e deploy da termografia
+O trabalho consolidado inclui financeiro de locações, ativos físicos, devolução/encerramento e proteção concorrente contra dupla reserva do mesmo ativo.
 
-- branch usada: `codex/termografia-correcoes-20260706`
-- commit já feito: `5b747c9`
-- mensagem do commit: `fix: corrige preview, marcação e rascunho da termografia`
-- push para GitHub: confirmado
-- deploy em produção: confirmado
-- produção publicada em: [https://sistema-pedidos-radial.vercel.app](https://sistema-pedidos-radial.vercel.app)
+### Lote 3A — ativos físicos e disponibilidade
 
-#### Observação importante
+Concluído e aprovado no IURQ.
 
-Se um agente for voltar a mexer em termografia, primeiro deve conferir se a árvore local atual ainda corresponde a essa branch/estado ou se já houve novas mudanças depois disso.
+Principais migrations:
 
-### 2. Contratos e Locações
+- `202608121300_add_rental_assets.sql`
+- `202608131100_restrict_rental_assets_grants.sql`
 
-Este módulo está em fase de planejamento e execução guiada por etapas para outro agente.
+### Lote 3B — devolução e encerramento
 
-#### Material de planejamento já existente
+Concluído e aprovado no IURQ.
 
-- `docs/contratos-locacoes-prompts-para-outro-agente.md`
-- arquivos de planejamento/handoff em `docs/superpowers/` e/ou na branch remota de planejamento
+Migration principal:
 
-#### O que já se sabe sobre esse módulo
+- `202608131200_add_rental_item_returns.sql`
 
-- existe uma branch remota de planejamento: `origin/codex/planejamento-contratos-locacoes`
-- houve revisão técnica dos arquivos dessa branch
-- foram identificados e depois corrigidos pontos de base técnica nessa linha de trabalho:
-  - validação da numeração/recibo;
-  - transições permissivas demais;
-  - alinhamento de tipos TypeScript com Postgres/Supabase;
-  - risco de concorrência em `internal_number`;
-  - policy ambígua em `organization_members`;
-  - necessidade de FKs compostas por `organization_id`;
-  - bloqueio de insert direto em `audit_events`;
-  - teste estático de consistência da migration.
+### Lote 3C — concorrência e billing final
 
-#### Ambiente Supabase dev/homolog confirmado
+Concluído e aprovado no IURQ.
 
-O módulo agora tem um projeto Supabase separado e exclusivo para desenvolvimento/homologação:
+Migrations:
 
-- `project ref`: `misfyiznwnuvldoccciw`
-- `project URL`: `https://misfyiznwnuvldoccciw.supabase.co`
-- esse projeto é dedicado somente ao módulo `Contratos e Locações`
-- a URL é diferente do backend antigo compartilhado `https://iurqgskfuupslrghgtej.supabase.co`
-- a configuração local já foi apontada para esse ambiente em `.env.local`
-- `.env.local` continua ignorado pelo git
-- as variáveis que serão configuradas na etapa seguinte são:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY` ou chave publishable equivalente
-- nenhuma migration foi aplicada nesta etapa
-- nenhum deploy foi feito nesta etapa
-- nenhum segredo real foi versionado nesta etapa
+- `202608131300_protect_rental_asset_bookings.sql`
+- `202608131400_restrict_rental_booking_function_execute.sql`
 
-#### Status conhecido da execução em outra instância
+Validações finais do Lote 3C:
 
-Segundo o retorno informado pelo usuário, outro agente já conseguiu:
+- Security Advisor sem alerta novo causado pelo lote;
+- testes focais passando;
+- TypeScript sem erros;
+- `git diff --check` aprovado para os arquivos de texto;
+- teste real de concorrência no PostgreSQL aprovado: a segunda transação aguardou o lock da primeira e, após o commit, foi rejeitada por conflito;
+- período não conflitante permitido;
+- intervalo fechado confirmado: término e novo início no mesmo dia geram conflito;
+- funções internas do Lote 3C sem `EXECUTE` para `PUBLIC`, `anon`, `authenticated` e `service_role`, mantendo os triggers funcionais.
 
-- trazer a base da branch de planejamento para trabalho local nessa outra execução;
-- corrigir a base técnica;
-- rodar `npm test` com sucesso;
-- rodar `npx tsc --noEmit` com sucesso.
+## Git / PR atual
 
-#### Limites importantes
+Commit consolidado enviado:
 
-- não há confirmação aqui, nesta árvore local atual, de que toda a implementação de contratos/locações esteja presente;
-- não aplicar migrations nem fazer deploy sem nova validação;
-- o trabalho desse módulo deve seguir por etapas em chats separados para economizar tokens.
+`dfc624b4cf2cfc493508318277fb26f64181448b`
 
-## Organização recomendada de chats
+Mensagem:
 
-### Mesmo chat
+`feat: add rental contracts control workflows`
 
-- Contratos e Locações: partes 1, 2 e 3
-  - contexto
-  - revisão da base
-  - endurecimento técnico
+Branch remota:
 
-### Novo chat por etapa
+`origin/codex/controle-locacoes`
 
-- Parte 4: cadastro central
-- Parte 5: contratos, locações e itens
-- Parte 6: cobranças, períodos e alertas
-- Parte 7: importação das planilhas antigas
-- Parte 8: recibo/PDF e numeração final
-- Parte 9: offline/sincronização simples
-- Parte 10: testes finais, revisão e handoff final
+PR aberto contra `main`:
 
-## Regra para continuidade por outro agente
+- PR #2;
+- o PR acumula também mudanças anteriores de outros módulos que ainda não estavam integradas à `main`;
+- não fazer merge automaticamente apenas porque o PR está tecnicamente mergeável;
+- preparar a produção/MISFY antes de qualquer merge que possa resultar em deploy da aplicação.
 
-Antes de agir, o agente deve ler:
+## Regras operacionais importantes
 
-1. `docs/AGENTE-INSTRUCOES.md`
-2. `docs/ESTADO-ATUAL-PROJETO.md`
-3. handoffs relevantes
-4. o prompt/arquivo específico da etapa
+- Worktree obrigatório para essa linha de trabalho:
+  `C:\tmp\Sistema_Pedidos_Radial-unificar-transformador`
+- Não usar a pasta antiga do OneDrive.
+- Não tocar `.next-bloqueada-20260804/`.
+- O usuário prefere iniciar o Next manualmente no Windows em `http://localhost:3001` quando QA de UI for realmente necessário.
+- Não gastar tempo tentando iniciar/manter o Next dentro do sandbox.
+- Não usar `service_role` como atalho para QA funcional.
+- Não executar commit, merge ou deploy sem etapa explícita.
 
-## Próximo uso recomendado
+## Próximo passo recomendado
 
-Se o próximo trabalho for em Contratos e Locações, começar pela etapa específica desejada em chat separado, sempre levando os arquivos deste diretório `docs/` como contexto inicial.
+Antes de integrar o PR #2 à `main`, revisar a preparação de produção:
+
+1. confirmar exatamente quais migrations ainda faltam no MISFY;
+2. preparar aplicação segura dessas migrations na produção;
+3. validar compatibilidade do código com o estado do banco de produção;
+4. só depois decidir pelo merge/deploy.
