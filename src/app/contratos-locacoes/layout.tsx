@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Building2, ChevronRight, FileText, LayoutDashboard, Users } from 'lucide-react';
+import { ChevronRight, FileText, LayoutDashboard, List, Package, Users } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
 export default function ContratosLocacoesLayout({
@@ -35,6 +35,13 @@ export default function ContratosLocacoesLayout({
               </Link>
               <Link
                 className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
+                href="/contratos-locacoes/contratos"
+              >
+                <List size={16} />
+                Locações
+              </Link>
+              <Link
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
                 href="/contratos-locacoes/clientes"
               >
                 <Users size={16} />
@@ -42,17 +49,17 @@ export default function ContratosLocacoesLayout({
               </Link>
               <Link
                 className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
+                href="/contratos-locacoes/ativos"
+              >
+                <Package size={16} />
+                Ativos
+              </Link>
+              <Link
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
                 href="/contratos-locacoes/cobrancas"
               >
                 <FileText size={16} />
                 Cobranças
-              </Link>
-              <Link
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-300"
-                href="/contratos-locacoes/clientes/novo"
-              >
-                <Building2 size={16} />
-                Novo cliente
               </Link>
             </div>
           </div>

@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { migrationSha256 } from '../migration-hash';
 
 const migrationsDir = path.resolve(__dirname, '../../../supabase/migrations');
 
@@ -29,11 +29,11 @@ function readOrphanCleanupSelectMigration() {
   );
 }
 
-function migrationSha256(suffix: RegExp) {
+function migrationSha256ForMigration(suffix: RegExp) {
   const [filename] = readdirSync(migrationsDir).filter((candidate) => suffix.test(candidate));
-  const contents = readFileSync(path.join(migrationsDir, filename));
+  const contents = readFileSync(path.join(migrationsDir, filename), 'utf8');
 
-  return createHash('sha256').update(contents).digest('hex');
+  return migrationSha256(contents);
 }
 
 describe('relatorios de cabine migration consistency', () => {
@@ -198,10 +198,10 @@ describe('relatorios de cabine migration consistency', () => {
     const storageSql = readStorageMigration();
     const cleanupSql = readOrphanCleanupSelectMigration();
 
-    expect(migrationSha256(/_relatorios_cabine_core\.sql$/i)).toBe(
+    expect(migrationSha256ForMigration(/_relatorios_cabine_core\.sql$/i)).toBe(
       '23ea72172452f5c45fd4a6992b604f95b8e88a286017c7031c5a99218596628b'
     );
-    expect(migrationSha256(/_relatorios_cabine_storage\.sql$/i)).toBe(
+    expect(migrationSha256ForMigration(/_relatorios_cabine_storage\.sql$/i)).toBe(
       '7feec990859a6bd5ffc08d70bdef5dc6d915c244fab497625e3d88858649c992'
     );
     expect(storageSql).toMatch(

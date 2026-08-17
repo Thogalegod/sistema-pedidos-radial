@@ -16,6 +16,7 @@ function buildDocument(overrides: Partial<ContractDocument> = {}): ContractDocum
     organization_id: 'org-1',
     contract_id: 'contract-1',
     billing_cycle_id: null,
+    payment_id: null,
     inspection_id: null,
     kind: 'remittance_nf',
     storage_path: 'org-1/contract-1/remittance_nf/file.pdf',

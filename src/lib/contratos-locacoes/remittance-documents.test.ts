@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   findRemittanceInvoiceDocument,
+  loadContractAttachmentDocuments,
   saveRemittanceInvoiceDocument,
   type ContractsLocacoesRemittanceDocumentClient,
 } from './remittance-documents';
@@ -114,6 +115,7 @@ function buildRemittanceDocument(overrides: Partial<ContractDocument> = {}): Con
     organization_id: 'org-1',
     contract_id: 'contract-1',
     billing_cycle_id: null,
+    payment_id: null,
     inspection_id: null,
     kind: 'remittance_nf',
     storage_path: 'org-1/contract-1/remittance_nf/existing.pdf',
@@ -226,6 +228,7 @@ describe('remittance documents', () => {
         organization_id: 'org-1',
         contract_id: 'contract-1',
         billing_cycle_id: null,
+        payment_id: null,
         inspection_id: null,
         kind: 'other',
         storage_path: 'org-1/contract-1/other/file.txt',
@@ -239,6 +242,7 @@ describe('remittance documents', () => {
         organization_id: 'org-1',
         contract_id: 'contract-1',
         billing_cycle_id: null,
+        payment_id: null,
         inspection_id: null,
         kind: 'remittance_nf',
         storage_path: 'org-1/contract-1/remittance_nf/file.pdf',
@@ -250,6 +254,34 @@ describe('remittance documents', () => {
     ]);
 
     expect(document?.id).toBe('doc-2');
+  });
+
+  it('loads remittance and payment proof documents with a single contract document listing', async () => {
+    const client = new FakeRemittanceDocumentClient();
+    client.existingDocuments = [
+      buildRemittanceDocument(),
+      buildRemittanceDocument({
+        id: 'doc-payment',
+        billing_cycle_id: 'billing-1',
+        payment_id: 'payment-1',
+        kind: 'payment_proof',
+        storage_path: 'org-1/contract-1/payment_proof/payment-1-proof.pdf',
+        file_name: 'proof.pdf',
+      }),
+      buildRemittanceDocument({
+        id: 'doc-other',
+        kind: 'other',
+        storage_path: 'org-1/contract-1/other/other.txt',
+        file_name: 'other.txt',
+        content_type: 'text/plain',
+      }),
+    ];
+
+    const attachments = await loadContractAttachmentDocuments(client, buildRentalContract());
+
+    expect(attachments.remittanceDocument?.id).toBe('doc-existing');
+    expect(attachments.paymentProofDocuments.map((document) => document.id)).toEqual(['doc-payment']);
+    expect(client.callOrder.filter((entry) => entry === 'list')).toHaveLength(1);
   });
 
   it('uploads and inserts the first remittance NF attachment with private storage path metadata', async () => {
@@ -424,6 +456,7 @@ describe('remittance documents', () => {
         organization_id: 'org-1',
         contract_id: 'contract-1',
         billing_cycle_id: null,
+        payment_id: null,
         inspection_id: null,
         kind: 'remittance_nf',
         storage_path: 'org-1/contract-1/remittance_nf/old-file.pdf',

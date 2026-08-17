@@ -1,17 +1,22 @@
 'use client';
 
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { BillingTable } from '@/components/contratos-locacoes/BillingTable';
 import { createSupabaseContractsLocacoesReadClient, listBillings, type BillingListItem } from '@/lib/contratos-locacoes/queries';
+import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 import { supabase } from '@/lib/supabase';
 
 export default function CobrancasPage() {
+  const searchParams = useSearchParams();
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled'>('all');
-  const deferredSearch = useDeferredValue(search);
+  const [status, setStatus] = useState<'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled'>(
+    normalizeStatusFilter(searchParams.get('status'))
+  );
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,7 +26,7 @@ export default function CobrancasPage() {
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
         const data = await listBillings(readClient, new Date().toISOString().slice(0, 10), {
-          search: deferredSearch,
+          search: debouncedSearch,
           status,
         });
 
@@ -43,7 +48,7 @@ export default function CobrancasPage() {
     return () => {
       cancelled = true;
     };
-  }, [deferredSearch, status]);
+  }, [debouncedSearch, status]);
 
   return (
     <div className="space-y-4">
@@ -68,4 +73,9 @@ export default function CobrancasPage() {
       <BillingTable billings={billings} loading={loading} />
     </div>
   );
+}
+
+function normalizeStatusFilter(value: string | null) {
+  const allowed = ['all', 'to_issue', 'due_soon', 'due_today', 'overdue', 'issued', 'paid', 'exempt', 'cancelled'] as const;
+  return allowed.find((entry) => entry === value) ?? 'all';
 }

@@ -7,16 +7,33 @@ import { ArrowLeft, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
 import { RemittanceInvoiceAttachmentCard } from '@/components/contratos-locacoes/RemittanceInvoiceAttachmentCard';
-import { formatBRL } from '@/lib/contratos-locacoes/money';
+import type { BillingPaymentFormValues } from '@/components/contratos-locacoes/BillingPaymentForm';
+import type { BillingPeriodFormValues } from '@/components/contratos-locacoes/BillingPeriodForm';
 import { createSupabaseContractsLocacoesReadClient, getContract, type ContractDetail } from '@/lib/contratos-locacoes/queries';
-import { createSupabaseContractsLocacoesMutationClient, pauseContract, reactivateContract } from '@/lib/contratos-locacoes/mutations';
+import {
+  closeContract,
+  createBillingCycle,
+  createSupabaseContractsLocacoesMutationClient,
+  markBillingCycleSent,
+  pauseContract,
+  reactivateContract,
+  registerRentalItemReturn,
+  recordBillingPayment,
+  startContractClosure,
+  updateBillingCycleDetails,
+} from '@/lib/contratos-locacoes/mutations';
 import {
   createSupabaseContractsLocacoesRemittanceDocumentClient,
   getRemittanceInvoiceSignedUrl,
-  loadRemittanceInvoiceDocument,
+  loadContractAttachmentDocuments,
   saveRemittanceInvoiceDocument,
 } from '@/lib/contratos-locacoes/remittance-documents';
-import type { ContractDocument } from '@/lib/contratos-locacoes/types';
+import {
+  createSupabaseContractsLocacoesPaymentProofClient,
+  getPaymentProofSignedUrl,
+  savePaymentProofDocument,
+} from '@/lib/contratos-locacoes/payment-proofs';
+import type { BillingCycle, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
 import { supabase } from '@/lib/supabase';
 
 export default function ContractDetailPage() {
@@ -24,9 +41,11 @@ export default function ContractDetailPage() {
   const contractId = params.id;
   const [detail, setDetail] = useState<ContractDetail | null>(null);
   const [remittanceDocument, setRemittanceDocument] = useState<ContractDocument | null>(null);
+  const [paymentProofDocuments, setPaymentProofDocuments] = useState<ContractDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const isFinalContractStatus = detail?.contract.status === 'closed' || detail?.contract.status === 'cancelled';
 
   const load = async () => {
     setLoading(true);
@@ -34,9 +53,10 @@ export default function ContractDetailPage() {
       const readClient = createSupabaseContractsLocacoesReadClient(supabase);
       const data = await getContract(readClient, contractId);
       const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
-      const document = await loadRemittanceInvoiceDocument(documentClient, data.contract);
+      const attachments = await loadContractAttachmentDocuments(documentClient, data.contract);
       setDetail(data);
-      setRemittanceDocument(document);
+      setRemittanceDocument(attachments.remittanceDocument);
+      setPaymentProofDocuments(attachments.paymentProofDocuments);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível carregar o contrato.');
     } finally {
@@ -52,13 +72,14 @@ export default function ContractDetailPage() {
     async function loadInitialDetail() {
       try {
         const data = await getContract(readClient, contractId);
-        const document = await loadRemittanceInvoiceDocument(documentClient, data.contract);
+        const attachments = await loadContractAttachmentDocuments(documentClient, data.contract);
         if (!isActive) {
           return;
         }
 
         setDetail(data);
-        setRemittanceDocument(document);
+        setRemittanceDocument(attachments.remittanceDocument);
+        setPaymentProofDocuments(attachments.paymentProofDocuments);
       } catch (error) {
         if (!isActive) {
           return;
@@ -137,6 +158,149 @@ export default function ContractDetailPage() {
     }
   };
 
+  const handleCreateBillingPeriod = async (values: BillingPeriodFormValues & { sequence_number: number }) => {
+    if (!detail) {
+      return;
+    }
+
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    await createBillingCycle(mutationClient, {
+      contract_id: detail.contract.id,
+      period_start: values.period_start,
+      period_end: values.period_end,
+      issue_date: values.issue_date,
+      due_date: values.due_date,
+      document_type: 'receipt',
+      document_number: '',
+      sequence_number: values.sequence_number,
+      discount_amount: '0',
+      surcharge_amount: '0',
+      exemption_amount: '0',
+      notes: values.notes,
+      items: [
+        {
+          id: crypto.randomUUID(),
+          rental_item_id: null,
+          description: 'Locação mensal',
+          quantity: 1,
+          unit_amount: values.amount,
+          kind: 'recurring',
+        },
+      ],
+    });
+    toast.success('Período de cobrança salvo.');
+    await load();
+  };
+
+  const handleStartClosure = async (endDate: string) => {
+    try {
+      const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+      const contract = await startContractClosure(mutationClient, contractId, { end_date: endDate });
+      toast.success(contract.status === 'closed' ? 'Locação encerrada.' : 'Encerramento iniciado.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível iniciar o encerramento.');
+    }
+  };
+
+  const handleRegisterItemReturn = async (item: RentalItem, returnedAt: string) => {
+    try {
+      const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+      await registerRentalItemReturn(mutationClient, contractId, item.id, { returned_at: returnedAt });
+      toast.success('Devolução registrada.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível registrar a devolução.');
+    }
+  };
+
+  const handleCloseContract = async () => {
+    try {
+      const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+      await closeContract(mutationClient, contractId);
+      toast.success('Locação encerrada.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível finalizar a locação.');
+    }
+  };
+
+  const handleUpdateBillingPeriod = async (billing: BillingCycle, values: BillingPeriodFormValues) => {
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    await updateBillingCycleDetails(mutationClient, billing.id, values);
+    toast.success('Período atualizado.');
+    await load();
+  };
+
+  const handleMarkBillingSent = async (billing: BillingCycle) => {
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    await markBillingCycleSent(mutationClient, billing.id);
+    toast.success('Cobrança marcada como enviada.');
+    await load();
+  };
+
+  const handleAttachPaymentProof = async (billing: BillingCycle, payment: Payment, file: File) => {
+    if (!detail) {
+      return;
+    }
+
+    const proofClient = createSupabaseContractsLocacoesPaymentProofClient(supabase);
+    const document = await savePaymentProofDocument(proofClient, detail.contract, billing, payment, file);
+    setPaymentProofDocuments((current) => [document, ...current.filter((entry) => entry.id !== document.id)]);
+    toast.success('Comprovante anexado.');
+    await load();
+  };
+
+  const handleRecordBillingPayment = async (
+    billing: BillingCycle,
+    values: BillingPaymentFormValues,
+    file: File | null
+  ) => {
+    if (!detail) {
+      return;
+    }
+
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    const result = await recordBillingPayment(mutationClient, billing.id, {
+      billing_cycle_id: billing.id,
+      paid_at: values.paid_at,
+      amount: values.amount,
+      notes: values.notes,
+    });
+
+    if (!file) {
+      toast.success('Recebimento registrado.');
+      await load();
+      return;
+    }
+
+    try {
+      await handleAttachPaymentProof(result.billing, result.payment, file);
+      toast.success('Recebimento registrado com comprovante.');
+    } catch (proofError) {
+      toast.error(
+        proofError instanceof Error
+          ? `Recebimento salvo, mas o comprovante não foi anexado: ${proofError.message}`
+          : 'Recebimento salvo, mas o comprovante não foi anexado.'
+      );
+      await load();
+    }
+  };
+
+  const handleOpenPaymentProof = async (document: ContractDocument) => {
+    try {
+      const proofClient = createSupabaseContractsLocacoesPaymentProofClient(supabase);
+      const signedUrl = await getPaymentProofSignedUrl(proofClient, document);
+      const openedWindow = window.open(signedUrl, '_blank', 'noopener,noreferrer');
+
+      if (!openedWindow) {
+        window.location.assign(signedUrl);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível abrir o comprovante.');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -148,7 +312,7 @@ export default function ContractDetailPage() {
           Voltar para contratos
         </Link>
 
-        {detail?.contract.status === 'paused' ? (
+        {detail?.contract.status === 'paused' && !isFinalContractStatus ? (
           <button
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
             onClick={() => void handleReactivate()}
@@ -157,7 +321,7 @@ export default function ContractDetailPage() {
             <Play size={16} />
             Reativar
           </button>
-        ) : (
+        ) : detail && !isFinalContractStatus ? (
           <button
             className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
             onClick={() => void handlePause()}
@@ -166,7 +330,7 @@ export default function ContractDetailPage() {
             <Pause size={16} />
             Pausar
           </button>
-        )}
+        ) : null}
       </div>
 
       {loading ? (
@@ -175,6 +339,16 @@ export default function ContractDetailPage() {
         <>
           <ContractSummary
             detail={detail}
+            paymentProofDocuments={paymentProofDocuments}
+            onAttachPaymentProof={handleAttachPaymentProof}
+            onCloseContract={handleCloseContract}
+            onCreateBillingPeriod={handleCreateBillingPeriod}
+            onMarkBillingSent={handleMarkBillingSent}
+            onOpenPaymentProof={handleOpenPaymentProof}
+            onRegisterItemReturn={handleRegisterItemReturn}
+            onRecordBillingPayment={handleRecordBillingPayment}
+            onStartClosure={handleStartClosure}
+            onUpdateBillingPeriod={handleUpdateBillingPeriod}
             remittanceAttachmentSlot={
               <RemittanceInvoiceAttachmentCard
                 document={remittanceDocument}
@@ -185,31 +359,6 @@ export default function ContractDetailPage() {
               />
             }
           />
-
-          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900">Itens da locação</h3>
-            {detail.items.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-500">Este contrato não possui itens de equipamento.</p>
-            ) : (
-              <div className="mt-4 grid gap-3">
-                {detail.items.map((item) => (
-                  <div className="rounded-xl border border-gray-200 p-4" key={item.id}>
-                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-900">{item.description}</p>
-                        <p className="text-sm text-gray-500">{item.equipment_type} • {item.capacity}</p>
-                      </div>
-                      <div className="grid gap-1 text-sm text-gray-500 md:text-right">
-                        <span>Qtd: {item.quantity}</span>
-                        <span>Valor unit.: {formatBRL(item.unit_amount)}</span>
-                        <span>Status: {item.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
         </>
       ) : (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">

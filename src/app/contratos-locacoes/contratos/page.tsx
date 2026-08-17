@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { listContracts, createSupabaseContractsLocacoesReadClient, type ContractListItem } from '@/lib/contratos-locacoes/queries';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
+import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 
 export default function ContratosPage() {
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
@@ -13,7 +14,7 @@ export default function ContratosPage() {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | 'rental' | 'energy_management' | 'recurring_service' | 'other'>('all');
   const [status, setStatus] = useState<'all' | 'draft' | 'active' | 'paused' | 'closing_requested' | 'awaiting_return' | 'inspection' | 'closed' | 'cancelled'>('all');
-  const deferredSearch = useDeferredValue(search);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,7 +24,7 @@ export default function ContratosPage() {
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
         const data = await listContracts(readClient, {
-          search: deferredSearch,
+          search: debouncedSearch,
           kind,
           status,
         });
@@ -45,7 +46,7 @@ export default function ContratosPage() {
     return () => {
       cancelled = true;
     };
-  }, [deferredSearch, kind, status]);
+  }, [debouncedSearch, kind, status]);
 
   return (
     <div className="space-y-6">
@@ -60,15 +61,15 @@ export default function ContratosPage() {
           />
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
             <option value="all">Todos os tipos</option>
             <option value="rental">Locação</option>
             <option value="energy_management">Gestão de energia</option>
             <option value="recurring_service">Serviço recorrente</option>
             <option value="other">Outro contrato</option>
           </select>
-          <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+          <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
             <option value="all">Todos os status</option>
             <option value="draft">Rascunho</option>
             <option value="active">Ativo</option>
@@ -77,11 +78,11 @@ export default function ContratosPage() {
             <option value="cancelled">Cancelado</option>
           </select>
           <Link
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 whitespace-nowrap"
             href="/contratos-locacoes/contratos/novo"
           >
             <Plus size={16} />
-            Novo contrato
+            Nova locação
           </Link>
         </div>
       </div>

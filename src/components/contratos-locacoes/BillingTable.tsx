@@ -7,6 +7,26 @@ interface BillingTableProps {
   loading: boolean;
 }
 
+const statusLabels: Record<BillingListItem['status'], string> = {
+  cancelled: 'Cancelada',
+  draft: 'A emitir',
+  exempt: 'Isenta',
+  issued: 'Emitida',
+  overdue: 'Vencida',
+  paid: 'Paga',
+};
+
+function formatDateLabel(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function formatDateTimeLabel(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export function BillingTable({ billings, loading }: BillingTableProps) {
   if (loading) {
     return <div className="rounded-3xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">Carregando cobranças...</div>;
@@ -18,37 +38,61 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
 
   return (
     <div className="grid gap-3">
-      {billings.map((billing) => (
-        <Link
-          className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm"
-          href={billing.document_type === 'receipt'
-            ? `/contratos-locacoes/recibos/${billing.id}`
-            : `/contratos-locacoes/contratos/${billing.contract_id}`}
-          key={billing.id}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">
-                {billing.document_number ?? 'Sem número'} • #{billing.internal_number}
-              </p>
-              <p className="text-sm text-gray-600">{billing.customer_name}</p>
-              <p className="text-xs text-gray-500">{billing.site_name}</p>
+      {billings.map((billing) => {
+        const paidAmount = Number.parseInt(billing.paid_amount, 10);
+        const balanceAmount = Number.parseInt(billing.balance_amount, 10);
+        const isPartial = paidAmount > 0 && balanceAmount > 0;
+
+        return (
+          <article className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm" key={billing.id}>
+            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {billing.document_number ?? 'Sem número'} • Locação #{billing.internal_number}
+                </p>
+                <p className="text-sm text-gray-600">{billing.customer_name}</p>
+                <p className="text-xs text-gray-500">{billing.site_name}</p>
+              </div>
+
+              <div className="text-left lg:text-right">
+                <p className="text-sm font-semibold text-gray-900">{formatBRL(billing.total_amount)}</p>
+                <p className="text-xs text-gray-500">Recebido: {formatBRL(paidAmount)}</p>
+                <p className="text-xs text-gray-500">Saldo: {formatBRL(balanceAmount)}</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-gray-900">{formatBRL(Number.parseInt(billing.total_amount, 10))}</p>
-              <p className="text-xs text-gray-500">Saldo: {formatBRL(Number.parseInt(billing.balance_amount, 10))}</p>
-              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">{billing.status}</p>
+
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Período</p>
+                <p className="font-medium text-gray-900">{formatDateLabel(billing.period_start)} a {formatDateLabel(billing.period_end)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Vencimento</p>
+                <p className="font-medium text-gray-900">{formatDateLabel(billing.due_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
+                <p className="font-medium text-gray-900">{isPartial ? 'Recebido parcialmente' : statusLabels[billing.status]}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Envio</p>
+                <p className="font-medium text-gray-900">{billing.sent_at ? `Enviado em ${formatDateTimeLabel(billing.sent_at)}` : 'Não enviado'}</p>
+              </div>
             </div>
-          </div>
-          {billing.document_type === 'receipt' ? (
-            <div className="mt-3 flex justify-end">
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Abrir recibo PDF
-              </span>
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Link className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/contratos/${billing.contract_id}`}>
+                Abrir locação
+              </Link>
+              {billing.document_type === 'receipt' ? (
+                <Link className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
+                  Abrir recibo
+                </Link>
+              ) : null}
             </div>
-          ) : null}
-        </Link>
-      ))}
+          </article>
+        );
+      })}
     </div>
   );
 }

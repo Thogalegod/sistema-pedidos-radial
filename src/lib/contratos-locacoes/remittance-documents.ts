@@ -228,6 +228,22 @@ export function findRemittanceInvoiceDocument(documents: ContractDocument[]) {
   return documents.find((document) => document.kind === 'remittance_nf') ?? null;
 }
 
+export async function loadContractAttachmentDocuments(
+  client: ContractsLocacoesRemittanceDocumentClient,
+  contract: Contract
+) {
+  const organizationId = contract.organization_id || await client.getCurrentOrganizationId();
+  const documents = await client.listContractDocuments(organizationId, contract.id);
+
+  return {
+    remittanceDocument:
+      contract.kind === 'rental' && contract.has_remittance_invoice
+        ? findRemittanceInvoiceDocument(documents)
+        : null,
+    paymentProofDocuments: documents.filter((document) => document.kind === 'payment_proof'),
+  };
+}
+
 function findRemittanceInvoiceDocumentByPath(documents: ContractDocument[], storagePath: string) {
   return documents.find(
     (document) => document.kind === 'remittance_nf' && document.storage_path === storagePath
@@ -365,6 +381,7 @@ export async function saveRemittanceInvoiceDocument(
       organization_id: organizationId,
       contract_id: contract.id,
       billing_cycle_id: null,
+      payment_id: null,
       inspection_id: null,
       kind: 'remittance_nf',
       storage_path: storagePath,

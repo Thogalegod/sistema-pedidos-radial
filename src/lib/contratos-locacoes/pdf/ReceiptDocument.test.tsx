@@ -77,6 +77,7 @@ function makeBilling(overrides: Partial<BillingCycle> = {}): BillingCycle {
     document_type: 'receipt',
     document_number: null,
     status: 'issued',
+    sent_at: null,
     notes: 'Recibo mensal',
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-01T00:00:00.000Z',

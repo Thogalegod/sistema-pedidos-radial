@@ -5,6 +5,7 @@ import {
   customerDraftSchema,
   pauseContractSchema,
   paymentDraftSchema,
+  rentalAssetDraftSchema,
   reactivateContractSchema,
   type BillingDraftInput,
   type BillingLineDraftInput,
@@ -16,12 +17,19 @@ import {
   type ReactivateContractInput,
   type RentalItemDraftInput,
   type CustomerSiteInput,
+  type RentalAssetDraftInput,
 } from './schemas';
-import type { BillingCycle, BillingLine, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalItem } from './types';
+import type { BillingCycle, BillingLine, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalAsset, RentalItem } from './types';
 import { calculateBilling } from './money';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
 import { receiptNumberFromInternalNumber } from './numbering';
 import { getContractCompanyLabel } from './company';
+import { assertNoBillingPeriodConflict } from './billing-periods';
+import {
+  assertCanCloseContract,
+  assertValidReturnDate,
+  hasPendingPhysicalReturns,
+} from './rental-closure';
 
 export interface CustomerMutationResult {
   customer: Customer;
@@ -39,11 +47,24 @@ export interface BillingMutationResult {
   lines: BillingLine[];
 }
 
+export interface BillingCycleEditInput {
+  period_start: string;
+  period_end: string;
+  issue_date: string;
+  due_date: string;
+  amount: string;
+  notes: string | null;
+}
+
 export interface PaymentMutationResult {
   billing: BillingCycle;
   payment: Payment;
   payments: Payment[];
   balance: ReturnType<typeof calculateBillingBalance>;
+}
+
+export interface RentalAssetMutationResult {
+  asset: RentalAsset;
 }
 
 export interface ContractsLocacoesMutationClient {
@@ -59,13 +80,19 @@ export interface ContractsLocacoesMutationClient {
   updateContract(contractId: string, patch: Partial<Contract>): Promise<Contract>;
   upsertRentalItems(records: RentalItem[]): Promise<RentalItem[]>;
   deleteMissingRentalItems(contractId: string, keepIds: string[]): Promise<void>;
+  listRentalItemsByContractId?(organizationId: string, contractId: string): Promise<RentalItem[]>;
+  getRentalItemById?(organizationId: string, itemId: string): Promise<RentalItem>;
+  updateRentalItem?(itemId: string, patch: Partial<RentalItem>): Promise<RentalItem>;
   insertBillingCycle?(record: Omit<BillingCycle, 'id' | 'created_at' | 'updated_at'>): Promise<BillingCycle>;
   getBillingCycleById?(organizationId: string, billingCycleId: string): Promise<BillingCycle>;
+  listBillingCyclesByContractId?(organizationId: string, contractId: string): Promise<BillingCycle[]>;
   updateBillingCycle?(billingCycleId: string, patch: Partial<BillingCycle>): Promise<BillingCycle>;
   upsertBillingLines?(records: BillingLine[]): Promise<BillingLine[]>;
   deleteMissingBillingLines?(billingCycleId: string, keepIds: string[]): Promise<void>;
   insertPayment?(record: Omit<Payment, 'id' | 'created_at' | 'updated_at'>): Promise<Payment>;
   listPaymentsByBillingCycleId?(organizationId: string, billingCycleId: string): Promise<Payment[]>;
+  insertRentalAsset?(record: Omit<RentalAsset, 'id' | 'created_at' | 'updated_at'>): Promise<RentalAsset>;
+  updateRentalAsset?(assetId: string, patch: Partial<RentalAsset>): Promise<RentalAsset>;
 }
 
 const UUID_LIKE_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -288,6 +315,40 @@ export function createSupabaseContractsLocacoesMutationClient(
       }
     },
 
+    async listRentalItemsByContractId(organizationId, contractId) {
+      const { data, error } = await client
+        .from('rental_items')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('contract_id', contractId)
+        .order('created_at', { ascending: true });
+
+      return ensureData((data ?? []) as RentalItem[] | null, error, 'Não foi possível listar itens da locação');
+    },
+
+    async getRentalItemById(organizationId, itemId) {
+      const { data, error } = await client
+        .from('rental_items')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('id', itemId)
+        .single();
+
+      return ensureData(data as RentalItem | null, error, 'Não foi possível carregar o item da locação');
+    },
+
+    async updateRentalItem(itemId, patch) {
+      const { data, error } = await client
+        .from('rental_items')
+        .update(patch)
+        .eq('id', itemId)
+        .eq('organization_id', patch.organization_id ?? '')
+        .select('*')
+        .single();
+
+      return ensureData(data as RentalItem | null, error, 'Não foi possível atualizar o item da locação');
+    },
+
     async insertBillingCycle(record) {
       const { data, error } = await client
         .from('billing_cycles')
@@ -319,6 +380,17 @@ export function createSupabaseContractsLocacoesMutationClient(
         .single();
 
       return ensureData(data as BillingCycle | null, error, 'Não foi possível carregar a cobrança');
+    },
+
+    async listBillingCyclesByContractId(organizationId, contractId) {
+      const { data, error } = await client
+        .from('billing_cycles')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('contract_id', contractId)
+        .order('period_start', { ascending: true });
+
+      return ensureData((data ?? []) as BillingCycle[] | null, error, 'Não foi possível listar cobranças da locação');
     },
 
     async upsertBillingLines(records) {
@@ -371,6 +443,28 @@ export function createSupabaseContractsLocacoesMutationClient(
         .order('paid_at', { ascending: true });
 
       return ensureData((data ?? []) as Payment[] | null, error, 'Não foi possível listar pagamentos');
+    },
+
+    async insertRentalAsset(record) {
+      const { data, error } = await client
+        .from('rental_assets')
+        .insert(record)
+        .select('*')
+        .single();
+
+      return ensureData(data as RentalAsset | null, error, 'Não foi possível criar o ativo');
+    },
+
+    async updateRentalAsset(assetId, patch) {
+      const { data, error } = await client
+        .from('rental_assets')
+        .update(patch)
+        .eq('id', assetId)
+        .eq('organization_id', patch.organization_id ?? '')
+        .select('*')
+        .single();
+
+      return ensureData(data as RentalAsset | null, error, 'Não foi possível atualizar o ativo');
     },
   };
 }
@@ -568,6 +662,52 @@ export async function updateCustomer(
   };
 }
 
+function buildRentalAssetRecord(
+  organizationId: string,
+  payload: RentalAssetDraftInput
+): Omit<RentalAsset, 'id' | 'created_at' | 'updated_at'> {
+  return {
+    organization_id: organizationId,
+    description: payload.description,
+    equipment_type: payload.equipment_type,
+    capacity: payload.capacity,
+    serial_number: payload.serial_number,
+    internal_code: payload.internal_code,
+    operational_status: payload.operational_status,
+    notes: payload.notes,
+  };
+}
+
+export async function createRentalAsset(
+  client: ContractsLocacoesMutationClient,
+  rawPayload: RentalAssetDraftInput
+): Promise<RentalAssetMutationResult> {
+  const payload = rentalAssetDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+  const insertRentalAsset = requireBillingMethod(client.insertRentalAsset?.bind(client), 'insertRentalAsset');
+
+  return {
+    asset: await insertRentalAsset(buildRentalAssetRecord(organizationId, payload)),
+  };
+}
+
+export async function updateRentalAsset(
+  client: ContractsLocacoesMutationClient,
+  assetId: string,
+  rawPayload: RentalAssetDraftInput
+): Promise<RentalAssetMutationResult> {
+  const payload = rentalAssetDraftSchema.parse(rawPayload);
+  const organizationId = await client.getCurrentOrganizationId();
+  const updateRentalAssetRecord = requireBillingMethod(client.updateRentalAsset?.bind(client), 'updateRentalAsset');
+
+  return {
+    asset: await updateRentalAssetRecord(assetId, {
+      ...buildRentalAssetRecord(organizationId, payload),
+      organization_id: organizationId,
+    }),
+  };
+}
+
 function buildContractRecord(
   organizationId: string,
   payload: ContractDraftInput
@@ -620,14 +760,16 @@ function buildRentalItemRecords(
     id: item.id,
     organization_id: organizationId,
     contract_id: contractId,
+    asset_id: item.asset_id,
     description: item.description,
     equipment_type: item.equipment_type,
-    capacity: item.capacity,
+    capacity: item.capacity ?? '',
     serial_number: item.serial_number ?? '',
     internal_code: item.internal_code ?? '',
-    quantity: item.quantity,
+    quantity: item.asset_id ? 1 : item.quantity,
     unit_amount: item.unit_amount,
     status: item.status,
+    returned_at: null,
     future_inventory_item_id: null,
     created_at: now,
     updated_at: now,
@@ -643,6 +785,38 @@ function resolveRentalItemIds(items: RentalItemDraftInput[]) {
   }));
 }
 
+function sortRentalItemRecordsForPersistence(records: RentalItem[]) {
+  return records
+    .map((record, index) => ({ record, index }))
+    .sort((left, right) => {
+      const leftAssetId = left.record.asset_id;
+      const rightAssetId = right.record.asset_id;
+      const leftHasAsset = leftAssetId != null;
+      const rightHasAsset = rightAssetId != null;
+
+      if (leftAssetId != null && rightAssetId != null) {
+        const assetOrder = leftAssetId.localeCompare(rightAssetId);
+
+        if (assetOrder !== 0) {
+          return assetOrder;
+        }
+
+        const idOrder = left.record.id.localeCompare(right.record.id);
+
+        if (idOrder !== 0) {
+          return idOrder;
+        }
+      }
+
+      if (leftHasAsset !== rightHasAsset) {
+        return leftHasAsset ? -1 : 1;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ record }) => record);
+}
+
 async function persistRentalItems(
   client: ContractsLocacoesMutationClient,
   organizationId: string,
@@ -650,10 +824,12 @@ async function persistRentalItems(
   payload: ContractDraftInput
 ) {
   const itemRecords = payload.kind === 'rental'
-    ? buildRentalItemRecords(
-      organizationId,
-      contractId,
-      resolveRentalItemIds(payload.items)
+    ? sortRentalItemRecordsForPersistence(
+      buildRentalItemRecords(
+        organizationId,
+        contractId,
+        resolveRentalItemIds(payload.items)
+      )
     )
     : [];
 
@@ -719,6 +895,12 @@ export async function pauseContract(
 ) {
   const payload = pauseContractSchema.parse(rawPayload);
   const organizationId = await client.getCurrentOrganizationId();
+  const getContractById = requireClosureMethod(client.getContractById?.bind(client), 'getContractById');
+  const contract = await getContractById(organizationId, contractId);
+
+  if (contract.status === 'closed' || contract.status === 'cancelled') {
+    throw new Error('Contratos encerrados ou cancelados nao podem ser pausados.');
+  }
 
   return client.updateContract(contractId, {
     organization_id: organizationId,
@@ -735,12 +917,124 @@ export async function reactivateContract(
 ) {
   reactivateContractSchema.parse(rawPayload);
   const organizationId = await client.getCurrentOrganizationId();
+  const getContractById = requireClosureMethod(client.getContractById?.bind(client), 'getContractById');
+  const contract = await getContractById(organizationId, contractId);
+
+  if (contract.status === 'closed' || contract.status === 'cancelled') {
+    throw new Error('Contratos encerrados ou cancelados nao podem ser reativados.');
+  }
 
   return client.updateContract(contractId, {
     organization_id: organizationId,
     status: 'active',
     pause_started_at: null,
     pause_reason: null,
+  });
+}
+
+function requireClosureMethod<T>(
+  method: T | undefined,
+  name: string
+): T {
+  if (!method) {
+    throw new Error(`Cliente de mutação sem suporte para ${name}`);
+  }
+
+  return method;
+}
+
+export async function startContractClosure(
+  client: ContractsLocacoesMutationClient,
+  contractId: string,
+  rawPayload: { end_date: string }
+) {
+  const endDate = rawPayload.end_date?.trim();
+
+  if (!endDate) {
+    throw new Error('Data efetiva de término é obrigatória.');
+  }
+
+  const organizationId = await client.getCurrentOrganizationId();
+  const getContractById = requireClosureMethod(client.getContractById?.bind(client), 'getContractById');
+  const listRentalItemsByContractId = requireClosureMethod(
+    client.listRentalItemsByContractId?.bind(client),
+    'listRentalItemsByContractId'
+  );
+  const contract = await getContractById(organizationId, contractId);
+
+  if (endDate < contract.start_date) {
+    throw new Error('A data final não pode ser anterior ao início.');
+  }
+
+  const items = await listRentalItemsByContractId(organizationId, contractId);
+  const status = hasPendingPhysicalReturns(items) ? 'awaiting_return' : 'closed';
+
+  return client.updateContract(contractId, {
+    organization_id: organizationId,
+    end_date: endDate,
+    status,
+  });
+}
+
+export async function registerRentalItemReturn(
+  client: ContractsLocacoesMutationClient,
+  contractId: string,
+  itemId: string,
+  rawPayload: { returned_at: string }
+) {
+  const returnedAt = rawPayload.returned_at?.trim();
+
+  if (!returnedAt) {
+    throw new Error('Data de devolução é obrigatória.');
+  }
+
+  const organizationId = await client.getCurrentOrganizationId();
+  const getContractById = requireClosureMethod(client.getContractById?.bind(client), 'getContractById');
+  const getRentalItemById = requireClosureMethod(client.getRentalItemById?.bind(client), 'getRentalItemById');
+  const updateRentalItem = requireClosureMethod(client.updateRentalItem?.bind(client), 'updateRentalItem');
+  const [contract, item] = await Promise.all([
+    getContractById(organizationId, contractId),
+    getRentalItemById(organizationId, itemId),
+  ]);
+
+  if (item.contract_id !== contractId) {
+    throw new Error('O item informado não pertence a esta locação.');
+  }
+
+  assertValidReturnDate(contract, item, returnedAt);
+
+  return updateRentalItem(itemId, {
+    organization_id: organizationId,
+    returned_at: returnedAt,
+    status: 'returned',
+  });
+}
+
+export async function closeContract(
+  client: ContractsLocacoesMutationClient,
+  contractId: string
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  const getContractById = requireClosureMethod(client.getContractById?.bind(client), 'getContractById');
+  const listRentalItemsByContractId = requireClosureMethod(
+    client.listRentalItemsByContractId?.bind(client),
+    'listRentalItemsByContractId'
+  );
+  const [contract, items] = await Promise.all([
+    getContractById(organizationId, contractId),
+    listRentalItemsByContractId(organizationId, contractId),
+  ]);
+
+  assertCanCloseContract(items);
+
+  if (!contract.end_date) {
+    throw new Error('Nao e possivel encerrar a locacao sem data efetiva de termino.');
+  }
+
+  return client.updateContract(contractId, {
+    organization_id: organizationId,
+    end_date: contract.end_date,
+    status: 'closed',
   });
 }
 
@@ -780,8 +1074,61 @@ function buildBillingCycleRecord(
     document_type: payload.document_type,
     document_number: documentNumber,
     status: 'issued',
+    sent_at: null,
     notes: payload.notes,
   };
+}
+
+function normalizeNotes(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? '';
+  return trimmed === '' ? null : trimmed;
+}
+
+function assertBillingEditInput(payload: BillingCycleEditInput) {
+  if (!payload.period_start) {
+    throw new Error('Início do período é obrigatório.');
+  }
+
+  if (!payload.period_end) {
+    throw new Error('Fim do período é obrigatório.');
+  }
+
+  if (payload.period_end < payload.period_start) {
+    throw new Error('O período final não pode ser anterior ao inicial.');
+  }
+
+  if (!payload.issue_date) {
+    throw new Error('Data de emissão é obrigatória.');
+  }
+
+  if (!payload.due_date) {
+    throw new Error('Vencimento é obrigatório.');
+  }
+
+  if (payload.due_date < payload.issue_date) {
+    throw new Error('O vencimento não pode ser anterior à emissão.');
+  }
+
+  if (!/^[1-9]\d*$/.test(payload.amount)) {
+    throw new Error('Valor da cobrança deve ser maior que zero.');
+  }
+}
+
+function assertBillingPeriodWithinContractEnd(
+  contract: Contract,
+  candidate: { period_start: string; period_end: string }
+) {
+  if (!contract.end_date) {
+    return;
+  }
+
+  if (candidate.period_start > contract.end_date) {
+    throw new Error('Não é possível gerar cobrança posterior ao encerramento da locação.');
+  }
+
+  if (candidate.period_end > contract.end_date) {
+    throw new Error('O período de cobrança não pode ultrapassar a data de encerramento da locação.');
+  }
 }
 
 function buildBillingLineRecords(
@@ -814,9 +1161,20 @@ export async function createBillingCycle(
   const organizationId = await client.getCurrentOrganizationId();
   const getContractById = requireBillingMethod(client.getContractById?.bind(client), 'getContractById');
   const insertBillingCycle = requireBillingMethod(client.insertBillingCycle?.bind(client), 'insertBillingCycle');
+  const listBillingCyclesByContractId = requireBillingMethod(client.listBillingCyclesByContractId?.bind(client), 'listBillingCyclesByContractId');
   const upsertBillingLines = requireBillingMethod(client.upsertBillingLines?.bind(client), 'upsertBillingLines');
   const deleteMissingBillingLines = requireBillingMethod(client.deleteMissingBillingLines?.bind(client), 'deleteMissingBillingLines');
   const contract = await getContractById(organizationId, payload.contract_id);
+  const existingBillingCycles = await listBillingCyclesByContractId(organizationId, payload.contract_id);
+
+  assertBillingPeriodWithinContractEnd(contract, {
+    period_start: payload.period_start,
+    period_end: payload.period_end,
+  });
+  assertNoBillingPeriodConflict(existingBillingCycles, {
+    period_start: payload.period_start,
+    period_end: payload.period_end,
+  });
 
   const billing = await insertBillingCycle(buildBillingCycleRecord(organizationId, payload, contract));
   const lines = await upsertBillingLines(buildBillingLineRecords(organizationId, billing.id, payload.items));
@@ -828,12 +1186,111 @@ export async function createBillingCycle(
   };
 }
 
+export async function updateBillingCycleDetails(
+  client: ContractsLocacoesMutationClient,
+  billingCycleId: string,
+  rawPayload: BillingCycleEditInput
+): Promise<BillingMutationResult> {
+  assertBillingEditInput(rawPayload);
+
+  const organizationId = await client.getCurrentOrganizationId();
+  const getBillingCycleById = requireBillingMethod(client.getBillingCycleById?.bind(client), 'getBillingCycleById');
+  const listBillingCyclesByContractId = requireBillingMethod(client.listBillingCyclesByContractId?.bind(client), 'listBillingCyclesByContractId');
+  const listPaymentsByBillingCycleId = requireBillingMethod(client.listPaymentsByBillingCycleId?.bind(client), 'listPaymentsByBillingCycleId');
+  const updateBillingCycle = requireBillingMethod(client.updateBillingCycle?.bind(client), 'updateBillingCycle');
+  const upsertBillingLines = requireBillingMethod(client.upsertBillingLines?.bind(client), 'upsertBillingLines');
+  const deleteMissingBillingLines = requireBillingMethod(client.deleteMissingBillingLines?.bind(client), 'deleteMissingBillingLines');
+
+  const billingCycle = await getBillingCycleById(organizationId, billingCycleId);
+  const getContractById = requireBillingMethod(client.getContractById?.bind(client), 'getContractById');
+  const contract = await getContractById(organizationId, billingCycle.contract_id);
+  const existingBillingCycles = await listBillingCyclesByContractId(organizationId, billingCycle.contract_id);
+  const payments = await listPaymentsByBillingCycleId(organizationId, billingCycleId);
+
+  assertBillingPeriodWithinContractEnd(contract, {
+    period_start: rawPayload.period_start,
+    period_end: rawPayload.period_end,
+  });
+  assertNoBillingPeriodConflict(existingBillingCycles, {
+    period_start: rawPayload.period_start,
+    period_end: rawPayload.period_end,
+    ignoreBillingCycleId: billingCycleId,
+  });
+
+  const hasPayments = payments.length > 0;
+  const amountChanged = rawPayload.amount !== billingCycle.total_amount;
+
+  if (hasPayments && amountChanged) {
+    throw new Error('O valor não pode ser alterado porque já existe recebimento registrado.');
+  }
+
+  const patch: Partial<BillingCycle> = {
+    organization_id: organizationId,
+    period_start: rawPayload.period_start,
+    period_end: rawPayload.period_end,
+    issue_date: rawPayload.issue_date,
+    due_date: rawPayload.due_date,
+    notes: normalizeNotes(rawPayload.notes),
+  };
+
+  let lines: BillingLine[] = [];
+
+  if (!hasPayments && amountChanged) {
+    patch.base_amount = rawPayload.amount;
+    patch.discount_amount = '0';
+    patch.surcharge_amount = '0';
+    patch.exemption_amount = '0';
+    patch.total_amount = rawPayload.amount;
+  }
+
+  const billing = await updateBillingCycle(billingCycleId, patch);
+
+  if (!hasPayments && amountChanged) {
+    const line = buildBillingLineRecords(organizationId, billingCycleId, [
+      {
+        id: generateUuid(),
+        rental_item_id: null,
+        description: 'Locação mensal',
+        quantity: 1,
+        unit_amount: rawPayload.amount,
+        kind: 'recurring',
+      },
+    ]);
+
+    lines = await upsertBillingLines(line);
+    await deleteMissingBillingLines(billingCycleId, lines.map((entry) => entry.id));
+  }
+
+  return {
+    billing,
+    lines,
+  };
+}
+
+export async function markBillingCycleSent(
+  client: ContractsLocacoesMutationClient,
+  billingCycleId: string,
+  now = new Date()
+) {
+  const organizationId = await client.getCurrentOrganizationId();
+  const updateBillingCycle = requireBillingMethod(client.updateBillingCycle?.bind(client), 'updateBillingCycle');
+
+  return updateBillingCycle(billingCycleId, {
+    organization_id: organizationId,
+    sent_at: now.toISOString(),
+  });
+}
+
 export async function recordBillingPayment(
   client: ContractsLocacoesMutationClient,
   billingCycleId: string,
   rawPayload: PaymentDraftInput
 ): Promise<PaymentMutationResult> {
   const payload = paymentDraftSchema.parse(rawPayload);
+  if (payload.billing_cycle_id !== billingCycleId) {
+    throw new Error('Recebimento não pertence à cobrança informada.');
+  }
+
   const organizationId = await client.getCurrentOrganizationId();
   const getBillingCycleById = requireBillingMethod(client.getBillingCycleById?.bind(client), 'getBillingCycleById');
   const insertPayment = requireBillingMethod(client.insertPayment?.bind(client), 'insertPayment');

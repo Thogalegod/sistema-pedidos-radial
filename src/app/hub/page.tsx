@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LayoutDashboard, FileText, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, FileText, ArrowRight, ClipboardList } from 'lucide-react';
 
 export default function HubPage() {
   return (
@@ -11,7 +11,7 @@ export default function HubPage() {
         <p className="text-gray-500 mt-2 font-medium">Hub de Aplicações</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
+      <div className="grid grid-cols-1 gap-6 w-full max-w-6xl md:grid-cols-3">
         
         {/* Controle de Pedidos */}
         <Link href="/" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-500 transition-all">
@@ -33,6 +33,17 @@ export default function HubPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-green-600 transition-colors">Relatórios Técnicos</h2>
           <p className="text-gray-500 mb-6 line-clamp-2">Transformador, inspeção de cabine, termografia e futuros relatórios de equipamentos de média tensão.</p>
           <div className="flex items-center text-green-600 font-medium text-sm">
+            Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </Link>
+
+        <Link href="/contratos-locacoes" className="group bg-white p-8 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-emerald-500 transition-all">
+          <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <ClipboardList size={28} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-emerald-600 transition-colors">Controle de Locações</h2>
+          <p className="text-gray-500 mb-6 line-clamp-2">Gerenciamento de contratos, clientes, cobranças e itens locados.</p>
+          <div className="flex items-center text-emerald-600 font-medium text-sm">
             Acessar Módulo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>

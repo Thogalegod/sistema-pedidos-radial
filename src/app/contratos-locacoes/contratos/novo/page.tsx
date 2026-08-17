@@ -1,12 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ContractForm } from '@/components/contratos-locacoes/ContractForm';
 import { createLocalDraftKey } from '@/lib/contratos-locacoes/local-draft';
 import { createContract, createSupabaseContractsLocacoesMutationClient } from '@/lib/contratos-locacoes/mutations';
-import { createSupabaseContractsLocacoesReadClient, listCustomers, getCustomer } from '@/lib/contratos-locacoes/queries';
+import {
+  createSupabaseContractsLocacoesReadClient,
+  getCustomer,
+  listAvailableRentalAssets,
+  listCustomers,
+} from '@/lib/contratos-locacoes/queries';
 import type { ContractDraftInput } from '@/lib/contratos-locacoes/schemas';
 import type { CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import type { CustomerSite } from '@/lib/contratos-locacoes/types';
@@ -49,18 +54,40 @@ export default function NovoContratoPage() {
   }, []);
 
   const handleSubmit = async (value: ContractDraftInput) => {
+    const selectedAssetIds = value.items
+      .map((item) => item.asset_id)
+      .filter((assetId): assetId is string => Boolean(assetId));
+
+    if (selectedAssetIds.length > 0) {
+      const availableAssets = await handleLoadAvailableAssets(value.start_date, value.end_date);
+      const availableAssetIds = new Set(availableAssets.map((asset) => asset.id));
+      const unavailableAssetIds = selectedAssetIds.filter((assetId) => !availableAssetIds.has(assetId));
+
+      if (unavailableAssetIds.length > 0) {
+        throw new Error('Um ou mais ativos selecionados não estão disponíveis para o período informado.');
+      }
+    }
+
     const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
     const result = await createContract(mutationClient, value);
     toast.success('Contrato salvo com sucesso.');
     router.push(`/contratos-locacoes/contratos/${result.contract.id}`);
   };
 
+  const handleLoadAvailableAssets = useCallback(async (startDate: string, endDate: string | null) => {
+    const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+    return listAvailableRentalAssets(readClient, {
+      start_date: startDate,
+      end_date: endDate,
+    });
+  }, []);
+
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Novo contrato ou locação</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Nova locação</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Crie contratos com ou sem equipamento e registre vários itens manuais quando for locação.
+          Cadastre o cliente, os equipamentos e as condições principais da locação.
         </p>
       </div>
 
@@ -68,7 +95,8 @@ export default function NovoContratoPage() {
         customers={customers}
         customerSites={sites}
         draftStorageKey={CONTRACT_CREATE_DRAFT_KEY}
-        submitLabel="Salvar contrato"
+        loadAvailableAssets={handleLoadAvailableAssets}
+        submitLabel="Criar locação"
         onSubmit={handleSubmit}
       />
     </div>

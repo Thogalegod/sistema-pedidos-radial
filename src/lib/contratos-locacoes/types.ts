@@ -30,6 +30,8 @@ export type InspectionKind = 'departure' | 'return';
 
 export type SyncState = 'local' | 'uploading' | 'synced' | 'failed';
 
+export type RentalAssetOperationalStatus = 'active' | 'maintenance' | 'inactive' | 'retired';
+
 // Supabase/Postgres commonly returns bigint and numeric columns as strings.
 export type DbBigInt = string;
 export type DbNumeric = string;
@@ -132,6 +134,7 @@ export interface RentalItem {
   id: string;
   organization_id: string;
   contract_id: string;
+  asset_id: string | null;
   description: string;
   equipment_type: string;
   capacity: string;
@@ -140,6 +143,7 @@ export interface RentalItem {
   quantity: number;
   unit_amount: DbBigInt; // stored in cents
   status: RentalItemStatus;
+  returned_at: string | null;
   future_inventory_item_id: string | null;
   created_at: string;
   updated_at: string;
@@ -162,6 +166,21 @@ export interface BillingCycle {
   document_type: 'receipt' | 'nfe' | 'legacy' | 'other';
   document_number: string | null;
   status: BillingStatus;
+  sent_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RentalAsset {
+  id: string;
+  organization_id: string;
+  description: string;
+  equipment_type: string | null;
+  capacity: string | null;
+  serial_number: string | null;
+  internal_code: string | null;
+  operational_status: RentalAssetOperationalStatus;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -246,6 +265,7 @@ export interface ContractDocument {
   organization_id: string;
   contract_id: string;
   billing_cycle_id: string | null;
+  payment_id: string | null;
   inspection_id: string | null;
   kind: 'order' | 'shipping' | 'contract' | 'receipt_nf' | 'payment_proof' | 'remittance_nf' | 'other';
   storage_path: string;

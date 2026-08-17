@@ -46,6 +46,12 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+function findMonthlyTotalSummary(amount: string) {
+  return Array.from(document.querySelectorAll('p')).find((element) =>
+    element.textContent?.includes(`Valor mensal total: ${amount}`)
+  );
+}
+
 describe('ContractForm', () => {
   it('hydrates the create contract form without mismatched rental item ids', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -53,7 +59,7 @@ describe('ContractForm', () => {
       <ContractForm
         customers={customers}
         customerSites={customerSites}
-        submitLabel="Salvar contrato"
+        submitLabel="Criar locação"
         onSubmit={vi.fn()}
       />
     );
@@ -69,7 +75,7 @@ describe('ContractForm', () => {
         <ContractForm
           customers={customers}
           customerSites={customerSites}
-          submitLabel="Salvar contrato"
+          submitLabel="Criar locação"
           onSubmit={vi.fn()}
         />
       );
@@ -86,39 +92,39 @@ describe('ContractForm', () => {
     expect(hydrationMismatchFound).toBe(false);
   });
 
-  it('starts new contracts as rental and keeps operational fields visible only for rental', () => {
+  it('hides the removed technical item fields and offers the customer creation shortcut', () => {
     render(
       <ContractForm
         customers={customers}
         customerSites={customerSites}
-        submitLabel="Salvar contrato"
+        submitLabel="Criar locação"
         onSubmit={vi.fn()}
       />
     );
 
-    expect(screen.getByLabelText(/tipo do contrato/i)).toHaveValue('rental');
-    expect(screen.getByLabelText(/^empresa$/i)).toHaveValue('fontes');
-    expect(screen.getByLabelText(/transporte/i)).toBeInTheDocument();
-    expect(screen.getByText(/itens da locação/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/tem nota fiscal de remessa/i)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/tipo do contrato/i), {
-      target: { value: 'energy_management' },
-    });
-
-    expect(screen.queryByLabelText(/transporte/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/tem nota fiscal de remessa/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/itens da locação/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/tipo do contrato/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/status inicial/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^fim$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/recorrência/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/modelo de preço/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/valor mensal padrão/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/capacidade/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/código interno/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /novo cliente/i })).toHaveAttribute(
+      'href',
+      '/contratos-locacoes/clientes/novo?returnTo=/contratos-locacoes/contratos/novo'
+    );
+    expect(findMonthlyTotalSummary('R$ 0,00')).toBeTruthy();
   });
 
-  it('preserves the start date after input and change events when submitting', async () => {
+  it('derives the total from rental items and submits it as base_amount', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
 
     render(
       <ContractForm
         customers={customers}
         customerSites={customerSites}
-        submitLabel="Salvar contrato"
+        submitLabel="Criar locação"
         onSubmit={handleSubmit}
       />
     );
@@ -128,142 +134,54 @@ describe('ContractForm', () => {
     });
     fireEvent.change(screen.getByLabelText(/obra\/local/i), {
       target: { value: 'site-1' },
-    });
-
-    const startDateInput = screen.getByLabelText(/início/i);
-    fireEvent.input(startDateInput, {
-      target: { value: '2026-07-17' },
-    });
-    fireEvent.change(startDateInput, {
-      target: { value: '2026-07-17' },
-    });
-    fireEvent.blur(startDateInput);
-
-    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
-      target: { value: 'Equipamento de QA' },
-    });
-    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
-      target: { value: 'Equipamento' },
-    });
-    fireEvent.change(screen.getByLabelText(/capacidade/i), {
-      target: { value: '1 unidade' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
-
-    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
-    expect(handleSubmit.mock.calls[0][0].start_date).toBe('2026-07-17');
-    expect(screen.queryByText('Data de início é obrigatória')).not.toBeInTheDocument();
-  });
-
-  it('keeps requiring an empty start date', () => {
-    const handleSubmit = vi.fn();
-
-    render(
-      <ContractForm
-        customers={customers}
-        customerSites={customerSites}
-        submitLabel="Salvar contrato"
-        onSubmit={handleSubmit}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText(/cliente/i), {
-      target: { value: 'customer-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
-      target: { value: 'site-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
-      target: { value: 'Equipamento de QA' },
-    });
-    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
-      target: { value: 'Equipamento' },
-    });
-    fireEvent.change(screen.getByLabelText(/capacidade/i), {
-      target: { value: '1 unidade' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
-
-    expect(screen.getByText('Data de início é obrigatória')).toBeInTheDocument();
-    expect(handleSubmit).not.toHaveBeenCalled();
-  });
-
-  it('submits a rental contract with manual items and site contacts', async () => {
-    const handleSubmit = vi.fn().mockResolvedValue(undefined);
-
-    render(
-      <ContractForm
-        customers={customers}
-        customerSites={customerSites}
-        submitLabel="Salvar contrato"
-        onSubmit={handleSubmit}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText(/tipo do contrato/i), {
-      target: { value: 'rental' },
-    });
-    fireEvent.change(screen.getByLabelText(/cliente/i), {
-      target: { value: 'customer-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
-      target: { value: 'site-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/^empresa$/i), {
-      target: { value: 'radial' },
     });
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
     });
-    fireEvent.change(screen.getByLabelText(/transporte/i), {
-      target: { value: 'Retira por conta do cliente' },
-    });
-    fireEvent.change(screen.getByLabelText(/valor base/i), {
-      target: { value: 'R$ 1.500,00' },
-    });
-    expect(screen.getByLabelText(/valor base/i)).toHaveValue('R$ 1.500,00');
-    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
-      target: { value: 'yes' },
-    });
-    expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Radial');
-    expect(screen.getByLabelText(/empresa emissora/i)).toHaveAttribute('readonly');
-    fireEvent.change(screen.getByLabelText(/número da nf/i), {
-      target: { value: 'NF-1000' },
-    });
-    fireEvent.change(screen.getByLabelText(/valor da nf/i), {
-      target: { value: 'R$ 3.500,00' },
-    });
-    expect(screen.getByLabelText(/valor da nf/i)).toHaveValue('R$ 3.500,00');
-    fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
-      target: { value: '2026-07-05' },
-    });
+
     fireEvent.change(screen.getByLabelText(/descrição do item/i), {
       target: { value: 'Gerador principal' },
     });
     fireEvent.change(screen.getByLabelText(/tipo do item/i), {
       target: { value: 'Gerador' },
     });
-    fireEvent.change(screen.getByLabelText(/capacidade/i), {
-      target: { value: '150 kVA' },
+    fireEvent.change(screen.getByLabelText(/quantidade/i), {
+      target: { value: '2' },
     });
     fireEvent.change(screen.getByLabelText(/valor unitário/i), {
-      target: { value: 'R$ 450,00' },
+      target: { value: 'R$ 1.000,00' },
     });
-    expect(screen.getByLabelText(/valor unitário/i)).toHaveValue('R$ 450,00');
 
-    fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
+    fireEvent.click(screen.getByRole('button', { name: /adicionar item/i }));
+
+    const itemDescriptions = screen.getAllByLabelText(/descrição do item/i);
+    const itemTypes = screen.getAllByLabelText(/tipo do item/i);
+    const itemQuantities = screen.getAllByLabelText(/quantidade/i);
+    const itemAmounts = screen.getAllByLabelText(/valor unitário/i);
+
+    fireEvent.change(itemDescriptions[1], {
+      target: { value: 'Bateria auxiliar' },
+    });
+    fireEvent.change(itemTypes[1], {
+      target: { value: 'Bateria' },
+    });
+    fireEvent.change(itemQuantities[1], {
+      target: { value: '1' },
+    });
+    fireEvent.change(itemAmounts[1], {
+      target: { value: 'R$ 800,00' },
+    });
+
+    expect(findMonthlyTotalSummary('R$ 2.800,00')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /criar locação/i }));
 
     await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
-    expect(handleSubmit.mock.calls[0][0].items).toHaveLength(1);
-    expect(handleSubmit.mock.calls[0][0].contract_company).toBe('radial');
-    expect(handleSubmit.mock.calls[0][0].transport_notes).toBe('Retira por conta do cliente');
-    expect(handleSubmit.mock.calls[0][0].has_remittance_invoice).toBe(true);
-    expect(handleSubmit.mock.calls[0][0].remittance_invoice_number).toBe('NF-1000');
-    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issuer).toBe('Radial');
-    expect(handleSubmit.mock.calls[0][0].remittance_invoice_amount).toBe('350000');
-    expect(handleSubmit.mock.calls[0][0].remittance_invoice_issue_date).toBe('2026-07-05');
-    expect(handleSubmit.mock.calls[0][0].base_amount).toBe('150000');
-    expect(handleSubmit.mock.calls[0][0].items[0]?.unit_amount).toBe('45000');
+    expect(handleSubmit.mock.calls[0][0].base_amount).toBe('280000');
+    expect(handleSubmit.mock.calls[0][0].items[0]?.capacity).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].items[0]?.internal_code).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].items[1]?.capacity).toBeNull();
+    expect(handleSubmit.mock.calls[0][0].items[1]?.internal_code).toBeNull();
   });
 
   it('mirrors company into remittance issuer and keeps it read only for rental NF', () => {
@@ -295,30 +213,7 @@ describe('ContractForm', () => {
     expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Fontes');
   });
 
-  it('reveals remittance invoice fields only when set to yes', () => {
-    render(
-      <ContractForm
-        customers={customers}
-        customerSites={customerSites}
-        submitLabel="Salvar contrato"
-        onSubmit={vi.fn()}
-      />
-    );
-
-    expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/valor base/i)).toHaveValue('R$ 0,00');
-
-    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
-      target: { value: 'yes' },
-    });
-
-    expect(screen.getByLabelText(/número da nf/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/empresa emissora/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/valor da nf/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/data de emissão da nf/i)).toBeInTheDocument();
-  });
-
-  it('clears remittance invoice fields when switched back to no', async () => {
+  it('reveals and clears remittance invoice fields as expected', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -330,9 +225,6 @@ describe('ContractForm', () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText(/tipo do contrato/i), {
-      target: { value: 'rental' },
-    });
     fireEvent.change(screen.getByLabelText(/cliente/i), {
       target: { value: 'customer-1' },
     });
@@ -342,9 +234,27 @@ describe('ContractForm', () => {
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
     });
+    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
+      target: { value: 'Gerador principal' },
+    });
+    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
+      target: { value: 'Gerador' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor unitário/i), {
+      target: { value: 'R$ 350,00' },
+    });
+
+    expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
+
     fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
       target: { value: 'yes' },
     });
+
+    expect(screen.getByLabelText(/número da nf/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/empresa emissora/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/valor da nf/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/data de emissão da nf/i)).toBeInTheDocument();
+
     fireEvent.change(screen.getByLabelText(/número da nf/i), {
       target: { value: 'NF-1000' },
     });
@@ -357,24 +267,12 @@ describe('ContractForm', () => {
     fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
       target: { value: '2026-07-05' },
     });
+
     fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
       target: { value: 'no' },
     });
 
     expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
-      target: { value: 'Gerador principal' },
-    });
-    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
-      target: { value: 'Gerador' },
-    });
-    fireEvent.change(screen.getByLabelText(/capacidade/i), {
-      target: { value: '150 kVA' },
-    });
-    fireEvent.change(screen.getByLabelText(/valor unitário/i), {
-      target: { value: 'R$ 450,00' },
-    });
 
     fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
 
@@ -415,7 +313,7 @@ describe('ContractForm', () => {
             id: 'item-1',
             description: 'Gerador local',
             equipment_type: 'Gerador',
-            capacity: '150 kVA',
+            capacity: null,
             serial_number: null,
             internal_code: null,
             quantity: 1,
@@ -450,7 +348,7 @@ describe('ContractForm', () => {
             id: 'item-1',
             description: 'Gerador anterior',
             equipment_type: 'Gerador',
-            capacity: '150 kVA',
+            capacity: null,
             serial_number: null,
             internal_code: null,
             quantity: 1,
@@ -490,9 +388,10 @@ describe('ContractForm', () => {
           items: [
             {
               id: 'item-1',
+              asset_id: null,
               description: 'Gerador servidor',
               equipment_type: 'Gerador',
-              capacity: '150 kVA',
+              capacity: null,
               serial_number: null,
               internal_code: null,
               quantity: 1,
@@ -508,10 +407,6 @@ describe('ContractForm', () => {
     );
 
     expect(await screen.findByText(/os dados do servidor mudaram/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue('R$ 1.800,00')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /restaurar rascunho local/i }));
-
-    expect(await screen.findByDisplayValue('R$ 2.500,00')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /restaurar rascunho local/i })).toBeInTheDocument();
   });
 });

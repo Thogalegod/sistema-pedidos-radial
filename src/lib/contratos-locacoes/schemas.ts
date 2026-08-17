@@ -144,15 +144,33 @@ const optionalMoneyStringField = z.preprocess((value) => {
 
 export const rentalItemDraftSchema = z.object({
   id: z.string().trim().min(1),
+  asset_id: z.preprocess(emptyToNull, z.string().trim().nullable().optional()).transform((value) => value ?? null),
   description: z.string().trim().min(1, 'Descrição do item é obrigatória'),
   equipment_type: z.string().trim().min(1, 'Tipo do item é obrigatório'),
-  capacity: z.string().trim().min(1, 'Capacidade/potência é obrigatória'),
-  serial_number: optionalText,
-  internal_code: optionalText,
+  capacity: optionalTextField,
+  serial_number: optionalTextField,
+  internal_code: optionalTextField,
   quantity: z.number().int().positive('Quantidade deve ser maior que zero'),
   unit_amount: moneyStringField,
   status: z.enum(['rented', 'returned', 'replaced', 'lost_damaged', 'suspended_exempt']).default('rented'),
-  notes: optionalText,
+  notes: optionalTextField,
+}).transform((value) => ({
+  ...value,
+  capacity: value.capacity ?? null,
+  serial_number: value.serial_number ?? null,
+  internal_code: value.internal_code ?? null,
+  quantity: value.asset_id ? 1 : value.quantity,
+  notes: value.notes ?? null,
+}));
+
+export const rentalAssetDraftSchema = z.object({
+  description: z.string().trim().min(1, 'Descrição do ativo é obrigatória'),
+  equipment_type: optionalTextField,
+  capacity: optionalTextField,
+  serial_number: optionalTextField,
+  internal_code: optionalTextField,
+  operational_status: z.enum(['active', 'maintenance', 'inactive', 'retired']).default('active'),
+  notes: optionalTextField,
 });
 
 const contractDraftBaseSchema = z.object({
@@ -194,6 +212,25 @@ export const contractDraftSchema = contractDraftBaseSchema.superRefine((value, c
       message: 'Locações precisam de pelo menos um item manual',
     });
   }
+  const seenAssetIds = new Set<string>();
+
+  value.items.forEach((item, index) => {
+    if (!item.asset_id) {
+      return;
+    }
+
+    if (seenAssetIds.has(item.asset_id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items', index, 'asset_id'],
+        message: 'O mesmo ativo físico não pode aparecer duas vezes na mesma locação',
+      });
+      return;
+    }
+
+    seenAssetIds.add(item.asset_id);
+  });
+
   if (value.has_remittance_invoice) {
     if (!value.remittance_invoice_number) {
       ctx.addIssue({
@@ -313,6 +350,7 @@ export type CustomerSiteInput = z.output<typeof customerSiteSchema>;
 export type CustomerContactInput = z.output<typeof customerContactSchema>;
 export type CustomerDraftInput = z.output<typeof customerDraftSchema>;
 export type RentalItemDraftInput = z.output<typeof rentalItemDraftSchema>;
+export type RentalAssetDraftInput = z.output<typeof rentalAssetDraftSchema>;
 export type ContractDraftInput = z.output<typeof contractDraftSchema>;
 export type PauseContractInput = z.output<typeof pauseContractSchema>;
 export type ReactivateContractInput = z.output<typeof reactivateContractSchema>;

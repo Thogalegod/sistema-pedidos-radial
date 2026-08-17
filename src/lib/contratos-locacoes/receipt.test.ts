@@ -121,6 +121,7 @@ function makeBilling(overrides: Partial<BillingCycle> = {}): BillingCycle {
     document_type: 'receipt',
     document_number: null,
     status: 'issued',
+    sent_at: null,
     notes: 'Recibo mensal',
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-01T00:00:00.000Z',
@@ -167,18 +168,20 @@ function makeSite(overrides: Partial<CustomerSite> = {}): CustomerSite {
 }
 
 function makeRentalItem(overrides: Partial<RentalItem> = {}): RentalItem {
-  return {
-    id: 'item-1',
-    organization_id: 'org-1',
-    contract_id: 'contract-1',
-    description: 'Gerador a diesel',
-    equipment_type: 'Gerador',
-    capacity: '150 kVA',
+    return {
+      id: 'item-1',
+      organization_id: 'org-1',
+      contract_id: 'contract-1',
+      asset_id: null,
+      description: 'Gerador a diesel',
+      equipment_type: 'Gerador',
+      capacity: '150 kVA',
     serial_number: 'SER-1',
     internal_code: 'GER-1',
     quantity: 1,
     unit_amount: '150000',
     status: 'rented',
+    returned_at: null,
     future_inventory_item_id: null,
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-01T00:00:00.000Z',

@@ -141,6 +141,141 @@ describe('contract schemas', () => {
     expect(parsed.remittance_invoice_issue_date).toBe('2026-07-05');
   });
 
+  it('forces quantity 1 when a rental item is linked to a physical asset', () => {
+    const parsed = contractDraftSchema.parse({
+      kind: 'rental',
+      customer_id: 'customer-1',
+      site_id: 'site-1',
+      legacy_order_number: '',
+      transport_notes: '',
+      has_remittance_invoice: false,
+      remittance_invoice_number: '',
+      remittance_invoice_issuer: '',
+      remittance_invoice_amount: '',
+      remittance_invoice_issue_date: '',
+      start_date: '2026-07-06',
+      end_date: '',
+      recurrence_days: 30,
+      pricing_model: 'fixed',
+      base_amount: '120000',
+      percentage_rate: '',
+      status: 'draft',
+      notes: '',
+      items: [
+        {
+          id: 'item-1',
+          asset_id: 'asset-1',
+          description: 'Gerador cadastrado',
+          equipment_type: 'Gerador',
+          capacity: '150 kVA',
+          serial_number: 'SN-1',
+          internal_code: 'RAD-1',
+          quantity: 3,
+          unit_amount: '25000',
+          status: 'rented',
+          notes: '',
+        },
+      ],
+    });
+
+    expect(parsed.items[0].asset_id).toBe('asset-1');
+    expect(parsed.items[0].quantity).toBe(1);
+  });
+
+  it('keeps legacy manual rental items without asset_id accepting quantity greater than 1', () => {
+    const parsed = contractDraftSchema.parse({
+      kind: 'rental',
+      customer_id: 'customer-1',
+      site_id: 'site-1',
+      legacy_order_number: '',
+      transport_notes: '',
+      has_remittance_invoice: false,
+      remittance_invoice_number: '',
+      remittance_invoice_issuer: '',
+      remittance_invoice_amount: '',
+      remittance_invoice_issue_date: '',
+      start_date: '2026-07-06',
+      end_date: '',
+      recurrence_days: 30,
+      pricing_model: 'fixed',
+      base_amount: '120000',
+      percentage_rate: '',
+      status: 'draft',
+      notes: '',
+      items: [
+        {
+          id: 'item-1',
+          asset_id: null,
+          description: 'Cabos manuais',
+          equipment_type: 'Acessório',
+          capacity: '',
+          serial_number: '',
+          internal_code: '',
+          quantity: 4,
+          unit_amount: '25000',
+          status: 'rented',
+          notes: '',
+        },
+      ],
+    });
+
+    expect(parsed.items[0].asset_id).toBeNull();
+    expect(parsed.items[0].quantity).toBe(4);
+  });
+
+  it('rejects the same physical asset twice in the same rental contract', () => {
+    expect(() =>
+      contractDraftSchema.parse({
+        kind: 'rental',
+        customer_id: 'customer-1',
+        site_id: 'site-1',
+        legacy_order_number: '',
+        transport_notes: '',
+        has_remittance_invoice: false,
+        remittance_invoice_number: '',
+        remittance_invoice_issuer: '',
+        remittance_invoice_amount: '',
+        remittance_invoice_issue_date: '',
+        start_date: '2026-07-06',
+        end_date: '',
+        recurrence_days: 30,
+        pricing_model: 'fixed',
+        base_amount: '120000',
+        percentage_rate: '',
+        status: 'draft',
+        notes: '',
+        items: [
+          {
+            id: 'item-1',
+            asset_id: 'asset-1',
+            description: 'Gerador A',
+            equipment_type: 'Gerador',
+            capacity: '',
+            serial_number: '',
+            internal_code: '',
+            quantity: 1,
+            unit_amount: '25000',
+            status: 'rented',
+            notes: '',
+          },
+          {
+            id: 'item-2',
+            asset_id: 'asset-1',
+            description: 'Gerador A duplicado',
+            equipment_type: 'Gerador',
+            capacity: '',
+            serial_number: '',
+            internal_code: '',
+            quantity: 1,
+            unit_amount: '25000',
+            status: 'rented',
+            notes: '',
+          },
+        ],
+      })
+    ).toThrow(/ativo físico/i);
+  });
+
   it('requires all remittance invoice fields when the toggle is enabled', () => {
     expect(() =>
       contractDraftSchema.parse({
