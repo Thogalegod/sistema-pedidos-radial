@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 import { ContractListCard } from '@/components/contratos-locacoes/ContractListCard';
+import { toLocalDateKey } from '@/lib/contratos-locacoes/dates';
 
 export default function ContratosPage() {
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
@@ -28,7 +29,7 @@ export default function ContratosPage() {
           search: debouncedSearch,
           kind,
           status,
-        });
+        }, toLocalDateKey());
         if (!cancelled) {
           setContracts(data);
         }

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   billingPeriodsOverlap,
+  buildRentalItemBillingLines,
   buildNextMonthlyBillingPeriod,
   findBillingPeriodConflict,
+  resolveRentalBillingCoverage,
+  selectLatestBillingCoveragePeriod,
+  sortContractsByBillingPriority,
   suggestBillingAmountFromItems,
 } from './billing-periods';
 import type { BillingCycle, RentalItem } from './types';
@@ -147,7 +151,162 @@ describe('monthly billing period helpers', () => {
       makeItem({ quantity: 1, unit_amount: '25000' }),
     ])).toBe('325000');
   });
+
+  it('builds one recurring billing line per rental item with commercial descriptions', () => {
+    const ids = ['line-1', 'line-2'];
+    const lines = buildRentalItemBillingLines([
+      makeItem({
+        id: 'item-1',
+        description: 'Transformador 500 kVA 13,8 kV / 380-220 V',
+        equipment_type: 'Transformador',
+        capacity: '500 kVA',
+        serial_number: 'ABC123',
+        internal_code: 'CODIGO-INTERNO-1',
+        unit_amount: '150000',
+      }),
+      makeItem({
+        id: 'item-2',
+        description: '',
+        equipment_type: 'Transformador',
+        capacity: '300 kVA',
+        serial_number: 'XYZ789',
+        internal_code: 'CODIGO-INTERNO-2',
+        unit_amount: '150000',
+      }),
+    ], () => ids.shift()!);
+
+    expect(lines).toEqual([
+      {
+        id: 'line-1',
+        rental_item_id: 'item-1',
+        description: 'Transformador 500 kVA 13,8 kV / 380-220 V - Série ABC123',
+        quantity: 1,
+        unit_amount: '150000',
+        kind: 'recurring',
+      },
+      {
+        id: 'line-2',
+        rental_item_id: 'item-2',
+        description: 'Transformador 300 kVA - Série XYZ789',
+        quantity: 1,
+        unit_amount: '150000',
+        kind: 'recurring',
+      },
+    ]);
+    expect(lines.map((line) => line.description).join(' ')).not.toContain('CODIGO-INTERNO');
+  });
+
+  describe('rental billing coverage', () => {
+    it('requires the first period for an active rental without a valid billing period', () => {
+      expect(resolveRentalBillingCoverage({
+        contractStatus: 'active',
+        today: '2026-08-30',
+        latestPeriodEnd: null,
+      })).toBe('first_period_required');
+    });
+
+    it.each([
+      ['2026-08-30', 'current'],
+      ['2026-08-31', 'current'],
+      ['2026-09-01', 'new_period_required'],
+    ] as const)('compares local day %s with period_end, returning %s', (today, expected) => {
+      expect(resolveRentalBillingCoverage({
+        contractStatus: 'active',
+        today,
+        latestPeriodEnd: '2026-08-31',
+      })).toBe(expected);
+    });
+
+    it('requires a new period after period_end even when due_date is still in the future', () => {
+      const latest = selectLatestBillingCoveragePeriod([
+        makeBilling({ period_end: '2026-08-31', due_date: '2026-09-10' }),
+      ]);
+
+      expect(resolveRentalBillingCoverage({
+        contractStatus: 'active',
+        today: '2026-09-01',
+        latestPeriodEnd: latest?.period_end ?? null,
+      })).toBe('new_period_required');
+    });
+
+    it('selects the latest valid period by period_end and ignores draft and cancelled cycles', () => {
+      const latest = selectLatestBillingCoveragePeriod([
+        makeBilling({ id: 'issued', status: 'issued', period_end: '2026-08-31', due_date: '2026-09-10' }),
+        makeBilling({ id: 'draft', status: 'draft', period_end: '2026-10-31' }),
+        makeBilling({ id: 'cancelled', status: 'cancelled', period_end: '2026-11-30' }),
+        makeBilling({ id: 'paid', status: 'paid', period_end: '2026-09-30', due_date: '2026-10-10' }),
+      ]);
+
+      expect(latest).toMatchObject({
+        id: 'paid',
+        period_end: '2026-09-30',
+        due_date: '2026-10-10',
+      });
+    });
+
+    it.each(['issued', 'paid', 'overdue', 'exempt'] as const)(
+      'counts %s as a valid covered period',
+      (status) => {
+        expect(selectLatestBillingCoveragePeriod([
+          makeBilling({ id: status, status }),
+        ])?.id).toBe(status);
+      }
+    );
+
+    it.each([
+      'paused',
+      'closing_requested',
+      'awaiting_return',
+      'inspection',
+      'closed',
+      'cancelled',
+    ] as const)('does not prompt a new period for a %s rental', (contractStatus) => {
+      expect(resolveRentalBillingCoverage({
+        contractStatus,
+        today: '2026-09-01',
+        latestPeriodEnd: '2026-08-31',
+      })).toBeNull();
+    });
+
+    it('sorts contracts by billing urgency and the approved date direction', () => {
+      const sorted = sortContractsByBillingPriority([
+        priorityContract('inactive-first', null, '2026-07-01', '2026-12-31'),
+        priorityContract('current-later', 'current', '2026-06-01', '2026-10-31'),
+        priorityContract('first-newer', 'first_period_required', '2026-08-10', null),
+        priorityContract('new-recent', 'new_period_required', '2026-04-01', '2026-08-15'),
+        priorityContract('current-sooner', 'current', '2026-05-01', '2026-09-30'),
+        priorityContract('first-older', 'first_period_required', '2026-07-10', null),
+        priorityContract('new-oldest', 'new_period_required', '2026-03-01', '2026-07-31'),
+        priorityContract('inactive-second', null, '2026-01-01', '2026-01-31'),
+      ]);
+
+      expect(sorted.map((contract) => contract.id)).toEqual([
+        'new-oldest',
+        'new-recent',
+        'first-older',
+        'first-newer',
+        'current-sooner',
+        'current-later',
+        'inactive-first',
+        'inactive-second',
+      ]);
+    });
+  });
 });
+
+function priorityContract(
+  id: string,
+  billingCoverageStatus: 'first_period_required' | 'new_period_required' | 'current' | null,
+  startDate: string,
+  latestBillingPeriodEnd: string | null
+) {
+  return {
+    id,
+    billing_coverage_status: billingCoverageStatus,
+    start_date: startDate,
+    latest_billing_period_end: latestBillingPeriodEnd,
+  };
+}
 
 function requireBillingPeriod(period: ReturnType<typeof buildNextMonthlyBillingPeriod>) {
   expect(period).not.toBeNull();

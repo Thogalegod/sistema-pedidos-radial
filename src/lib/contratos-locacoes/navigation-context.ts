@@ -47,7 +47,7 @@ export function resolveModulePageContext(pathname: string): ModulePageContextVal
   }
 
   if (pathname.startsWith(`${ROOT}/recibos/`)) {
-    return nestedContext('billings', 'Cobranças', 'Recibo', 'Consulte os dados e o histórico desta cobrança.');
+    return nestedContext('billings', 'Cobranças', 'Fatura', 'Consulte os dados e baixe a fatura desta cobrança.');
   }
 
   return context('panel', 'Painel', 'Visão geral das locações, cobranças, vencimentos e pendências.');

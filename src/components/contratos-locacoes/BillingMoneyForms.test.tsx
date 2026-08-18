@@ -11,9 +11,7 @@ afterEach(() => {
 });
 
 describe('billing money fields', () => {
-  it('keeps the billing period amount freely editable while focused', async () => {
-    const user = userEvent.setup();
-
+  it('keeps the billing period amount read-only because it is derived from rental items', () => {
     render(
       <BillingPeriodForm
         initialValues={{
@@ -31,10 +29,9 @@ describe('billing money fields', () => {
     );
 
     const amount = screen.getByLabelText(/^valor$/i);
-    await user.clear(amount);
-    await user.type(amount, '900');
-
-    expect(amount).toHaveValue('900');
+    expect(amount).toBeDisabled();
+    expect(amount).toHaveValue('R$ 1,00');
+    expect(screen.getByText(/para alterar o valor da locação, edite os valores dos equipamentos/i)).toBeInTheDocument();
   });
 
   it('keeps the received amount freely editable while focused', async () => {

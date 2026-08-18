@@ -336,7 +336,7 @@ export const billingDraftSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['document_number'],
-      message: 'Número curto de recibo deve seguir o formato RDDMMAASSS',
+      message: 'Número curto da fatura deve seguir o formato R#########',
     });
   }
 });

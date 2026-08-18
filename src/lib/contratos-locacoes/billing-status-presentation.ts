@@ -23,6 +23,60 @@ export interface BillingStatusPresentation {
   variant: BillingStatusVariant;
 }
 
+interface OperationalBilling {
+  status: BillingStatus;
+  due_date: string;
+  balance_amount: string | number;
+  document_number?: string | null;
+  customer_name?: string | null;
+}
+
+export function sortBillingsByOperationalPriority<T extends OperationalBilling>(
+  billings: T[],
+  today: string
+) {
+  const priority = (billing: T) => {
+    const hasBalance = Number(billing.balance_amount) > 0;
+
+    if (billing.status === 'cancelled') return 6;
+    if (billing.status === 'exempt') return 5;
+    if (billing.status === 'paid') return 4;
+    if (billing.status === 'draft') return 3;
+    if (hasBalance && billing.due_date < today) return 0;
+    if (hasBalance && billing.due_date === today) return 1;
+    return 2;
+  };
+
+  return billings
+    .map((billing, index) => ({ billing, index }))
+    .sort((left, right) => {
+      const leftPriority = priority(left.billing);
+      const rightPriority = priority(right.billing);
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+      if (leftPriority === 0) {
+        const recentOverdueFirst = right.billing.due_date.localeCompare(left.billing.due_date);
+        if (recentOverdueFirst !== 0) return recentOverdueFirst;
+      } else if (leftPriority === 2 || leftPriority >= 4) {
+        const earliestDueFirst = left.billing.due_date.localeCompare(right.billing.due_date);
+        if (earliestDueFirst !== 0) return earliestDueFirst;
+      }
+
+      const byDocument = (left.billing.document_number ?? '').localeCompare(
+        right.billing.document_number ?? '',
+        'pt-BR'
+      );
+      if (byDocument !== 0) return byDocument;
+
+      const byCustomer = (left.billing.customer_name ?? '').localeCompare(
+        right.billing.customer_name ?? '',
+        'pt-BR'
+      );
+      return byCustomer !== 0 ? byCustomer : left.index - right.index;
+    })
+    .map(({ billing }) => billing);
+}
+
 export function resolveEffectiveBillingStatus(
   persistedStatus: BillingStatus,
   financialStatus: BillingStatus

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getContract, listBillings, type ContractsLocacoesReadClient } from './queries';
+import { getContract, listBillings, listContracts, type ContractsLocacoesReadClient } from './queries';
 import type { BillingCycle, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalItem } from './types';
 
 function makeBillingCycle(overrides: Partial<BillingCycle> = {}): BillingCycle {
@@ -152,6 +152,62 @@ class FakeReadClient implements ContractsLocacoesReadClient {
 }
 
 describe('contracts rental queries', () => {
+  it('enriches rental cards from current items and one organization-wide billing query', async () => {
+    class ContractListReadClient extends FakeReadClient {
+      public organizationBillingQueries = 0;
+      public contractBillingQueries = 0;
+
+      async listRentalItemsByContractIds(): Promise<RentalItem[]> {
+        return [
+          makeRentalItem({ id: 'item-1', quantity: 1, unit_amount: '150000' }),
+          makeRentalItem({ id: 'item-2', quantity: 1, unit_amount: '150000' }),
+        ];
+      }
+
+      async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {
+        this.organizationBillingQueries += 1;
+        return [
+          makeBillingCycle({ id: 'issued', period_end: '2026-08-31', due_date: '2026-09-10', status: 'issued' }),
+          makeBillingCycle({ id: 'draft', period_end: '2026-09-30', due_date: '2026-10-10', status: 'draft' }),
+        ];
+      }
+
+      async listBillingCyclesByContractId(): Promise<BillingCycle[]> {
+        this.contractBillingQueries += 1;
+        return [];
+      }
+    }
+
+    const client = new ContractListReadClient();
+    const [contract] = await listContracts(client, {}, '2026-09-01');
+
+    expect(contract).toMatchObject({
+      current_monthly_amount: '300000',
+      latest_billing_period_end: '2026-08-31',
+      latest_billing_due_date: '2026-09-10',
+      billing_coverage_status: 'new_period_required',
+    });
+    expect(client.organizationBillingQueries).toBe(1);
+    expect(client.contractBillingQueries).toBe(0);
+  });
+
+  it('derives the list amount from changed current item values rather than the latest invoice', async () => {
+    class UpdatedItemPriceReadClient extends FakeReadClient {
+      async listRentalItemsByContractIds(): Promise<RentalItem[]> {
+        return [makeRentalItem({ quantity: 2, unit_amount: '175000' })];
+      }
+
+      async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {
+        return [makeBillingCycle({ total_amount: '300000', base_amount: '300000' })];
+      }
+    }
+
+    const [contract] = await listContracts(new UpdatedItemPriceReadClient(), {}, '2026-08-30');
+
+    expect(contract.current_monthly_amount).toBe('350000');
+    expect(contract.billing_coverage_status).toBe('current');
+  });
+
   it('maps consolidated billing data with period, sent_at, paid amount and balance', async () => {
     const [billing] = await listBillings(new FakeReadClient(), '2026-08-12');
 
@@ -167,6 +223,57 @@ describe('contracts rental queries', () => {
       balance_amount: '200000',
       status: 'issued',
     });
+  });
+
+  it('limits billings to the selected due-date month before applying filters and priority', async () => {
+    class MonthlyBillingReadClient extends FakeReadClient {
+      async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {
+        return [
+          makeBillingCycle({ id: 'outside', document_number: 'FORA', due_date: '2026-09-01' }),
+          makeBillingCycle({ id: 'future', document_number: 'FUTURA', due_date: '2026-08-25' }),
+          makeBillingCycle({ id: 'overdue-old', document_number: 'VENCIDA-ANTIGA', due_date: '2026-08-05' }),
+          makeBillingCycle({ id: 'overdue-recent', document_number: 'VENCIDA-RECENTE', due_date: '2026-08-11' }),
+        ];
+      }
+
+      async listPaymentsByBillingCycleIds(): Promise<Payment[]> {
+        return [];
+      }
+    }
+
+    const billings = await listBillings(new MonthlyBillingReadClient(), '2026-08-12', {
+      month: '2026-08',
+      status: 'overdue',
+      search: 'vencida',
+    });
+
+    expect(billings.map((billing) => billing.id)).toEqual(['overdue-recent', 'overdue-old']);
+  });
+
+  it('includes contract notes and returns rentals in billing urgency order', async () => {
+    class PrioritizedContractReadClient extends FakeReadClient {
+      async listContractsByOrganization(): Promise<Contract[]> {
+        const [base] = await super.listContractsByOrganization();
+        return [
+          { ...base, id: 'inactive', status: 'paused', start_date: '2026-01-01' },
+          { ...base, id: 'first', start_date: '2026-07-01', notes: 'Cliente pede aviso antes da emissão.' },
+          { ...base, id: 'new', start_date: '2026-06-01' },
+          { ...base, id: 'current', start_date: '2026-05-01' },
+        ];
+      }
+
+      async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {
+        return [
+          makeBillingCycle({ id: 'new-billing', contract_id: 'new', period_end: '2026-08-01' }),
+          makeBillingCycle({ id: 'current-billing', contract_id: 'current', period_end: '2026-08-31' }),
+        ];
+      }
+    }
+
+    const contracts = await listContracts(new PrioritizedContractReadClient(), {}, '2026-08-12');
+
+    expect(contracts.map((contract) => contract.id)).toEqual(['new', 'first', 'current', 'inactive']);
+    expect(contracts.find((contract) => contract.id === 'first')?.notes).toBe('Cliente pede aviso antes da emissão.');
   });
 
   it('searches billings when Supabase returns numeric contract internal numbers', async () => {
@@ -234,3 +341,25 @@ describe('contracts rental queries', () => {
     expect(client.listedBillingCyclesByOrganization).toBe(false);
   });
 });
+
+function makeRentalItem(overrides: Partial<RentalItem> = {}): RentalItem {
+  return {
+    id: 'item-1',
+    organization_id: 'org-1',
+    contract_id: 'contract-1',
+    asset_id: null,
+    description: 'Transformador',
+    equipment_type: 'Transformador',
+    capacity: '500 kVA',
+    serial_number: 'ABC123',
+    internal_code: '',
+    quantity: 1,
+    unit_amount: '150000',
+    status: 'rented',
+    returned_at: null,
+    future_inventory_item_id: null,
+    created_at: '2026-08-08T00:00:00.000Z',
+    updated_at: '2026-08-08T00:00:00.000Z',
+    ...overrides,
+  };
+}

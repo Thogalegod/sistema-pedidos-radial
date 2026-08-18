@@ -116,7 +116,7 @@ export function BillingPeriodCard({
         </button>
         <Link className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
           <FileText size={14} />
-          Abrir recibo
+          Abrir fatura
         </Link>
         <button className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => onRegisterPayment(billing)} type="button">
           <Wallet size={14} />

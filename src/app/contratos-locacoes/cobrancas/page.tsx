@@ -1,15 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { BillingTable } from '@/components/contratos-locacoes/BillingTable';
 import { createSupabaseContractsLocacoesReadClient, listBillings, type BillingListItem } from '@/lib/contratos-locacoes/queries';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
+import {
+  buildBillingMonthHref,
+  formatBillingMonthLabel,
+  resolveBillingMonth,
+  shiftBillingMonth,
+  toLocalDateKey,
+} from '@/lib/contratos-locacoes/dates';
 import { supabase } from '@/lib/supabase';
 
 export default function CobrancasPage() {
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const selectedMonth = resolveBillingMonth(searchParams.get('month'));
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -25,7 +35,8 @@ export default function CobrancasPage() {
       setLoading(true);
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
-        const data = await listBillings(readClient, new Date().toISOString().slice(0, 10), {
+        const data = await listBillings(readClient, toLocalDateKey(), {
+          month: selectedMonth,
           search: debouncedSearch,
           status,
         });
@@ -48,14 +59,41 @@ export default function CobrancasPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, status]);
+  }, [debouncedSearch, selectedMonth, status]);
+
+  function navigateMonth(offset: number) {
+    router.push(buildBillingMonthHref(
+      pathname,
+      searchParams.toString(),
+      shiftBillingMonth(selectedMonth, offset)
+    ));
+  }
 
   return (
     <div className="space-y-4">
+      <nav aria-label="Mês das cobranças" className="flex items-center justify-center gap-3">
+        <button
+          aria-label="Mês anterior"
+          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
+          onClick={() => navigateMonth(-1)}
+          type="button"
+        >
+          ‹
+        </button>
+        <strong className="min-w-28 text-center text-sm text-gray-900">{formatBillingMonthLabel(selectedMonth)}</strong>
+        <button
+          aria-label="Próximo mês"
+          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
+          onClick={() => navigateMonth(1)}
+          type="button"
+        >
+          ›
+        </button>
+      </nav>
       <div className="grid gap-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_220px]">
         <input
           className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-          placeholder="Buscar por cliente, obra, OS ou documento"
+          placeholder="Buscar por cliente, pedido ou documento"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />

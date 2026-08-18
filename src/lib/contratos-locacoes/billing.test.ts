@@ -37,20 +37,20 @@ const baseBilling: BillingDraftInput = {
 };
 
 describe('billing schemas and summaries', () => {
-  it('accepts manual period emission with receipt short number', () => {
+  it('accepts manual period emission with the invoice short number', () => {
     const parsed = billingDraftSchema.parse(baseBilling);
 
     expect(parsed.document_number).toBe('R260701001');
     expect(parsed.items[0].quantity).toBe(1);
   });
 
-  it('rejects receipt numbers outside the approved short format', () => {
+  it('rejects invoice numbers outside the approved short format', () => {
     expect(() =>
       billingDraftSchema.parse({
         ...baseBilling,
         document_number: 'RECIBO-1',
       })
-    ).toThrow(/recibo/i);
+    ).toThrow(/fatura/i);
   });
 
   it('rejects zero-value partial payments', () => {

@@ -2,9 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BillingCycle, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalAsset, RentalItem } from './types';
 import { createBillingSnapshot, type BillingSnapshotInput, type DashboardSnapshot } from './dashboard';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
-import { alertLevel } from './dates';
-import { resolveEffectiveBillingStatus } from './billing-status-presentation';
-import { buildReceiptSnapshot, type ReceiptSnapshot } from './receipt';
+import { alertLevel, isDateInBillingMonth } from './dates';
+import { resolveEffectiveBillingStatus, sortBillingsByOperationalPriority } from './billing-status-presentation';
+import {
+  resolveRentalBillingCoverage,
+  selectLatestBillingCoveragePeriod,
+  sortContractsByBillingPriority,
+  suggestBillingAmountFromItems,
+  type RentalBillingCoverageStatus,
+} from './billing-periods';
+import { buildRentalInvoiceSnapshot, type RentalInvoiceSnapshot } from './rental-invoice';
 import type { BillingLine } from './types';
 import {
   listAvailableRentalAssets as deriveAvailableRentalAssets,
@@ -53,6 +60,11 @@ export interface ContractListItem {
   start_date: string;
   recurrence_days: number;
   item_count: number;
+  current_monthly_amount: string | null;
+  latest_billing_period_end: string | null;
+  latest_billing_due_date: string | null;
+  billing_coverage_status: RentalBillingCoverageStatus | null;
+  notes: string | null;
 }
 
 export interface ContractDetail {
@@ -65,6 +77,7 @@ export interface ContractDetail {
 }
 
 export interface BillingListFilters {
+  month?: string;
   search?: string;
   status?: 'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled';
 }
@@ -588,7 +601,8 @@ export function listAvailableRentalAssets(
 
 export async function listContracts(
   client: ContractsLocacoesReadClient,
-  filters: ContractListFilters = {}
+  filters: ContractListFilters,
+  today: string
 ): Promise<ContractListItem[]> {
   const organizationId = await client.getCurrentOrganizationId();
   const contracts = await client.listContractsByOrganization(organizationId, {
@@ -597,35 +611,70 @@ export async function listContracts(
   });
   const customerIds = [...new Set(contracts.map((contract) => contract.customer_id))];
   const contractIds = contracts.map((contract) => contract.id);
-  const [customers, sites, items] = await Promise.all([
+  const listBillingCyclesByOrganization = requireReadMethod(
+    client.listBillingCyclesByOrganization?.bind(client),
+    'listBillingCyclesByOrganization'
+  );
+  const [customers, sites, items, billingCycles] = await Promise.all([
     client.listCustomersByOrganization(organizationId),
     client.listSitesByCustomerIds(organizationId, customerIds),
     client.listRentalItemsByContractIds(organizationId, contractIds),
+    listBillingCyclesByOrganization(organizationId),
   ]);
 
   const customersById = new Map(customers.map((customer) => [customer.id, customer]));
   const sitesById = new Map(sites.map((site) => [site.id, site]));
   const itemCountByContract = new Map<string, number>();
+  const itemsByContract = new Map<string, RentalItem[]>();
+  const billingCyclesByContract = new Map<string, BillingCycle[]>();
 
   items.forEach((item) => {
     itemCountByContract.set(item.contract_id, (itemCountByContract.get(item.contract_id) ?? 0) + 1);
+    const contractItems = itemsByContract.get(item.contract_id) ?? [];
+    contractItems.push(item);
+    itemsByContract.set(item.contract_id, contractItems);
+  });
+
+  billingCycles.forEach((billing) => {
+    const contractBillings = billingCyclesByContract.get(billing.contract_id) ?? [];
+    contractBillings.push(billing);
+    billingCyclesByContract.set(billing.contract_id, contractBillings);
   });
 
   const normalizedSearch = normalizeSearchText(filters.search);
 
-  return contracts
-    .map((contract) => ({
-      id: contract.id,
-      internal_number: contract.internal_number,
-      kind: contract.kind,
-      status: contract.status,
-      customer_name: customersById.get(contract.customer_id)?.legal_name ?? 'Cliente removido',
-      site_name: sitesById.get(contract.site_id)?.name ?? 'Local removido',
-      legacy_order_number: contract.legacy_order_number,
-      start_date: contract.start_date,
-      recurrence_days: contract.recurrence_days,
-      item_count: itemCountByContract.get(contract.id) ?? 0,
-    }))
+  const filteredContracts = contracts
+    .map((contract) => {
+      const isRental = contract.kind === 'rental';
+      const contractItems = itemsByContract.get(contract.id) ?? [];
+      const latestBilling = isRental
+        ? selectLatestBillingCoveragePeriod(billingCyclesByContract.get(contract.id) ?? [])
+        : null;
+
+      return {
+        id: contract.id,
+        internal_number: contract.internal_number,
+        kind: contract.kind,
+        status: contract.status,
+        customer_name: customersById.get(contract.customer_id)?.legal_name ?? 'Cliente removido',
+        site_name: sitesById.get(contract.site_id)?.name ?? 'Local removido',
+        legacy_order_number: contract.legacy_order_number,
+        start_date: contract.start_date,
+        recurrence_days: contract.recurrence_days,
+        item_count: itemCountByContract.get(contract.id) ?? 0,
+        current_monthly_amount: isRental ? suggestBillingAmountFromItems(contractItems) : null,
+        latest_billing_period_end: latestBilling?.period_end ?? null,
+        latest_billing_due_date: latestBilling?.due_date ?? null,
+        billing_coverage_status: isRental
+          ? resolveRentalBillingCoverage({
+              contractStatus: contract.status,
+              today,
+              latestPeriodEnd: latestBilling?.period_end ?? null,
+            })
+          : null,
+        notes: contract.notes,
+      };
+    })
     .filter((contract) => {
       if (filters.kind && filters.kind !== 'all' && contract.kind !== filters.kind) {
         return false;
@@ -650,6 +699,8 @@ export async function listContracts(
 
       return haystack.includes(normalizedSearch);
     });
+
+  return sortContractsByBillingPriority(filteredContracts);
 }
 
 export async function getContract(
@@ -696,7 +747,10 @@ export async function listBillings(
     throw new Error('Cliente de leitura sem suporte para cobranças');
   }
 
-  const billings = await listBillingCyclesByOrganization(organizationId);
+  const allBillings = await listBillingCyclesByOrganization(organizationId);
+  const billings = filters.month
+    ? allBillings.filter((billing) => isDateInBillingMonth(billing.due_date, filters.month!))
+    : allBillings;
   const contractIds = [...new Set(billings.map((billing) => billing.contract_id))];
   const billingIds = billings.map((billing) => billing.id);
   const [contracts, customers, payments] = await Promise.all([
@@ -722,7 +776,7 @@ export async function listBillings(
 
   const normalizedSearch = normalizeSearchText(filters.search);
 
-  return billings
+  const filteredBillings = billings
     .map((billing) => {
       const contract = contractsById.get(billing.contract_id);
       const customer = contract ? customersById.get(contract.customer_id) : null;
@@ -788,6 +842,8 @@ export async function listBillings(
 
       return haystack.includes(normalizedSearch);
     });
+
+  return sortBillingsByOperationalPriority(filteredBillings, today);
 }
 
 export async function getDashboardSnapshot(
@@ -850,25 +906,24 @@ export async function getDashboardSnapshot(
   });
 }
 
-export async function getBillingReceipt(
+export async function getBillingRentalInvoice(
   client: ContractsLocacoesReadClient,
   billingId: string
-): Promise<ReceiptSnapshot> {
+): Promise<RentalInvoiceSnapshot> {
   const organizationId = await client.getCurrentOrganizationId();
   const getBillingCycleById = client.getBillingCycleById;
   const listBillingLinesByBillingCycleIds = client.listBillingLinesByBillingCycleIds;
   const listPaymentsByBillingCycleIds = client.listPaymentsByBillingCycleIds;
 
   if (!getBillingCycleById || !listBillingLinesByBillingCycleIds || !listPaymentsByBillingCycleIds) {
-    throw new Error('Cliente de leitura sem suporte para recibos');
+    throw new Error('Cliente de leitura sem suporte para faturas');
   }
 
   const billing = await getBillingCycleById(organizationId, billingId);
   const contract = await client.getContractById(organizationId, billing.contract_id);
-  const [customers, sites, rentalItems, billingLines, payments] = await Promise.all([
+  const [customers, sites, billingLines, payments] = await Promise.all([
     client.listCustomersByOrganization(organizationId),
     client.listSitesByCustomerIds(organizationId, [contract.customer_id]),
-    client.listRentalItemsByContractIds(organizationId, [billing.contract_id]),
     listBillingLinesByBillingCycleIds(organizationId, [billingId]),
     listPaymentsByBillingCycleIds(organizationId, [billingId]),
   ]);
@@ -881,13 +936,14 @@ export async function getBillingReceipt(
 
   const site = sites.find((entry) => entry.id === contract.site_id) ?? null;
 
-  return buildReceiptSnapshot({
+  return buildRentalInvoiceSnapshot({
     billing,
     contract,
     customer,
     site,
-    rentalItems,
     billingLines,
     payments,
   });
 }
+
+export const getBillingReceipt = getBillingRentalInvoice;

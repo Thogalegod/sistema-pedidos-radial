@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { calculateBillingBalance } from '@/lib/contratos-locacoes/dashboard';
 import {
   buildNextMonthlyBillingPeriod,
@@ -16,6 +16,7 @@ import { BillingPeriodForm, type BillingPeriodFormValues } from './BillingPeriod
 
 interface ContractBillingSectionProps {
   detail: ContractDetail;
+  openNewBillingForm?: boolean;
   onAttachPaymentProof: (billing: BillingCycle, payment: Payment, file: File) => Promise<void>;
   onCreateBillingPeriod: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
   onMarkBillingSent: (billing: BillingCycle) => Promise<void>;
@@ -48,6 +49,7 @@ function toPeriodFormValues(billing: BillingCycle): BillingPeriodFormValues {
 
 export function ContractBillingSection({
   detail,
+  openNewBillingForm = false,
   onAttachPaymentProof,
   onCreateBillingPeriod,
   onMarkBillingSent,
@@ -57,6 +59,7 @@ export function ContractBillingSection({
   paymentProofDocuments,
 }: ContractBillingSectionProps) {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
+  const didAutoOpenNewBillingForm = useRef(false);
   const monthlyTotal = useMemo(() => suggestBillingAmountFromItems(detail.items), [detail.items]);
   const billingCycles = useMemo(
     () => [...detail.billingCycles].sort((left, right) => left.period_start.localeCompare(right.period_start)),
@@ -68,21 +71,31 @@ export function ContractBillingSection({
     existingBillingCycles: billingCycles,
     issueDate: detail.contract.start_date,
   }), [billingCycles, detail.contract.end_date, detail.contract.start_date]);
+  const newBillingFormValues = useMemo(() => nextPeriodSuggestion ? {
+    ...nextPeriodSuggestion,
+    issue_date: nextPeriodSuggestion.period_start,
+    due_date: nextPeriodSuggestion.period_end,
+    amount: monthlyTotal,
+    notes: '',
+  } : null, [monthlyTotal, nextPeriodSuggestion]);
+
+  useEffect(() => {
+    if (!openNewBillingForm || didAutoOpenNewBillingForm.current || !newBillingFormValues) {
+      return;
+    }
+
+    didAutoOpenNewBillingForm.current = true;
+    setActiveForm({ type: 'create', values: newBillingFormValues });
+  }, [newBillingFormValues, openNewBillingForm]);
 
   function openCreateForm() {
-    if (!nextPeriodSuggestion) {
+    if (!newBillingFormValues) {
       return;
     }
 
     setActiveForm({
       type: 'create',
-      values: {
-        ...nextPeriodSuggestion,
-        issue_date: nextPeriodSuggestion.period_start,
-        due_date: nextPeriodSuggestion.period_end,
-        amount: monthlyTotal,
-        notes: '',
-      },
+      values: newBillingFormValues,
     });
   }
 
@@ -91,7 +104,7 @@ export function ContractBillingSection({
       <div className="flex flex-col gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-medium">Valor mensal atual da locação</p>
-          <p className="text-xs text-blue-800">Usado apenas como sugestão inicial dos novos períodos.</p>
+          <p className="text-xs text-blue-800">Derivado dos valores atuais dos equipamentos para os novos períodos.</p>
         </div>
         <span className="font-semibold">{formatBRL(monthlyTotal)}</span>
       </div>
@@ -151,7 +164,6 @@ export function ContractBillingSection({
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                     <h4 className="mb-3 text-sm font-semibold text-gray-900">Editar período</h4>
                     <BillingPeriodForm
-                      amountLocked={billingPayments.length > 0}
                       initialValues={activeForm.values}
                       onCancel={() => setActiveForm(null)}
                       onSubmit={async (values) => {

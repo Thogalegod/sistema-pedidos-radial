@@ -13,7 +13,6 @@ export interface BillingPeriodFormValues {
 }
 
 interface BillingPeriodFormProps {
-  amountLocked?: boolean;
   initialValues: BillingPeriodFormValues;
   onCancel: () => void;
   onSubmit: (values: BillingPeriodFormValues) => Promise<void>;
@@ -21,7 +20,6 @@ interface BillingPeriodFormProps {
 }
 
 export function BillingPeriodForm({
-  amountLocked = false,
   initialValues,
   onCancel,
   onSubmit,
@@ -94,15 +92,15 @@ export function BillingPeriodForm({
         Valor
         <CurrencyInput
           className="rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100 disabled:text-gray-500"
-          disabled={amountLocked}
+          disabled
           value={values.amount}
-          onValueChange={(value) => update({ amount: value })}
+          onValueChange={() => undefined}
         />
       </label>
 
-      {amountLocked ? (
-        <p className="text-xs text-amber-700">O valor não pode ser alterado porque já existe recebimento registrado.</p>
-      ) : null}
+      <p className="text-xs text-amber-700">
+        Para alterar o valor da locação, edite os valores dos equipamentos. A alteração será aplicada aos próximos períodos.
+      </p>
 
       <label className="grid gap-1 text-sm font-medium text-gray-700">
         Observação

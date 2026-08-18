@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildReceiptSnapshot } from './receipt';
+import { buildRentalInvoiceSnapshot as buildReceiptSnapshot } from './rental-invoice';
 import type { BillingCycle, BillingLine, Contract, Customer, CustomerSite, Payment, RentalItem } from './types';
 
-describe('receipt snapshot builder', () => {
-  it('builds a manual rental receipt with financial number, period, customer, site and items', () => {
+describe('rental invoice snapshot builder', () => {
+  it('builds a rental invoice with its commercial and historical billing data', () => {
     const snapshot = buildReceiptSnapshot({
       billing: makeBilling({
         document_number: null,
@@ -37,21 +37,22 @@ describe('receipt snapshot builder', () => {
       payments: [makePayment({ amount: '50000' })],
     });
 
-    expect(snapshot.receiptNumber).toBe('R000023012');
-    expect(snapshot.fileName).toBe('recibo-R000023012.pdf');
+    expect(snapshot.invoiceNumber).toBe('R000023012');
+    expect(snapshot.fileName).toBe('fatura-R000023012.pdf');
+    expect(snapshot.company.legalName).toBe('FONTES ENERGIA COMÉRCIO E MANUTENÇÃO LTDA');
+    expect(snapshot.company.banking.account).toBe('06.339-0');
     expect(snapshot.customer.name).toBe('Cliente Exemplo Ltda');
+    expect(snapshot.customer.stateRegistration).toBeNull();
     expect(snapshot.site.name).toBe('Obra Centro');
-    expect(snapshot.contract.internalNumber).toBe('23');
     expect(snapshot.contract.legacyOrderNumber).toBe('OS-2026-23');
     expect(snapshot.period.label).toBe('01/07/2026 a 30/07/2026');
     expect(snapshot.totals.totalAmount).toBe('150000');
-    expect(snapshot.totals.paidAmount).toBe('50000');
-    expect(snapshot.totals.balanceAmount).toBe('100000');
-    expect(snapshot.items[0]?.quantity).toBe(2);
+    expect(snapshot.totals.totalAmountInWords).toBe('Mil e quinhentos reais');
     expect(snapshot.lines[0]?.totalAmountLabel).toBe('R$ 1.500,00');
+    expect(snapshot.remittanceInvoice).toBeNull();
   });
 
-  it('preserves an existing receipt document number when it is already stored', () => {
+  it('preserves an existing invoice document number when it is already stored', () => {
     const snapshot = buildReceiptSnapshot({
       billing: makeBilling({
         document_number: 'R654321003',
@@ -67,7 +68,7 @@ describe('receipt snapshot builder', () => {
       payments: [],
     });
 
-    expect(snapshot.receiptNumber).toBe('R654321003');
+    expect(snapshot.invoiceNumber).toBe('R654321003');
   });
 
   it('shows the historical billing line price after the current rental item price changes', () => {
@@ -85,8 +86,79 @@ describe('receipt snapshot builder', () => {
       payments: [],
     });
 
-    expect(snapshot.items[0]?.unitAmountLabel).toBe('R$ 3.000,00');
     expect(snapshot.lines[0]?.unitAmountLabel).toBe('R$ 3.000,00');
+    expect(snapshot.lines[0]?.totalAmountLabel).toBe('R$ 3.000,00');
+  });
+
+  it('shows the remittance invoice only when the contract enables it and has a number', () => {
+    const visibleSnapshot = buildReceiptSnapshot({
+      billing: makeBilling(),
+      contract: makeContract({
+        has_remittance_invoice: true,
+        remittance_invoice_number: '476',
+        remittance_invoice_issue_date: '2026-06-29',
+      }),
+      customer: makeCustomer(),
+      site: makeSite(),
+      rentalItems: [],
+      billingLines: [makeBillingLine()],
+      payments: [],
+    });
+    const hiddenSnapshot = buildReceiptSnapshot({
+      billing: makeBilling(),
+      contract: makeContract({
+        has_remittance_invoice: false,
+        remittance_invoice_number: '476',
+      }),
+      customer: makeCustomer(),
+      site: makeSite(),
+      rentalItems: [],
+      billingLines: [makeBillingLine()],
+      payments: [],
+    });
+
+    expect(visibleSnapshot.remittanceInvoice).toEqual({ number: '476', issueDateLabel: '29/06/2026' });
+    expect(hiddenSnapshot.remittanceInvoice).toBeNull();
+  });
+
+  it('preserves the billing cycle adjustments without recalculating them', () => {
+    const snapshot = buildReceiptSnapshot({
+      billing: makeBilling({
+        base_amount: '400000',
+        discount_amount: '10000',
+        surcharge_amount: '25000',
+        exemption_amount: '15000',
+        total_amount: '400000',
+      }),
+      contract: makeContract({ contract_company: 'radial' }),
+      customer: makeCustomer(),
+      site: makeSite(),
+      rentalItems: [],
+      billingLines: [makeBillingLine({ total_amount: '400000' })],
+      payments: [],
+    });
+
+    expect(snapshot.company.banking.account).toBe('63.881-1');
+    expect(snapshot.totals).toMatchObject({
+      baseAmount: '400000',
+      discountAmount: '10000',
+      surchargeAmount: '25000',
+      exemptionAmount: '15000',
+      totalAmount: '400000',
+    });
+  });
+
+  it('uses the rental observation when the billing note is blank', () => {
+    const snapshot = buildReceiptSnapshot({
+      billing: makeBilling({ notes: '   ' }),
+      contract: makeContract({ notes: 'Equipamento instalado na área externa.' }),
+      customer: makeCustomer(),
+      site: makeSite(),
+      billingLines: [makeBillingLine()],
+      payments: [],
+    });
+
+    expect(snapshot.notes).toBe('Equipamento instalado na área externa.');
   });
 });
 

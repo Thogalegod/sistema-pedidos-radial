@@ -11,7 +11,7 @@ describe('BillingTable', () => {
     expect(within(card).getByRole('heading', { level: 2, name: 'R000077001' })).toBeInTheDocument();
     expect(within(card).getByText('Cliente QA · Pedido OS-QA-77')).toBeInTheDocument();
     expect(within(card).queryByText(/Locação interna #77/i)).not.toBeInTheDocument();
-    expect(within(card).getByText('Obra QA')).toBeInTheDocument();
+    expect(within(card).queryByText('Obra QA')).not.toBeInTheDocument();
     expect(within(card).getByText('Parcialmente paga')).toBeInTheDocument();
     expect(within(card).getByText('R$ 3.000,00')).toBeInTheDocument();
     expect(within(card).getByText('Período: 08/08/2026–07/09/2026')).toBeInTheDocument();
@@ -20,7 +20,7 @@ describe('BillingTable', () => {
     expect(within(card).getByText(/Recebido: R\$ 1\.000,00/i)).toBeInTheDocument();
     expect(within(card).getByText(/Saldo: R\$ 2\.000,00/i)).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: /abrir locação/i })).toHaveAttribute('href', '/contratos-locacoes/contratos/contract-1');
-    expect(within(card).getByRole('link', { name: /abrir recibo/i })).toHaveAttribute('href', '/contratos-locacoes/recibos/billing-1');
+    expect(within(card).getByRole('link', { name: /abrir fatura/i })).toHaveAttribute('href', '/contratos-locacoes/recibos/billing-1');
   });
 });
 

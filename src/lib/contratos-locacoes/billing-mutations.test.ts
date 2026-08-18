@@ -248,6 +248,48 @@ describe('billing mutations', () => {
     expect(client.upsertedBillingLines).toHaveLength(1);
   });
 
+  it('creates two itemized recurring lines and derives the billing total from them', async () => {
+    const client = new FakeBillingMutationClient();
+
+    const result = await createBillingCycle(client, {
+      contract_id: 'contract-1',
+      period_start: '2026-07-01',
+      period_end: '2026-07-30',
+      issue_date: '2026-07-01',
+      due_date: '2026-07-31',
+      document_type: 'receipt',
+      document_number: 'R260701001',
+      sequence_number: 1,
+      notes: '',
+      discount_amount: '0',
+      surcharge_amount: '0',
+      exemption_amount: '0',
+      items: [
+        {
+          id: 'line-1',
+          rental_item_id: 'item-1',
+          description: 'Transformador 500 kVA - Série ABC123',
+          quantity: 1,
+          unit_amount: '150000',
+          kind: 'recurring',
+        },
+        {
+          id: 'line-2',
+          rental_item_id: 'item-2',
+          description: 'Transformador 300 kVA - Série XYZ789',
+          quantity: 1,
+          unit_amount: '150000',
+          kind: 'recurring',
+        },
+      ],
+    });
+
+    expect(result.billing.total_amount).toBe('300000');
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines.map((line) => line.rental_item_id)).toEqual(['item-1', 'item-2']);
+    expect(result.lines.map((line) => line.total_amount)).toEqual(['150000', '150000']);
+  });
+
   it('auto-generates the approved short receipt number from the internal contract number', async () => {
     const client = new FakeBillingMutationClient();
 
@@ -461,7 +503,7 @@ describe('billing mutations', () => {
     expect(result.billing.total_amount).toBe('150000');
   });
 
-  it('updates dates, notes and amount when the period has no payments and no overlap', async () => {
+  it('updates dates and notes without replacing the itemized billing lines', async () => {
     const client = new FakeBillingMutationClient();
     client.billingCycles = [
       {
@@ -484,27 +526,22 @@ describe('billing mutations', () => {
       period_end: '2026-07-30',
       issue_date: '2026-07-02',
       due_date: '2026-07-31',
-      amount: '160000',
+      amount: '150000',
       notes: 'Ajuste aprovado',
     });
 
-    expect(result.billing.total_amount).toBe('160000');
+    expect(result.billing.total_amount).toBe('150000');
     expect(client.updatedBillingStatus?.patch).toMatchObject({
       period_start: '2026-07-02',
       period_end: '2026-07-30',
-      base_amount: '160000',
-      total_amount: '160000',
       notes: 'Ajuste aprovado',
     });
-    expect(client.upsertedBillingLines[0]).toMatchObject({
-      billing_cycle_id: 'billing-1',
-      quantity: 1,
-      unit_amount: '160000',
-      total_amount: '160000',
-    });
+    expect(client.updatedBillingStatus?.patch).not.toHaveProperty('total_amount');
+    expect(client.upsertedBillingLines).toHaveLength(0);
+    expect(result.lines).toHaveLength(0);
   });
 
-  it('blocks amount changes when the period already has a payment but still validates date overlaps', async () => {
+  it('blocks manual amount changes instead of collapsing itemized lines', async () => {
     const client = new FakeBillingMutationClient();
     client.billingCycles = [
       {
@@ -515,19 +552,6 @@ describe('billing mutations', () => {
         period_end: '2026-07-31',
       },
     ];
-    client.paymentsByBillingCycleId.set('billing-1', [
-      {
-        id: 'payment-1',
-        organization_id: 'org-1',
-        billing_cycle_id: 'billing-1',
-        paid_at: '2026-07-15',
-        amount: '50000',
-        notes: null,
-        created_at: '2026-07-15T00:00:00.000Z',
-        updated_at: '2026-07-15T00:00:00.000Z',
-      },
-    ]);
-
     await expect(updateBillingCycleDetails(client, 'billing-1', {
       period_start: '2026-07-02',
       period_end: '2026-07-31',
@@ -535,7 +559,12 @@ describe('billing mutations', () => {
       due_date: '2026-07-31',
       amount: '160000',
       notes: 'Tentativa',
-    })).rejects.toThrow('O valor não pode ser alterado porque já existe recebimento registrado.');
+    })).rejects.toThrow(
+      'Para alterar o valor da locação, edite os valores dos equipamentos. A alteração será aplicada aos próximos períodos.'
+    );
+
+    expect(client.updatedBillingStatus).toBeNull();
+    expect(client.upsertedBillingLines).toHaveLength(0);
 
     const result = await updateBillingCycleDetails(client, 'billing-1', {
       period_start: '2026-07-02',

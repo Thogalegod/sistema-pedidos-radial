@@ -28,6 +28,28 @@ describe('ContractBillingSection future pricing', () => {
     await user.click(screen.getByRole('button', { name: 'Gerar próximo período' }));
 
     expect(screen.getByLabelText('Valor')).toHaveValue('R$ 3.500,00');
+    expect(screen.getByLabelText('Valor')).toBeDisabled();
+  });
+
+  it('opens the existing new-period form on request without saving automatically', () => {
+    const onCreateBillingPeriod = vi.fn();
+    render(
+      <ContractBillingSection
+        detail={detailWithUpdatedPrice()}
+        openNewBillingForm
+        paymentProofDocuments={[]}
+        onAttachPaymentProof={vi.fn()}
+        onCreateBillingPeriod={onCreateBillingPeriod}
+        onMarkBillingSent={vi.fn()}
+        onOpenPaymentProof={vi.fn()}
+        onRecordBillingPayment={vi.fn()}
+        onUpdateBillingPeriod={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Novo período de cobrança' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salvar período' })).toBeInTheDocument();
+    expect(onCreateBillingPeriod).not.toHaveBeenCalled();
   });
 });
 

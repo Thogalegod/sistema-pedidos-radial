@@ -9,6 +9,7 @@ import type { BillingPeriodFormValues } from './BillingPeriodForm';
 
 type ContractSummaryProps = {
   detail: ContractDetail;
+  openNewBillingForm?: boolean;
   onAttachPaymentProof?: (billing: BillingCycle, payment: Payment, file: File) => Promise<void>;
   onCreateBillingPeriod?: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
   onMarkBillingSent?: (billing: BillingCycle) => Promise<void>;
@@ -86,6 +87,7 @@ export function ContractSummary({
   onRecordBillingPayment,
   onStartClosure,
   onUpdateBillingPeriod,
+  openNewBillingForm = false,
   paymentProofDocuments = [],
   remittanceAttachmentSlot,
   remittanceEditorSlot,
@@ -244,6 +246,7 @@ export function ContractSummary({
         {onAttachPaymentProof && onCreateBillingPeriod && onMarkBillingSent && onOpenPaymentProof && onRecordBillingPayment && onUpdateBillingPeriod ? (
           <ContractBillingSection
             detail={detail}
+            openNewBillingForm={openNewBillingForm}
             paymentProofDocuments={paymentProofDocuments}
             onAttachPaymentProof={onAttachPaymentProof}
             onCreateBillingPeriod={onCreateBillingPeriod}

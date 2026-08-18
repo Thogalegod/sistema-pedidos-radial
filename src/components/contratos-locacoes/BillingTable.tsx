@@ -54,18 +54,17 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
                 <p className="mt-1 text-xs font-medium text-gray-600">
                   {billing.customer_name}{reference.secondary ? ` · ${reference.secondary}` : ''}
                 </p>
-                <p className="text-xs text-gray-500">{billing.site_name}</p>
               </div>
               <p className="shrink-0 text-lg font-bold text-gray-900 sm:text-right">{formatBRL(billing.total_amount)}</p>
             </div>
 
             <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-                <span>Período: {formatDateLabel(billing.period_start)}–{formatDateLabel(billing.period_end)}</span>
                 <span>Vence: {formatDateLabel(billing.due_date)}</span>
                 <span>Recebido: {formatBRL(paidAmount)}</span>
                 <span>Saldo: {formatBRL(balanceAmount)}</span>
                 <span>{billing.sent_at ? `Enviado em ${formatDateTimeLabel(billing.sent_at)}` : 'Não enviado'}</span>
+                <span className="text-gray-500">Período: {formatDateLabel(billing.period_start)}–{formatDateLabel(billing.period_end)}</span>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                 <Link className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/contratos/${billing.contract_id}`}>
@@ -73,7 +72,7 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
                 </Link>
                 {billing.document_type === 'receipt' ? (
                   <Link className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
-                    Abrir recibo
+                    Abrir fatura
                   </Link>
                 ) : null}
               </div>

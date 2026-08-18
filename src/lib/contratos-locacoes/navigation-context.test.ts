@@ -12,7 +12,7 @@ describe('resolveModulePageContext', () => {
     ['/contratos-locacoes/clientes/novo', 'customers', 'Novo cliente', 'Cadastre um cliente com suas obras e contatos.', ['Contratos e Locações', 'Clientes', 'Novo cliente']],
     ['/contratos-locacoes/clientes/customer-1', 'customers', 'Detalhe do cliente', 'Consulte e edite os dados, obras e contatos deste cliente.', ['Contratos e Locações', 'Clientes', 'Detalhe do cliente']],
     ['/contratos-locacoes/ativos', 'assets', 'Ativos', 'Cadastre e acompanhe os equipamentos disponíveis para locação.', ['Contratos e Locações', 'Ativos']],
-    ['/contratos-locacoes/recibos/billing-1', 'billings', 'Recibo', 'Consulte os dados e o histórico desta cobrança.', ['Contratos e Locações', 'Cobranças', 'Recibo']],
+    ['/contratos-locacoes/recibos/billing-1', 'billings', 'Fatura', 'Consulte os dados e baixe a fatura desta cobrança.', ['Contratos e Locações', 'Cobranças', 'Fatura']],
   ] as const)('resolves %s without confusing dynamic and new routes', (pathname, activeSection, title, description, breadcrumb) => {
     expect(resolveModulePageContext(pathname)).toEqual({ activeSection, title, description, breadcrumb });
   });

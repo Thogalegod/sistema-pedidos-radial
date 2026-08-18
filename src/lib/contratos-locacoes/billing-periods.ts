@@ -1,4 +1,4 @@
-import type { BillingCycle, RentalItem } from './types';
+import type { BillingCycle, ContractStatus, RentalItem } from './types';
 
 export interface BillingPeriodDraft {
   period_start: string;
@@ -17,6 +17,54 @@ export interface BillingPeriodRange {
 export interface BillingPeriodConflict {
   type: 'duplicate' | 'overlap';
   billing: BillingPeriodRange;
+}
+
+export interface RentalItemBillingLineDraft {
+  id: string;
+  rental_item_id: string;
+  description: string;
+  quantity: number;
+  unit_amount: string;
+  kind: 'recurring';
+}
+
+export type RentalBillingCoverageStatus =
+  | 'first_period_required'
+  | 'current'
+  | 'new_period_required';
+
+interface ContractBillingPriorityItem {
+  billing_coverage_status: RentalBillingCoverageStatus | null;
+  start_date: string;
+  latest_billing_period_end: string | null;
+}
+
+export function sortContractsByBillingPriority<T extends ContractBillingPriorityItem>(contracts: T[]) {
+  const priority = (contract: T) => {
+    if (contract.billing_coverage_status === 'new_period_required') return 0;
+    if (contract.billing_coverage_status === 'first_period_required') return 1;
+    if (contract.billing_coverage_status === 'current') return 2;
+    return 3;
+  };
+
+  return contracts
+    .map((contract, index) => ({ contract, index }))
+    .sort((left, right) => {
+      const leftPriority = priority(left.contract);
+      const rightPriority = priority(right.contract);
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      if (leftPriority === 3) return left.index - right.index;
+
+      const leftDate = leftPriority === 1
+        ? left.contract.start_date
+        : left.contract.latest_billing_period_end ?? '';
+      const rightDate = rightPriority === 1
+        ? right.contract.start_date
+        : right.contract.latest_billing_period_end ?? '';
+      const byDate = leftDate.localeCompare(rightDate);
+      return byDate !== 0 ? byDate : left.index - right.index;
+    })
+    .map(({ contract }) => contract);
 }
 
 function parseDateParts(value: string) {
@@ -144,4 +192,68 @@ export function suggestBillingAmountFromItems(items: RentalItem[]) {
   }, 0);
 
   return String(total);
+}
+
+export function selectLatestBillingCoveragePeriod(billingCycles: BillingCycle[]) {
+  return billingCycles
+    .filter((billing) => billing.status !== 'draft' && billing.status !== 'cancelled')
+    .reduce<BillingCycle | null>((latest, billing) => (
+      !latest || billing.period_end > latest.period_end ? billing : latest
+    ), null);
+}
+
+export function resolveRentalBillingCoverage(params: {
+  contractStatus: ContractStatus;
+  today: string;
+  latestPeriodEnd: string | null;
+}): RentalBillingCoverageStatus | null {
+  if (params.contractStatus !== 'active') {
+    return null;
+  }
+
+  if (!params.latestPeriodEnd) {
+    return 'first_period_required';
+  }
+
+  return params.today <= params.latestPeriodEnd ? 'current' : 'new_period_required';
+}
+
+function normalizeDescriptionPart(value: string | null | undefined) {
+  return value?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function containsDescriptionPart(description: string, part: string) {
+  return description.toLocaleLowerCase('pt-BR').includes(part.toLocaleLowerCase('pt-BR'));
+}
+
+export function buildRentalItemBillingLines(
+  items: RentalItem[],
+  createId: () => string
+): RentalItemBillingLineDraft[] {
+  return items.map((item) => {
+    let description = normalizeDescriptionPart(item.description);
+
+    for (const part of [item.equipment_type, item.capacity]) {
+      const normalizedPart = normalizeDescriptionPart(part);
+      if (normalizedPart && !containsDescriptionPart(description, normalizedPart)) {
+        description = [description, normalizedPart].filter(Boolean).join(' ');
+      }
+    }
+
+    const serialNumber = normalizeDescriptionPart(item.serial_number);
+    if (serialNumber && !containsDescriptionPart(description, serialNumber)) {
+      description = description
+        ? `${description} - Série ${serialNumber}`
+        : `Série ${serialNumber}`;
+    }
+
+    return {
+      id: createId(),
+      rental_item_id: item.id,
+      description,
+      quantity: item.quantity,
+      unit_amount: item.unit_amount,
+      kind: 'recurring',
+    };
+  });
 }

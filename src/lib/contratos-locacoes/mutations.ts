@@ -1197,16 +1197,12 @@ export async function updateBillingCycleDetails(
   const organizationId = await client.getCurrentOrganizationId();
   const getBillingCycleById = requireBillingMethod(client.getBillingCycleById?.bind(client), 'getBillingCycleById');
   const listBillingCyclesByContractId = requireBillingMethod(client.listBillingCyclesByContractId?.bind(client), 'listBillingCyclesByContractId');
-  const listPaymentsByBillingCycleId = requireBillingMethod(client.listPaymentsByBillingCycleId?.bind(client), 'listPaymentsByBillingCycleId');
   const updateBillingCycle = requireBillingMethod(client.updateBillingCycle?.bind(client), 'updateBillingCycle');
-  const upsertBillingLines = requireBillingMethod(client.upsertBillingLines?.bind(client), 'upsertBillingLines');
-  const deleteMissingBillingLines = requireBillingMethod(client.deleteMissingBillingLines?.bind(client), 'deleteMissingBillingLines');
 
   const billingCycle = await getBillingCycleById(organizationId, billingCycleId);
   const getContractById = requireBillingMethod(client.getContractById?.bind(client), 'getContractById');
   const contract = await getContractById(organizationId, billingCycle.contract_id);
   const existingBillingCycles = await listBillingCyclesByContractId(organizationId, billingCycle.contract_id);
-  const payments = await listPaymentsByBillingCycleId(organizationId, billingCycleId);
 
   assertBillingPeriodWithinContractEnd(contract, {
     period_start: rawPayload.period_start,
@@ -1218,11 +1214,12 @@ export async function updateBillingCycleDetails(
     ignoreBillingCycleId: billingCycleId,
   });
 
-  const hasPayments = payments.length > 0;
   const amountChanged = rawPayload.amount !== billingCycle.total_amount;
 
-  if (hasPayments && amountChanged) {
-    throw new Error('O valor não pode ser alterado porque já existe recebimento registrado.');
+  if (amountChanged) {
+    throw new Error(
+      'Para alterar o valor da locação, edite os valores dos equipamentos. A alteração será aplicada aos próximos períodos.'
+    );
   }
 
   const patch: Partial<BillingCycle> = {
@@ -1234,37 +1231,11 @@ export async function updateBillingCycleDetails(
     notes: normalizeNotes(rawPayload.notes),
   };
 
-  let lines: BillingLine[] = [];
-
-  if (!hasPayments && amountChanged) {
-    patch.base_amount = rawPayload.amount;
-    patch.discount_amount = '0';
-    patch.surcharge_amount = '0';
-    patch.exemption_amount = '0';
-    patch.total_amount = rawPayload.amount;
-  }
-
   const billing = await updateBillingCycle(billingCycleId, patch);
-
-  if (!hasPayments && amountChanged) {
-    const line = buildBillingLineRecords(organizationId, billingCycleId, [
-      {
-        id: generateUuid(),
-        rental_item_id: null,
-        description: 'Locação mensal',
-        quantity: 1,
-        unit_amount: rawPayload.amount,
-        kind: 'recurring',
-      },
-    ]);
-
-    lines = await upsertBillingLines(line);
-    await deleteMissingBillingLines(billingCycleId, lines.map((entry) => entry.id));
-  }
 
   return {
     billing,
-    lines,
+    lines: [],
   };
 }
 

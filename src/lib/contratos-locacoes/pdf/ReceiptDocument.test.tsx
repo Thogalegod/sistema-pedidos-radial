@@ -2,28 +2,141 @@
 
 import { renderToBuffer } from '@react-pdf/renderer';
 import { describe, expect, it } from 'vitest';
-import { ReceiptDocument } from './ReceiptDocument';
-import { buildReceiptSnapshot } from '../receipt';
+import { buildRentalInvoiceSnapshot as buildReceiptSnapshot } from '../rental-invoice';
 import type { BillingCycle, BillingLine, Contract, Customer, CustomerSite } from '../types';
 
-describe('ReceiptDocument', () => {
-  it('renders a receipt PDF buffer with the expected financial identification', async () => {
+describe('RentalInvoiceDocument', () => {
+  it('renders the approved customer-facing invoice content without operational payment data', async () => {
+    const snapshot = buildReceiptSnapshot({
+      billing: makeBilling({ base_amount: '300000', total_amount: '300000' }),
+      contract: makeContract({
+        has_remittance_invoice: true,
+        remittance_invoice_number: '476',
+      }),
+      customer: makeCustomer(),
+      site: makeSite(),
+      rentalItems: [],
+      billingLines: [
+        makeBillingLine({
+          id: 'line-1',
+          rental_item_id: 'item-1',
+          description: 'Transformador 500 kVA - Série ABC123',
+        }),
+        makeBillingLine({
+          id: 'line-2',
+          rental_item_id: 'item-2',
+          description: 'Transformador 300 kVA - Série XYZ789',
+        }),
+      ],
+      payments: [],
+    });
+    const pdfModule = await import('./ReceiptDocument') as typeof import('./ReceiptDocument') & {
+      RentalInvoiceDocument?: (props: { snapshot: typeof snapshot }) => React.JSX.Element;
+      buildRentalInvoiceDocumentContent?: (value: typeof snapshot) => unknown;
+    };
+
+    expect(pdfModule.buildRentalInvoiceDocumentContent).toBeTypeOf('function');
+    expect(pdfModule.RentalInvoiceDocument).toBeTypeOf('function');
+    const content = pdfModule.buildRentalInvoiceDocumentContent?.(snapshot) as {
+      issuerLines: string[];
+      recipientLines: string[];
+      tableRows: Array<{ description: string }>;
+      fiscalNotice: string;
+    };
+    const serializedContent = JSON.stringify(content);
+
+    expect(serializedContent).toContain('FATURA DE LOCAÇÃO');
+    expect(serializedContent).toContain('FONTES ENERGIA COMÉRCIO E MANUTENÇÃO LTDA');
+    expect(serializedContent).toContain('13.318.529/0001-08');
+    expect(content).toMatchObject({
+      invoiceDataRows: expect.arrayContaining([{ label: 'NF de remessa', value: '476' }]),
+    });
+    expect(content.issuerLines).toEqual([
+      'Estrada São Miguel Arcanjo, 140 · Veraneio Maracanã · Itaquaquecetuba/SP · CEP 08582-500',
+      'CNPJ: 13.318.529/0001-08 · IE: 379.076.526.115',
+      'Fone: (11) 2941-4775 · WhatsApp: (11) 99837-2639',
+      'www.radialenergia.com.br · thomas@radialenergia.com.br',
+    ]);
+    expect(content.tableRows.map((row) => row.description)).toEqual([
+      'Transformador 500 kVA - Série ABC123',
+      'Transformador 300 kVA - Série XYZ789',
+    ]);
+    expect(content.recipientLines).not.toContain('Inscrição Estadual: 110.042.490.114');
+    expect(serializedContent).toContain('R$ 3.000,00');
+    expect(serializedContent).not.toContain('Locação mensal');
+    expect(serializedContent).not.toContain('Banco Itaú');
+    expect(serializedContent).not.toContain('06.339-0');
+    expect(serializedContent).not.toContain('Agência:');
+    expect(serializedContent).not.toContain('Conta corrente:');
+    expect(serializedContent).not.toContain('Inscrição Municipal');
+    expect(serializedContent).toContain('WhatsApp: (11) 99837-2639');
+    expect(serializedContent).not.toContain('9.9837-2639');
+    expect(serializedContent).toContain('www.radialenergia.com.br');
+    expect(serializedContent).toContain('thomas@radialenergia.com.br');
+    expect(content).not.toHaveProperty('paymentLines');
+    expect(content.fiscalNotice).toBe(
+      'OPERAÇÃO NÃO SUJEITA A NOTA FISCAL DE SERVIÇOS NOS TERMOS DA LEI COMPLEMENTAR 116/2003 DE 01/08/2021'
+    );
+    expect(serializedContent).not.toContain('Recibo de Locação');
+    expect(serializedContent).not.toContain('Pago');
+    expect(serializedContent).not.toContain('Saldo em aberto');
+    expect(serializedContent).not.toContain('Locação interna');
+    expect(serializedContent).not.toContain('Gerado em');
+
+    const RentalInvoiceDocument = pdfModule.RentalInvoiceDocument!;
+    const buffer = await renderToBuffer(<RentalInvoiceDocument snapshot={snapshot} />);
+    expect(buffer.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('uses the compact Radial issuer header with institutional contacts and no bank data or IM', async () => {
     const snapshot = buildReceiptSnapshot({
       billing: makeBilling(),
-      contract: makeContract(),
+      contract: makeContract({ contract_company: 'radial' }),
       customer: makeCustomer(),
       site: makeSite(),
       rentalItems: [],
       billingLines: [makeBillingLine()],
       payments: [],
     });
+    const pdfModule = await import('./ReceiptDocument') as typeof import('./ReceiptDocument') & {
+      buildRentalInvoiceDocumentContent?: (value: typeof snapshot) => unknown;
+    };
+    const content = pdfModule.buildRentalInvoiceDocumentContent?.(snapshot) as { issuerLines: string[] };
+    const serializedContent = JSON.stringify(content);
 
-    const buffer = await renderToBuffer(<ReceiptDocument snapshot={snapshot} />);
-    const content = buffer.toString('latin1');
+    expect(serializedContent).toContain('RADIAL EQUIPAMENTOS ELÉTRICOS LTDA - ME');
+    expect(serializedContent).toContain('11.215.564/0001-68');
+    expect(content.issuerLines).toEqual([
+      'R. Maracatuba, 1A · Chácara Califórnia · São Paulo/SP · CEP 03404-130',
+      'CNPJ: 11.215.564/0001-68 · IE: 148.827.040.110',
+      'Fone: (11) 2941-4775 · WhatsApp: (11) 99837-2639',
+      'www.radialenergia.com.br · thomas@radialenergia.com.br',
+    ]);
+    expect(serializedContent).not.toContain('63.881-1');
+    expect(serializedContent).not.toContain('Inscrição Municipal');
+  });
 
-    expect(buffer.byteLength).toBeGreaterThan(1000);
-    expect(content).toContain(snapshot.receiptNumber);
-    expect(content).toContain('Radial Energia');
+  it('shows the customer state registration only when it is informed', async () => {
+    const pdfModule = await import('./ReceiptDocument') as typeof import('./ReceiptDocument') & {
+      buildRentalInvoiceDocumentContent?: (value: ReturnType<typeof buildReceiptSnapshot>) => unknown;
+    };
+    const buildContent = (stateRegistration: string | null) => {
+      const snapshot = buildReceiptSnapshot({
+        billing: makeBilling(),
+        contract: makeContract(),
+        customer: makeCustomer({ state_registration: stateRegistration }),
+        site: makeSite(),
+        billingLines: [makeBillingLine()],
+        payments: [],
+      });
+      return pdfModule.buildRentalInvoiceDocumentContent?.(snapshot) as { recipientLines: string[] };
+    };
+
+    expect(buildContent('110.042.490.114').recipientLines).toContain(
+      'CNPJ/CPF: 12345678000199 · IE: 110.042.490.114'
+    );
+    expect(buildContent(null).recipientLines).toContain('CNPJ/CPF: 12345678000199');
+    expect(buildContent(null).recipientLines.some((line) => line.includes(' · IE:'))).toBe(false);
   });
 });
 

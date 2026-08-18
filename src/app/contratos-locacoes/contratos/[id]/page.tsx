@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Pencil, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -26,6 +26,7 @@ import {
   type ContractEditMutationClient,
   type ContractEditInput,
 } from '@/lib/contratos-locacoes/contract-edit';
+import { buildRentalItemBillingLines } from '@/lib/contratos-locacoes/billing-periods';
 import {
   closeContract,
   createBillingCycle,
@@ -59,6 +60,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const contractId = params.id;
   const [detail, setDetail] = useState<ContractDetail | null>(null);
   const [remittanceDocument, setRemittanceDocument] = useState<ContractDocument | null>(null);
@@ -217,16 +219,7 @@ export default function ContractDetailPage() {
       surcharge_amount: '0',
       exemption_amount: '0',
       notes: values.notes,
-      items: [
-        {
-          id: crypto.randomUUID(),
-          rental_item_id: null,
-          description: 'Locação mensal',
-          quantity: 1,
-          unit_amount: values.amount,
-          kind: 'recurring',
-        },
-      ],
+      items: buildRentalItemBillingLines(detail.items, () => crypto.randomUUID()),
     });
     toast.success('Período de cobrança salvo.');
     await load();
@@ -450,6 +443,7 @@ export default function ContractDetailPage() {
           ) : null}
           <ContractSummary
             detail={detail}
+            openNewBillingForm={searchParams.get('action') === 'new-billing'}
             paymentProofDocuments={paymentProofDocuments}
             onAttachPaymentProof={handleAttachPaymentProof}
             onCloseContract={handleCloseContract}

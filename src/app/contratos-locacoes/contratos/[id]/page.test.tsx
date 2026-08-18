@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'contract-1' }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('react-hot-toast', () => ({

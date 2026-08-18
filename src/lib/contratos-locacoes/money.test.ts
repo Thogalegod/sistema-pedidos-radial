@@ -55,6 +55,24 @@ describe('money utility', () => {
     });
   });
 
+  describe('formatBRLInWords', () => {
+    it.each([
+      [100, 'Um real'],
+      [1000, 'Dez reais'],
+      [40000, 'Quatrocentos reais'],
+      [100000, 'Mil reais'],
+      [300000, 'Três mil reais'],
+      [500050, 'Cinco mil reais e cinquenta centavos'],
+    ])('writes %i cents in Portuguese', async (amountInCents, expected) => {
+      const moneyModule = await import('./money') as typeof import('./money') & {
+        formatBRLInWords?: (value: number | string) => string;
+      };
+
+      expect(moneyModule.formatBRLInWords).toBeTypeOf('function');
+      expect(moneyModule.formatBRLInWords?.(amountInCents)).toBe(expected);
+    });
+  });
+
   describe('parseBRL', () => {
     it('parses valid BRL strings to cents', () => {
       expect(parseBRL('R$ 1,00')).toBe(100);
