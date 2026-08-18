@@ -2,9 +2,9 @@
 
 import { useId, useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { formatBRL, parseBRL } from '@/lib/contratos-locacoes/money';
 import type { RentalItemDraftInput } from '@/lib/contratos-locacoes/schemas';
 import type { RentalAsset } from '@/lib/contratos-locacoes/types';
+import { CurrencyInput } from './CurrencyInput';
 
 type RentalItemsEditorProps = {
   items: RentalItemDraftInput[];
@@ -203,13 +203,12 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor={`item-amount-${item.id}`}>Valor unitário</label>
-              <input
+              <CurrencyInput
                 aria-label="Valor unitário"
                 className={inputClass}
                 id={`item-amount-${item.id}`}
-                inputMode="decimal"
-                value={formatBRL(item.unit_amount)}
-                onChange={(event) => updateItem(item.id, 'unit_amount', String(parseBRL(event.target.value)))}
+                value={item.unit_amount}
+                onValueChange={(value) => updateItem(item.id, 'unit_amount', value)}
               />
             </div>
           </div>

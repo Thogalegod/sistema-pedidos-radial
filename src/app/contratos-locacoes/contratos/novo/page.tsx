@@ -4,8 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ContractForm } from '@/components/contratos-locacoes/ContractForm';
+import { createContractWithOptionalRemittance } from '@/lib/contratos-locacoes/contract-creation';
 import { createLocalDraftKey } from '@/lib/contratos-locacoes/local-draft';
 import { createContract, createSupabaseContractsLocacoesMutationClient } from '@/lib/contratos-locacoes/mutations';
+import {
+  createSupabaseContractsLocacoesRemittanceDocumentClient,
+  saveRemittanceInvoiceDocument,
+} from '@/lib/contratos-locacoes/remittance-documents';
 import {
   createSupabaseContractsLocacoesReadClient,
   getCustomer,
@@ -53,7 +58,7 @@ export default function NovoContratoPage() {
     };
   }, []);
 
-  const handleSubmit = async (value: ContractDraftInput) => {
+  const handleSubmit = async (value: ContractDraftInput, remittanceInvoiceFile: File | null) => {
     const selectedAssetIds = value.items
       .map((item) => item.asset_id)
       .filter((assetId): assetId is string => Boolean(assetId));
@@ -69,9 +74,26 @@ export default function NovoContratoPage() {
     }
 
     const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
-    const result = await createContract(mutationClient, value);
-    toast.success('Contrato salvo com sucesso.');
-    router.push(`/contratos-locacoes/contratos/${result.contract.id}`);
+    const outcome = await createContractWithOptionalRemittance({
+      createContract: () => createContract(mutationClient, value),
+      remittanceInvoiceFile,
+      uploadRemittanceDocument: (contract, file) => {
+        const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
+        return saveRemittanceInvoiceDocument(documentClient, contract, file);
+      },
+    });
+
+    if (outcome.remittanceUploadError) {
+      toast.error(
+        'Locação criada, mas não foi possível anexar a NF de remessa. Você poderá anexá-la novamente no detalhe da locação.'
+      );
+    } else if (outcome.remittanceDocument) {
+      toast.success('Locação criada e NF de remessa anexada com sucesso.');
+    } else {
+      toast.success('Locação criada com sucesso.');
+    }
+
+    router.push(`/contratos-locacoes/contratos/${outcome.creation.contract.id}`);
   };
 
   const handleLoadAvailableAssets = useCallback(async (startDate: string, endDate: string | null) => {

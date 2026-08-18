@@ -20,6 +20,7 @@ type ContractSummaryProps = {
   onUpdateBillingPeriod?: (billing: BillingCycle, values: BillingPeriodFormValues) => Promise<void>;
   paymentProofDocuments?: ContractDocument[];
   remittanceAttachmentSlot?: ReactNode;
+  remittanceEditorSlot?: ReactNode;
 };
 
 function toCents(value: string | number | null | undefined) {
@@ -87,6 +88,7 @@ export function ContractSummary({
   onUpdateBillingPeriod,
   paymentProofDocuments = [],
   remittanceAttachmentSlot,
+  remittanceEditorSlot,
 }: ContractSummaryProps) {
   const monthlyTotal = calculateMonthlyTotal(detail.items);
   const hasNotes = Boolean(detail.contract.notes?.trim());
@@ -258,11 +260,11 @@ export function ContractSummary({
         )}
       </Section>
 
-      <Section title="Documentos">
+      <Section title="NF de remessa">
         {detail.contract.has_remittance_invoice ? (
           <div className="mt-4 space-y-4">
             <dl className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="Nota fiscal de remessa" value={detail.contract.remittance_invoice_number ?? 'Sem número'} />
+              <Field label="Número" value={detail.contract.remittance_invoice_number ?? 'Sem número'} />
               <Field
                 label="Empresa emissora"
                 value={detail.contract.remittance_invoice_issuer ?? getContractCompanyLabel(detail.contract.contract_company)}
@@ -274,9 +276,10 @@ export function ContractSummary({
           </div>
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-600">
-            Sem NF de remessa informada.
+            Esta locação não possui NF de remessa.
           </div>
         )}
+        {remittanceEditorSlot ? <div className="mt-4">{remittanceEditorSlot}</div> : null}
       </Section>
     </div>
   );

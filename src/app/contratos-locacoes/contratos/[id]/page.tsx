@@ -7,6 +7,7 @@ import { ArrowLeft, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
 import { RemittanceInvoiceAttachmentCard } from '@/components/contratos-locacoes/RemittanceInvoiceAttachmentCard';
+import { RemittanceInvoiceEditor } from '@/components/contratos-locacoes/RemittanceInvoiceEditor';
 import type { BillingPaymentFormValues } from '@/components/contratos-locacoes/BillingPaymentForm';
 import type { BillingPeriodFormValues } from '@/components/contratos-locacoes/BillingPeriodForm';
 import { createSupabaseContractsLocacoesReadClient, getContract, type ContractDetail } from '@/lib/contratos-locacoes/queries';
@@ -33,6 +34,11 @@ import {
   getPaymentProofSignedUrl,
   savePaymentProofDocument,
 } from '@/lib/contratos-locacoes/payment-proofs';
+import {
+  updateRemittanceInvoice,
+  type RemittanceInvoiceUpdateInput,
+} from '@/lib/contratos-locacoes/remittance-invoice-update';
+import { openDocumentInNewTab } from '@/lib/contratos-locacoes/open-document-window';
 import type { BillingCycle, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
 import { supabase } from '@/lib/supabase';
 
@@ -144,18 +150,32 @@ export default function ContractDetailPage() {
 
     setOpeningAttachment(true);
     try {
-      const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
-      const signedUrl = await getRemittanceInvoiceSignedUrl(documentClient, remittanceDocument);
-      const openedWindow = window.open(signedUrl, '_blank', 'noopener,noreferrer');
-
-      if (!openedWindow) {
-        window.location.assign(signedUrl);
-      }
+      await openDocumentInNewTab(() => {
+        const documentClient = createSupabaseContractsLocacoesRemittanceDocumentClient(supabase);
+        return getRemittanceInvoiceSignedUrl(documentClient, remittanceDocument);
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível abrir o anexo da NF de remessa.');
     } finally {
       setOpeningAttachment(false);
     }
+  };
+
+  const handleUpdateRemittanceInvoice = async (value: RemittanceInvoiceUpdateInput) => {
+    if (!detail) {
+      return;
+    }
+
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    const contract = await updateRemittanceInvoice(
+      mutationClient,
+      detail.contract,
+      value,
+      { hasAttachedDocument: Boolean(remittanceDocument) }
+    );
+
+    setDetail((current) => current ? { ...current, contract } : current);
+    toast.success('Dados da NF de remessa atualizados.');
   };
 
   const handleCreateBillingPeriod = async (values: BillingPeriodFormValues & { sequence_number: number }) => {
@@ -289,13 +309,10 @@ export default function ContractDetailPage() {
 
   const handleOpenPaymentProof = async (document: ContractDocument) => {
     try {
-      const proofClient = createSupabaseContractsLocacoesPaymentProofClient(supabase);
-      const signedUrl = await getPaymentProofSignedUrl(proofClient, document);
-      const openedWindow = window.open(signedUrl, '_blank', 'noopener,noreferrer');
-
-      if (!openedWindow) {
-        window.location.assign(signedUrl);
-      }
+      await openDocumentInNewTab(() => {
+        const proofClient = createSupabaseContractsLocacoesPaymentProofClient(supabase);
+        return getPaymentProofSignedUrl(proofClient, document);
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível abrir o comprovante.');
     }
@@ -356,6 +373,13 @@ export default function ContractDetailPage() {
                 onUpload={handleUploadAttachment}
                 opening={openingAttachment}
                 uploading={uploadingAttachment}
+              />
+            }
+            remittanceEditorSlot={
+              <RemittanceInvoiceEditor
+                contract={detail.contract}
+                hasAttachedDocument={Boolean(remittanceDocument)}
+                onSave={handleUpdateRemittanceInvoice}
               />
             }
           />

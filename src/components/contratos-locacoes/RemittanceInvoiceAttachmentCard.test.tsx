@@ -39,7 +39,8 @@ describe('RemittanceInvoiceAttachmentCard', () => {
     );
 
     expect(screen.getByText(/anexo da nf de remessa/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /anexar nf/i })).toBeInTheDocument();
+    expect(screen.getByText('Pendente de anexo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Anexar NF de remessa' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /abrir\/baixar/i })).not.toBeInTheDocument();
   });
 

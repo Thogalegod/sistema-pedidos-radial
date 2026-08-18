@@ -1,9 +1,12 @@
 'use client';
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RentalItemsEditor } from './RentalItemsEditor';
 import type { RentalAsset } from '@/lib/contratos-locacoes/types';
+import type { RentalItemDraftInput } from '@/lib/contratos-locacoes/schemas';
 
 const assets: RentalAsset[] = [
   {
@@ -20,6 +23,10 @@ const assets: RentalAsset[] = [
     updated_at: '',
   },
 ];
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('RentalItemsEditor', () => {
   it('adds and updates multiple manual rental items', () => {
@@ -96,5 +103,37 @@ describe('RentalItemsEditor', () => {
         quantity: 1,
       }),
     ]);
+  });
+
+  it('lets the user replace the unit amount with 900 without cursor-hostile reformatting', async () => {
+    const user = userEvent.setup();
+
+    function Harness() {
+      const [items, setItems] = useState<RentalItemDraftInput[]>([
+        {
+          id: 'item-1',
+          asset_id: null,
+          description: 'Gerador',
+          equipment_type: 'Gerador',
+          capacity: null,
+          serial_number: null,
+          internal_code: null,
+          quantity: 1,
+          unit_amount: '100',
+          status: 'rented',
+          notes: null,
+        },
+      ]);
+
+      return <RentalItemsEditor items={items} onChange={setItems} />;
+    }
+
+    render(<Harness />);
+    const amount = screen.getByLabelText(/valor unitário/i);
+
+    await user.clear(amount);
+    await user.type(amount, '900');
+
+    expect(amount).toHaveValue('900');
   });
 });

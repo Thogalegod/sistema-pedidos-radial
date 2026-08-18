@@ -45,7 +45,7 @@ export function RemittanceInvoiceAttachmentCard({
           {document ? (
             <p className="truncate text-sm text-gray-600">{document.file_name}</p>
           ) : (
-            <p className="text-sm text-gray-600">Nenhum arquivo anexado até o momento.</p>
+            <p className="text-sm font-medium text-amber-700">Pendente de anexo</p>
           )}
         </div>
 
@@ -71,7 +71,7 @@ export function RemittanceInvoiceAttachmentCard({
               onClick={() => inputRef.current?.click()}
               type="button"
             >
-              {uploading ? 'Enviando...' : 'Anexar NF'}
+              {uploading ? 'Enviando...' : 'Anexar NF de remessa'}
             </button>
           )}
         </div>

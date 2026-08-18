@@ -2,6 +2,7 @@
 
 import { act } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -213,6 +214,80 @@ describe('ContractForm', () => {
     expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Fontes');
   });
 
+  it('keeps the remittance amount freely editable while the field has focus', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Salvar contrato"
+        onSubmit={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
+    });
+
+    const amount = screen.getByLabelText(/valor da nf/i);
+    await user.clear(amount);
+    await user.type(amount, '900,50');
+
+    expect(amount).toHaveValue('900,50');
+  });
+
+  it('forwards the selected remittance invoice file with the validated rental', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+    const file = new File(['pdf'], 'nf-remessa.pdf', { type: 'application/pdf' });
+
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Criar locação"
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/cliente/i), {
+      target: { value: 'customer-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/obra\/local/i), {
+      target: { value: 'site-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/início/i), {
+      target: { value: '2026-07-06' },
+    });
+    fireEvent.change(screen.getByLabelText(/descrição do item/i), {
+      target: { value: 'Gerador principal' },
+    });
+    fireEvent.change(screen.getByLabelText(/tipo do item/i), {
+      target: { value: 'Gerador' },
+    });
+    fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
+      target: { value: 'yes' },
+    });
+    fireEvent.change(screen.getByLabelText(/número da nf/i), {
+      target: { value: 'NF-1000' },
+    });
+    fireEvent.change(screen.getByLabelText(/valor da nf/i), {
+      target: { value: 'R$ 3.500,00' },
+    });
+    fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
+      target: { value: '2026-07-05' },
+    });
+    fireEvent.change(screen.getByLabelText(/arquivo da nf de remessa/i), {
+      target: { files: [file] },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /criar locação/i }));
+
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
+    expect(handleSubmit.mock.calls[0][0].has_remittance_invoice).toBe(true);
+    expect(handleSubmit.mock.calls[0][1]).toBe(file);
+  });
+
   it('reveals and clears remittance invoice fields as expected', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
 
@@ -254,6 +329,7 @@ describe('ContractForm', () => {
     expect(screen.getByLabelText(/empresa emissora/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/valor da nf/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/data de emissão da nf/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/arquivo da nf de remessa/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/número da nf/i), {
       target: { value: 'NF-1000' },
@@ -267,12 +343,18 @@ describe('ContractForm', () => {
     fireEvent.change(screen.getByLabelText(/data de emissão da nf/i), {
       target: { value: '2026-07-05' },
     });
+    fireEvent.change(screen.getByLabelText(/arquivo da nf de remessa/i), {
+      target: {
+        files: [new File(['xml'], 'nf-remessa.xml', { type: 'application/xml' })],
+      },
+    });
 
     fireEvent.change(screen.getByLabelText(/tem nota fiscal de remessa/i), {
       target: { value: 'no' },
     });
 
     expect(screen.queryByLabelText(/número da nf/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/arquivo da nf de remessa/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /salvar contrato/i }));
 
@@ -282,6 +364,7 @@ describe('ContractForm', () => {
     expect(handleSubmit.mock.calls[0][0].remittance_invoice_issuer).toBeNull();
     expect(handleSubmit.mock.calls[0][0].remittance_invoice_amount).toBeNull();
     expect(handleSubmit.mock.calls[0][0].remittance_invoice_issue_date).toBeNull();
+    expect(handleSubmit.mock.calls[0][1]).toBeNull();
   });
 
   it('shows a conservative conflict warning when the server changed after a local edit', async () => {

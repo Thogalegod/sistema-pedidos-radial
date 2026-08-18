@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatBRL, parseBRL } from '@/lib/contratos-locacoes/money';
+import { CurrencyInput } from './CurrencyInput';
 
 export interface BillingPaymentFormValues {
   paid_at: string;
@@ -57,11 +57,10 @@ export function BillingPaymentForm({ initialAmount, onCancel, onSubmit }: Billin
         </label>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Valor recebido
-          <input
+          <CurrencyInput
             className="rounded-lg border border-gray-300 px-3 py-2"
-            inputMode="decimal"
-            value={formatBRL(values.amount)}
-            onChange={(event) => update({ amount: String(parseBRL(event.target.value)) })}
+            value={values.amount}
+            onValueChange={(value) => update({ amount: value })}
           />
         </label>
       </div>

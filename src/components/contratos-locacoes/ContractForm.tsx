@@ -4,19 +4,20 @@ import Link from 'next/link';
 import { useEffect, useId, useMemo, useState, useTransition } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import { contractDraftSchema, type ContractDraftInput } from '@/lib/contratos-locacoes/schemas';
-import { formatBRL, parseBRL } from '@/lib/contratos-locacoes/money';
+import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { CONTRACT_COMPANY_OPTIONS, getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import type { CustomerSite, RentalAsset } from '@/lib/contratos-locacoes/types';
 import type { CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import { useLocalDraft } from '@/lib/contratos-locacoes/use-local-draft';
 import { LocalDraftStatus } from './LocalDraftStatus';
+import { CurrencyInput } from './CurrencyInput';
 import { createEmptyRentalItem, RentalItemsEditor } from './RentalItemsEditor';
 
 type ContractFormProps = {
   customers: CustomerListItem[];
   customerSites: CustomerSite[];
   submitLabel: string;
-  onSubmit: (value: ContractDraftInput) => Promise<void> | void;
+  onSubmit: (value: ContractDraftInput, remittanceInvoiceFile: File | null) => Promise<void> | void;
   initialValue?: ContractDraftInput;
   draftStorageKey?: string;
   availableAssets?: RentalAsset[];
@@ -81,6 +82,7 @@ export function ContractForm({
   loadAvailableAssets,
 }: ContractFormProps) {
   const [error, setError] = useState<string | null>(null);
+  const [remittanceInvoiceFile, setRemittanceInvoiceFile] = useState<File | null>(null);
   const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
   const [assetsForInterval, setAssetsForInterval] = useState<RentalAsset[]>(availableAssets);
   const [isPending, startTransition] = useTransition();
@@ -166,7 +168,7 @@ export function ContractForm({
 
     startTransition(async () => {
       try {
-        await onSubmit(parsed.data);
+        await onSubmit(parsed.data, remittanceInvoiceFile);
         markSynced(parsed.data);
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : 'Não foi possível salvar o contrato.');
@@ -346,7 +348,11 @@ export function ContractForm({
                   className={inputClass}
                   id="contract-has-remittance"
                   value={hasRemittanceInvoice ? 'yes' : 'no'}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    if (event.target.value === 'no') {
+                      setRemittanceInvoiceFile(null);
+                    }
+
                     setDraft((current) => {
                       if (event.target.value === 'yes') {
                         return {
@@ -361,7 +367,7 @@ export function ContractForm({
                         ...clearRemittanceInvoiceFields(),
                       };
                     })
-                  }
+                  }}
                 >
                   <option value="no">Não</option>
                   <option value="yes">Sim</option>
@@ -402,18 +408,17 @@ export function ContractForm({
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-amount">Valor da NF</label>
-                  <input
+                  <CurrencyInput
                     aria-label="Valor da NF"
                     className={inputClass}
                     id="contract-remittance-amount"
-                    inputMode="decimal"
-                    value={formatBRL(draft.remittance_invoice_amount)}
-                    onChange={(event) =>
+                    value={draft.remittance_invoice_amount}
+                    onValueChange={(value) =>
                       setDraft((current) =>
                         current.remittance_invoice_issuer !== null
                           ? {
                               ...current,
-                              remittance_invoice_amount: String(parseBRL(event.target.value)),
+                              remittance_invoice_amount: value,
                             }
                           : current
                       )
@@ -440,6 +445,18 @@ export function ContractForm({
                     }
                   />
                 </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-remittance-file">
+                    Arquivo da NF de remessa
+                  </label>
+                  <input
+                    accept=".pdf,.xml,image/png,image/jpeg,.jpg,.jpeg"
+                    className={inputClass}
+                    id="contract-remittance-file"
+                    type="file"
+                    onChange={(event) => setRemittanceInvoiceFile(event.target.files?.[0] ?? null)}
+                  />
+                </div>
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm text-gray-600">
@@ -447,7 +464,6 @@ export function ContractForm({
               </div>
             )}
 
-            <p className="mt-4 text-xs text-gray-500">Anexo da NF será tratado em etapa futura.</p>
           </div>
 
           <div>

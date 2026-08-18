@@ -127,7 +127,7 @@ describe('ContractSummary', () => {
       'Dados da locação',
       'Equipamentos locados',
       'Financeiro da locação',
-      'Documentos',
+      'NF de remessa',
     ]);
 
     const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
@@ -171,7 +171,7 @@ describe('ContractSummary', () => {
     expect(within(finance).getByText('Nenhum período de cobrança gerado ainda.')).toBeInTheDocument();
   });
 
-  it('preserves remittance invoice metadata and attachment slot in Documents', () => {
+  it('preserves remittance invoice metadata and attachment slot in the remittance section', () => {
     render(
       <ContractSummary
         detail={buildDetail()}
@@ -179,8 +179,8 @@ describe('ContractSummary', () => {
       />
     );
 
-    const documents = screen.getByRole('region', { name: 'Documentos' });
-    expect(within(documents).getByText('Nota fiscal de remessa')).toBeInTheDocument();
+    const documents = screen.getByRole('region', { name: 'NF de remessa' });
+    expect(within(documents).getByText('Número')).toBeInTheDocument();
     expect(within(documents).getByText('NF-1000')).toBeInTheDocument();
     expect(within(documents).getByText('Radial')).toBeInTheDocument();
     expect(within(documents).getByText('R$ 3.500,00')).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe('ContractSummary', () => {
     expect(within(documents).getByRole('button', { name: /abrir\/baixar/i })).toBeInTheDocument();
   });
 
-  it('keeps the Documents block clear when remittance NF is disabled', () => {
+  it('keeps the remittance section clear when the rental has no remittance NF', () => {
     const detail = buildDetail({
       contract: {
         ...buildDetail().contract,
@@ -200,10 +200,17 @@ describe('ContractSummary', () => {
       },
     });
 
-    render(<ContractSummary detail={detail} remittanceAttachmentSlot={<span>Anexo</span>} />);
+    render(
+      <ContractSummary
+        detail={detail}
+        remittanceAttachmentSlot={<span>Anexo</span>}
+        remittanceEditorSlot={<button type="button">Editar dados da NF de remessa</button>}
+      />
+    );
 
-    const documents = screen.getByRole('region', { name: 'Documentos' });
-    expect(within(documents).getByText('Sem NF de remessa informada.')).toBeInTheDocument();
+    const documents = screen.getByRole('region', { name: 'NF de remessa' });
+    expect(within(documents).getByText('Esta locação não possui NF de remessa.')).toBeInTheDocument();
+    expect(within(documents).getByRole('button', { name: /editar dados da nf de remessa/i })).toBeInTheDocument();
     expect(within(documents).queryByText('Anexo')).not.toBeInTheDocument();
   });
 
