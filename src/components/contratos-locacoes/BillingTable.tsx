@@ -39,36 +39,11 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
           documentNumber: billing.document_number,
         });
         return (
-          <article className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm" key={billing.id}>
-            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {reference.primary}
-                </p>
-                {reference.secondary ? <p className="text-xs font-medium text-gray-500">{reference.secondary}</p> : null}
-                <p className="text-sm text-gray-600">{billing.customer_name}</p>
-                <p className="text-xs text-gray-500">{billing.site_name}</p>
-              </div>
-
-              <div className="text-left lg:text-right">
-                <p className="text-sm font-semibold text-gray-900">{formatBRL(billing.total_amount)}</p>
-                <p className="text-xs text-gray-500">Recebido: {formatBRL(paidAmount)}</p>
-                <p className="text-xs text-gray-500">Saldo: {formatBRL(balanceAmount)}</p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Período</p>
-                <p className="font-medium text-gray-900">{formatDateLabel(billing.period_start)} a {formatDateLabel(billing.period_end)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Vencimento</p>
-                <p className="font-medium text-gray-900">{formatDateLabel(billing.due_date)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
-                <div className="mt-1">
+          <article className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4" key={billing.id}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-bold text-gray-900">{reference.primary}</h2>
                   <BillingStatusBadge
                     alert={billing.alert}
                     balanceAmount={balanceAmount}
@@ -76,22 +51,32 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
                     status={billing.status}
                   />
                 </div>
+                <p className="mt-1 text-xs font-medium text-gray-600">
+                  {billing.customer_name}{reference.secondary ? ` · ${reference.secondary}` : ''}
+                </p>
+                <p className="text-xs text-gray-500">{billing.site_name}</p>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Envio</p>
-                <p className="font-medium text-gray-900">{billing.sent_at ? `Enviado em ${formatDateTimeLabel(billing.sent_at)}` : 'Não enviado'}</p>
-              </div>
+              <p className="shrink-0 text-lg font-bold text-gray-900 sm:text-right">{formatBRL(billing.total_amount)}</p>
             </div>
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Link className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/contratos/${billing.contract_id}`}>
-                Abrir locação
-              </Link>
-              {billing.document_type === 'receipt' ? (
-                <Link className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
-                  Abrir recibo
+            <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                <span>Período: {formatDateLabel(billing.period_start)}–{formatDateLabel(billing.period_end)}</span>
+                <span>Vence: {formatDateLabel(billing.due_date)}</span>
+                <span>Recebido: {formatBRL(paidAmount)}</span>
+                <span>Saldo: {formatBRL(balanceAmount)}</span>
+                <span>{billing.sent_at ? `Enviado em ${formatDateTimeLabel(billing.sent_at)}` : 'Não enviado'}</span>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                <Link className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/contratos/${billing.contract_id}`}>
+                  Abrir locação
                 </Link>
-              ) : null}
+                {billing.document_type === 'receipt' ? (
+                  <Link className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
+                    Abrir recibo
+                  </Link>
+                ) : null}
+              </div>
             </div>
           </article>
         );
