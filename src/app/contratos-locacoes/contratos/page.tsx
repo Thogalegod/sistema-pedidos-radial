@@ -7,6 +7,7 @@ import { listContracts, createSupabaseContractsLocacoesReadClient, type Contract
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
+import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
 
 export default function ContratosPage() {
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
@@ -96,7 +97,13 @@ export default function ContratosPage() {
             <p className="mt-1 text-sm text-gray-500">Crie o primeiro contrato para começar o módulo.</p>
           </div>
         ) : (
-          contracts.map((contract) => (
+          contracts.map((contract) => {
+            const reference = buildRentalListReference({
+              legacyOrderNumber: contract.legacy_order_number,
+              internalNumber: contract.internal_number,
+            });
+
+            return (
             <Link
               className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
               href={`/contratos-locacoes/contratos/${contract.id}`}
@@ -105,7 +112,7 @@ export default function ContratosPage() {
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-gray-900">#{contract.internal_number}</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">{reference.primary}</h2>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                       {contract.kind}
                     </span>
@@ -113,6 +120,7 @@ export default function ContratosPage() {
                       {contract.status}
                     </span>
                   </div>
+                  {reference.secondary ? <p className="mt-1 text-xs font-medium text-gray-500">{reference.secondary}</p> : null}
                   <p className="mt-1 text-sm font-medium text-gray-700">{contract.customer_name}</p>
                   <p className="text-sm text-gray-500">{contract.site_name}</p>
                 </div>
@@ -120,11 +128,11 @@ export default function ContratosPage() {
                   <span>Início: {contract.start_date}</span>
                   <span>Recorrência: {contract.recurrence_days} dias</span>
                   <span>Itens: {contract.item_count}</span>
-                  <span>Pedido/OS: {contract.legacy_order_number ?? 'Sem referência'}</span>
                 </div>
               </div>
             </Link>
-          ))
+            );
+          })
         )}
       </div>
     </div>

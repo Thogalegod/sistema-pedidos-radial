@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useState, useTransition } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import { contractDraftSchema, type ContractDraftInput } from '@/lib/contratos-locacoes/schemas';
+import { newRentalContractDraftSchema, type ContractDraftInput } from '@/lib/contratos-locacoes/schemas';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { CONTRACT_COMPANY_OPTIONS, getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import type { CustomerSite, RentalAsset } from '@/lib/contratos-locacoes/types';
@@ -156,7 +156,7 @@ export function ContractForm({
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    const parsed = contractDraftSchema.safeParse({
+    const parsed = newRentalContractDraftSchema.safeParse({
       ...withRentalCreationDefaults(draft),
       base_amount: String(monthlyTotal),
     });
@@ -285,6 +285,8 @@ export function ContractForm({
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="contract-legacy">Nº do pedido</label>
             <input
+              aria-label="Nº do pedido"
+              aria-required="true"
               className={inputClass}
               id="contract-legacy"
               value={draft.legacy_order_number ?? ''}

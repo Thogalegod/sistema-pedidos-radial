@@ -8,13 +8,17 @@ import ContractDetailPage from './page';
 
 const mocks = vi.hoisted(() => ({
   getContract: vi.fn(),
+  getCustomer: vi.fn(),
   getCurrentOrganizationId: vi.fn(),
   getPaymentProofSignedUrl: vi.fn(),
   getRemittanceInvoiceSignedUrl: vi.fn(),
   loadContractAttachmentDocuments: vi.fn(),
+  listAvailableRentalAssets: vi.fn(),
+  listCustomers: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   updateContract: vi.fn(),
+  updateContractSafely: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -33,13 +37,26 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/contratos-locacoes/queries', () => ({
   createSupabaseContractsLocacoesReadClient: () => ({}),
   getContract: mocks.getContract,
+  getCustomer: mocks.getCustomer,
+  listAvailableRentalAssets: mocks.listAvailableRentalAssets,
+  listCustomers: mocks.listCustomers,
+}));
+
+vi.mock('@/lib/contratos-locacoes/contract-edit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/contratos-locacoes/contract-edit')>()),
+  updateContractSafely: mocks.updateContractSafely,
 }));
 
 vi.mock('@/lib/contratos-locacoes/mutations', () => ({
   closeContract: vi.fn(),
   createBillingCycle: vi.fn(),
   createSupabaseContractsLocacoesMutationClient: () => ({
+    deleteMissingRentalItems: vi.fn(),
+    getContractById: vi.fn(),
     getCurrentOrganizationId: mocks.getCurrentOrganizationId,
+    listBillingCyclesByContractId: vi.fn(),
+    listRentalItemsByContractId: vi.fn(),
+    upsertRentalItems: vi.fn(),
     updateContract: mocks.updateContract,
   }),
   markBillingCycleSent: vi.fn(),
@@ -119,6 +136,18 @@ beforeEach(() => {
     remittanceDocument: null,
     paymentProofDocuments: [],
   });
+  mocks.listCustomers.mockResolvedValue([]);
+  mocks.getCustomer.mockResolvedValue({ sites: [] });
+  mocks.listAvailableRentalAssets.mockResolvedValue([]);
+  mocks.updateContractSafely.mockImplementation(async (_client, _id, value) => ({
+    contract: {
+      ...detail.contract,
+      transport_notes: value.transport_notes,
+      notes: value.notes,
+      legacy_order_number: value.legacy_order_number,
+    },
+    items: detail.items.map((item, index) => ({ ...item, unit_amount: value.items[index]?.unit_amount ?? item.unit_amount })),
+  }));
   mocks.updateContract.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
     ...detail.contract,
     ...patch,
@@ -126,6 +155,19 @@ beforeEach(() => {
 });
 
 describe('ContractDetailPage remittance editing', () => {
+  it('opens the dedicated rental editor and reflects a saved change without leaving the detail', async () => {
+    const user = userEvent.setup();
+    render(<ContractDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Editar locação' }));
+    await user.type(screen.getByLabelText('Transporte'), 'Retirada pelo cliente');
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+
+    await waitFor(() => expect(mocks.updateContractSafely).toHaveBeenCalled());
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Locação atualizada com sucesso.');
+    expect(screen.queryByRole('heading', { name: 'Editar locação' })).not.toBeInTheDocument();
+  });
+
   it('updates the NF data and reflects it immediately in the detail', async () => {
     const user = userEvent.setup();
     render(<ContractDetailPage />);

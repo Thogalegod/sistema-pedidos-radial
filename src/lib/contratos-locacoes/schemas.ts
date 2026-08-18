@@ -273,6 +273,16 @@ export const contractDraftSchema = contractDraftBaseSchema.superRefine((value, c
   };
 });
 
+export const newRentalContractDraftSchema = contractDraftSchema.superRefine((value, ctx) => {
+  if (value.kind === 'rental' && !value.legacy_order_number) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['legacy_order_number'],
+      message: 'Nº do pedido é obrigatório',
+    });
+  }
+});
+
 export const pauseContractSchema = z.object({
   pause_started_at: z.string().trim().min(1, 'Data da pausa é obrigatória'),
   pause_reason: z.string().trim().min(1, 'Motivo da pausa é obrigatório'),
@@ -352,6 +362,7 @@ export type CustomerDraftInput = z.output<typeof customerDraftSchema>;
 export type RentalItemDraftInput = z.output<typeof rentalItemDraftSchema>;
 export type RentalAssetDraftInput = z.output<typeof rentalAssetDraftSchema>;
 export type ContractDraftInput = z.output<typeof contractDraftSchema>;
+export type NewRentalContractDraftInput = z.output<typeof newRentalContractDraftSchema>;
 export type PauseContractInput = z.output<typeof pauseContractSchema>;
 export type ReactivateContractInput = z.output<typeof reactivateContractSchema>;
 export type BillingLineDraftInput = z.output<typeof billingLineDraftSchema>;

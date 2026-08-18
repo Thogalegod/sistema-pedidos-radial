@@ -69,6 +69,25 @@ describe('receipt snapshot builder', () => {
 
     expect(snapshot.receiptNumber).toBe('R654321003');
   });
+
+  it('shows the historical billing line price after the current rental item price changes', () => {
+    const snapshot = buildReceiptSnapshot({
+      billing: makeBilling({ total_amount: '300000', base_amount: '300000' }),
+      contract: makeContract(),
+      customer: makeCustomer(),
+      site: makeSite(),
+      rentalItems: [makeRentalItem({ id: 'item-1', unit_amount: '350000' })],
+      billingLines: [makeBillingLine({
+        rental_item_id: 'item-1',
+        unit_amount: '300000',
+        total_amount: '300000',
+      })],
+      payments: [],
+    });
+
+    expect(snapshot.items[0]?.unitAmountLabel).toBe('R$ 3.000,00');
+    expect(snapshot.lines[0]?.unitAmountLabel).toBe('R$ 3.000,00');
+  });
 });
 
 function makeContract(overrides: Partial<Contract> = {}): Contract {

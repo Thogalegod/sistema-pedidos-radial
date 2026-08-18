@@ -29,12 +29,9 @@ export default function NovoClientePage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Novo cliente</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Cadastre a empresa, as obras/locais e os contatos gerais ou por obra.
-        </p>
-      </div>
+      <p className="text-sm text-gray-500">
+        Cadastre a empresa, as obras/locais e os contatos gerais ou por obra.
+      </p>
 
       <CustomerForm
         draftStorageKey={CUSTOMER_CREATE_DRAFT_KEY}

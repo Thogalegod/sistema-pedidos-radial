@@ -1,8 +1,61 @@
 import { describe, expect, it } from 'vitest';
 import {
+  contractDraftSchema,
   customerRecordSchema,
   customerDraftSchema,
+  newRentalContractDraftSchema,
 } from './schemas';
+
+function rentalDraft(legacyOrderNumber: string | null) {
+  return {
+    kind: 'rental' as const,
+    contract_company: 'fontes' as const,
+    customer_id: 'customer-1',
+    site_id: 'site-1',
+    legacy_order_number: legacyOrderNumber,
+    transport_notes: null,
+    has_remittance_invoice: false,
+    remittance_invoice_number: null,
+    remittance_invoice_issuer: null,
+    remittance_invoice_amount: null,
+    remittance_invoice_issue_date: null,
+    start_date: '2026-08-18',
+    end_date: null,
+    recurrence_days: 30,
+    pricing_model: 'fixed' as const,
+    base_amount: '100000',
+    percentage_rate: null,
+    status: 'active' as const,
+    notes: null,
+    items: [{
+      id: 'item-1',
+      asset_id: null,
+      description: 'Transformador',
+      equipment_type: 'Transformador',
+      capacity: '75 kVA',
+      serial_number: null,
+      internal_code: null,
+      quantity: 1,
+      unit_amount: '100000',
+      status: 'rented' as const,
+      notes: null,
+    }],
+  };
+}
+
+describe('rental creation schema', () => {
+  it('rejects a new rental without an order number', () => {
+    const result = newRentalContractDraftSchema.safeParse(rentalDraft(null));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe('Nº do pedido é obrigatório');
+  });
+
+  it('accepts a new rental with an order number while historical null data remains loadable', () => {
+    expect(newRentalContractDraftSchema.safeParse(rentalDraft('20260807')).success).toBe(true);
+    expect(contractDraftSchema.safeParse(rentalDraft(null)).success).toBe(true);
+  });
+});
 
 describe('customer schemas', () => {
   it('normalizes customer, site and contact data for central registration', () => {

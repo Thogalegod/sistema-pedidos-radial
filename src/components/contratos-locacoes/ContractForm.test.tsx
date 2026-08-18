@@ -118,6 +118,28 @@ describe('ContractForm', () => {
     expect(findMonthlyTotalSummary('R$ 0,00')).toBeTruthy();
   });
 
+  it('shows the approved message when a new rental has no order number', async () => {
+    const handleSubmit = vi.fn();
+    render(
+      <ContractForm
+        customers={customers}
+        customerSites={customerSites}
+        submitLabel="Criar locação"
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Cliente'), { target: { value: 'customer-1' } });
+    fireEvent.change(screen.getByLabelText('Obra/local'), { target: { value: 'site-1' } });
+    fireEvent.change(screen.getByLabelText('Início'), { target: { value: '2026-08-18' } });
+    fireEvent.change(screen.getByLabelText('Descrição do item'), { target: { value: 'Transformador' } });
+    fireEvent.change(screen.getByLabelText('Tipo do item'), { target: { value: 'Transformador' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar locação' }));
+
+    expect(await screen.findByText('Nº do pedido é obrigatório')).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
   it('derives the total from rental items and submits it as base_amount', async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
 
@@ -138,6 +160,9 @@ describe('ContractForm', () => {
     });
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
+    });
+    fireEvent.change(screen.getByLabelText(/nº do pedido/i), {
+      target: { value: 'PED-100' },
     });
 
     fireEvent.change(screen.getByLabelText(/descrição do item/i), {
@@ -259,6 +284,9 @@ describe('ContractForm', () => {
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
     });
+    fireEvent.change(screen.getByLabelText(/nº do pedido/i), {
+      target: { value: 'PED-101' },
+    });
     fireEvent.change(screen.getByLabelText(/descrição do item/i), {
       target: { value: 'Gerador principal' },
     });
@@ -308,6 +336,9 @@ describe('ContractForm', () => {
     });
     fireEvent.change(screen.getByLabelText(/início/i), {
       target: { value: '2026-07-06' },
+    });
+    fireEvent.change(screen.getByLabelText(/nº do pedido/i), {
+      target: { value: 'PED-102' },
     });
     fireEvent.change(screen.getByLabelText(/descrição do item/i), {
       target: { value: 'Gerador principal' },

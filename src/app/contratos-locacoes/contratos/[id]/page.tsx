@@ -2,15 +2,30 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { ArrowLeft, Play, Pause } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, Pencil, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ContractEditForm } from '@/components/contratos-locacoes/ContractEditForm';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
 import { RemittanceInvoiceAttachmentCard } from '@/components/contratos-locacoes/RemittanceInvoiceAttachmentCard';
 import { RemittanceInvoiceEditor } from '@/components/contratos-locacoes/RemittanceInvoiceEditor';
 import type { BillingPaymentFormValues } from '@/components/contratos-locacoes/BillingPaymentForm';
 import type { BillingPeriodFormValues } from '@/components/contratos-locacoes/BillingPeriodForm';
-import { createSupabaseContractsLocacoesReadClient, getContract, type ContractDetail } from '@/lib/contratos-locacoes/queries';
+import {
+  createSupabaseContractsLocacoesReadClient,
+  getContract,
+  getCustomer,
+  listAvailableRentalAssets,
+  listCustomers,
+  type ContractDetail,
+  type CustomerListItem,
+} from '@/lib/contratos-locacoes/queries';
+import {
+  buildContractEditInput,
+  updateContractSafely,
+  type ContractEditMutationClient,
+  type ContractEditInput,
+} from '@/lib/contratos-locacoes/contract-edit';
 import {
   closeContract,
   createBillingCycle,
@@ -39,7 +54,7 @@ import {
   type RemittanceInvoiceUpdateInput,
 } from '@/lib/contratos-locacoes/remittance-invoice-update';
 import { openDocumentInNewTab } from '@/lib/contratos-locacoes/open-document-window';
-import type { BillingCycle, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, ContractDocument, CustomerSite, Payment, RentalAsset, RentalItem } from '@/lib/contratos-locacoes/types';
 import { supabase } from '@/lib/supabase';
 
 export default function ContractDetailPage() {
@@ -48,6 +63,11 @@ export default function ContractDetailPage() {
   const [detail, setDetail] = useState<ContractDetail | null>(null);
   const [remittanceDocument, setRemittanceDocument] = useState<ContractDocument | null>(null);
   const [paymentProofDocuments, setPaymentProofDocuments] = useState<ContractDocument[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [loadingEditor, setLoadingEditor] = useState(false);
+  const [editCustomers, setEditCustomers] = useState<CustomerListItem[]>([]);
+  const [editSites, setEditSites] = useState<CustomerSite[]>([]);
+  const [editAssets, setEditAssets] = useState<RentalAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
@@ -318,6 +338,55 @@ export default function ContractDetailPage() {
     }
   };
 
+  const loadEditAssets = useCallback(async (startDate: string) => {
+    if (!detail) return [];
+    const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+    return listAvailableRentalAssets(readClient, {
+      start_date: startDate,
+      end_date: detail.contract.end_date,
+      exclude_contract_id: detail.contract.id,
+    });
+  }, [detail]);
+
+  const handleOpenEditor = async () => {
+    if (!detail) return;
+    setLoadingEditor(true);
+    try {
+      const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+      const customers = await listCustomers(readClient, { status: 'all' });
+      const customerDetails = await Promise.all(customers.map((customer) => getCustomer(readClient, customer.id)));
+      const assets = detail.billingCycles.length === 0
+        ? await loadEditAssets(detail.contract.start_date)
+        : [];
+      setEditCustomers(customers);
+      setEditSites(customerDetails.flatMap((customerDetail) => customerDetail.sites));
+      setEditAssets(assets);
+      setEditing(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível preparar a edição da locação.');
+    } finally {
+      setLoadingEditor(false);
+    }
+  };
+
+  const handleSaveEdit = async (value: ContractEditInput) => {
+    if (!detail) return;
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    const editClient: ContractEditMutationClient = {
+      getCurrentOrganizationId: mutationClient.getCurrentOrganizationId.bind(mutationClient),
+      getContractById: requireEditMethod(mutationClient.getContractById, 'getContractById').bind(mutationClient),
+      listRentalItemsByContractId: requireEditMethod(mutationClient.listRentalItemsByContractId, 'listRentalItemsByContractId').bind(mutationClient),
+      listBillingCyclesByContractId: requireEditMethod(mutationClient.listBillingCyclesByContractId, 'listBillingCyclesByContractId').bind(mutationClient),
+      updateContract: mutationClient.updateContract.bind(mutationClient),
+      upsertRentalItems: mutationClient.upsertRentalItems.bind(mutationClient),
+      deleteMissingRentalItems: mutationClient.deleteMissingRentalItems.bind(mutationClient),
+    };
+    const result = await updateContractSafely(editClient, detail.contract.id, value);
+    setDetail((current) => current ? { ...current, contract: result.contract, items: result.items } : current);
+    setEditing(false);
+    toast.success('Locação atualizada com sucesso.');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -329,6 +398,18 @@ export default function ContractDetailPage() {
           Voltar para contratos
         </Link>
 
+        <div className="flex flex-wrap justify-end gap-2">
+          {detail ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+              disabled={loadingEditor}
+              onClick={() => void handleOpenEditor()}
+              type="button"
+            >
+              <Pencil size={16} />
+              {loadingEditor ? 'Preparando edição...' : 'Editar locação'}
+            </button>
+          ) : null}
         {detail?.contract.status === 'paused' && !isFinalContractStatus ? (
           <button
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -348,12 +429,25 @@ export default function ContractDetailPage() {
             Pausar
           </button>
         ) : null}
+        </div>
       </div>
 
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">Carregando contrato...</div>
       ) : detail ? (
         <>
+          {editing ? (
+            <ContractEditForm
+              availableAssets={editAssets}
+              customers={editCustomers}
+              customerSites={editSites}
+              hasBilling={detail.billingCycles.length > 0}
+              initialValue={buildContractEditInput(detail.contract, detail.items)}
+              loadAvailableAssets={loadEditAssets}
+              onCancel={() => setEditing(false)}
+              onSubmit={handleSaveEdit}
+            />
+          ) : null}
           <ContractSummary
             detail={detail}
             paymentProofDocuments={paymentProofDocuments}
@@ -391,4 +485,11 @@ export default function ContractDetailPage() {
       )}
     </div>
   );
+}
+
+function requireEditMethod<T>(method: T | undefined, name: string): T {
+  if (!method) {
+    throw new Error(`Cliente de mutação sem suporte para ${name}`);
+  }
+  return method;
 }

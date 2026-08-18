@@ -7,6 +7,9 @@ describe('BillingTable', () => {
   it('shows consolidated billing period, sent state, paid amount and balance', () => {
     render(<BillingTable loading={false} billings={[makeBilling()]} />);
 
+    expect(screen.getByText('R000077001')).toBeInTheDocument();
+    expect(screen.getByText('Pedido OS-QA-77')).toBeInTheDocument();
+    expect(screen.queryByText(/Locação interna #77/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Cliente QA/i)).toBeInTheDocument();
     expect(screen.getByText(/08\/08\/2026 a 07\/09\/2026/i)).toBeInTheDocument();
     expect(screen.getByText(/Enviado em/i)).toBeInTheDocument();

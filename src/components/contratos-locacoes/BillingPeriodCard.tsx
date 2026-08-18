@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { FileText, Paperclip, Send, Wallet } from 'lucide-react';
 import { calculateBillingBalance, buildBillingStatus } from '@/lib/contratos-locacoes/dashboard';
+import { resolveEffectiveBillingStatus } from '@/lib/contratos-locacoes/billing-status-presentation';
+import { alertLevel } from '@/lib/contratos-locacoes/dates';
 import { findPaymentProofDocument } from '@/lib/contratos-locacoes/payment-proofs';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import type { BillingCycle, ContractDocument, Payment } from '@/lib/contratos-locacoes/types';
+import { BillingStatusBadge } from './BillingStatusBadge';
 
 interface BillingPeriodCardProps {
   billing: BillingCycle;
@@ -17,15 +20,6 @@ interface BillingPeriodCardProps {
   payments: Payment[];
   proofDocuments: ContractDocument[];
 }
-
-const statusLabels: Record<BillingCycle['status'], string> = {
-  cancelled: 'Cancelada',
-  draft: 'A emitir',
-  exempt: 'Isenta',
-  issued: 'Emitida',
-  overdue: 'Vencida',
-  paid: 'Paga',
-};
 
 function formatDateLabel(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${value}T00:00:00.000Z`));
@@ -39,11 +33,14 @@ function formatDateTimeLabel(value: string) {
 }
 
 function normalizeStatus(billing: BillingCycle, payments: Payment[]) {
-  return buildBillingStatus(
-    billing.total_amount,
-    payments.map((payment) => payment.amount),
-    new Date().toISOString().slice(0, 10),
-    billing.due_date
+  return resolveEffectiveBillingStatus(
+    billing.status,
+    buildBillingStatus(
+      billing.total_amount,
+      payments.map((payment) => payment.amount),
+      new Date().toISOString().slice(0, 10),
+      billing.due_date
+    )
   );
 }
 
@@ -61,7 +58,8 @@ export function BillingPeriodCard({
   const status = normalizeStatus(billing, payments);
   const paidAmount = Number.parseInt(balance.paid_amount, 10);
   const balanceAmount = Number.parseInt(balance.balance_amount, 10);
-  const isPartial = paidAmount > 0 && balanceAmount > 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const alert = status === 'paid' ? 'ok' : alertLevel(today, billing.due_date);
 
   return (
     <article
@@ -87,7 +85,14 @@ export function BillingPeriodCard({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
-            <p className="mt-1 text-sm font-semibold text-gray-900">{isPartial ? 'Recebido parcialmente' : statusLabels[status]}</p>
+            <div className="mt-1">
+              <BillingStatusBadge
+                alert={alert}
+                balanceAmount={balanceAmount}
+                paidAmount={paidAmount}
+                status={status}
+              />
+            </div>
             {billing.sent_at ? <p className="text-xs text-blue-700">Enviado em {formatDateTimeLabel(billing.sent_at)}</p> : null}
           </div>
         </div>

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   billingDraftSchema,
   contractDraftSchema,
+  newRentalContractDraftSchema,
   customerDraftSchema,
   pauseContractSchema,
   paymentDraftSchema,
@@ -860,7 +861,7 @@ export async function createContract(
   client: ContractsLocacoesMutationClient,
   rawPayload: ContractDraftInput
 ): Promise<ContractMutationResult> {
-  const payload = contractDraftSchema.parse(rawPayload);
+  const payload = newRentalContractDraftSchema.parse(rawPayload);
   const organizationId = await client.getCurrentOrganizationId();
   const contract = await client.insertContract(buildContractRecord(organizationId, payload));
 

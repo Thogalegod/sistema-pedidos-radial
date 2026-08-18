@@ -106,12 +106,9 @@ export default function ClienteDetalhePage() {
         Voltar para clientes
       </Link>
 
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Detalhe do cliente</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Edite os dados centrais, as obras/locais e os contatos vinculados.
-        </p>
-      </div>
+      <p className="text-sm text-gray-500">
+        Edite os dados centrais, as obras/locais e os contatos vinculados.
+      </p>
 
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">

@@ -104,6 +104,22 @@ describe('rental asset availability', () => {
     expect(assets).toEqual([]);
   });
 
+  it('keeps assets from the edited rental visible while preserving conflicts from other rentals', async () => {
+    const assets = await listAvailableRentalAssets(
+      new FakeRentalAssetReadClient(
+        [makeAsset(), makeAsset({ id: 'asset-2' })],
+        [
+          makeItem(),
+          makeItem({ id: 'item-2', asset_id: 'asset-2', contract_id: 'contract-2' }),
+        ],
+        [makeContract(), makeContract({ id: 'contract-2' })]
+      ),
+      { start_date: '2026-08-15', end_date: '2026-08-25', exclude_contract_id: 'contract-1' }
+    );
+
+    expect(assets.map((asset) => asset.id)).toEqual(['asset-1']);
+  });
+
   it('keeps an active asset available when the existing rental does not overlap', async () => {
     const assets = await listAvailableRentalAssets(
       new FakeRentalAssetReadClient([makeAsset()], [makeItem()], [makeContract()]),

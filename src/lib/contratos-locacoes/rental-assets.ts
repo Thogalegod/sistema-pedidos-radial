@@ -3,6 +3,7 @@ import type { ContractStatus, RentalAsset, RentalItemStatus } from './types';
 export interface RentalAssetAvailabilityInterval {
   start_date: string;
   end_date: string | null;
+  exclude_contract_id?: string;
 }
 
 export interface RentalAssetAvailabilityItem {
@@ -105,10 +106,12 @@ export function findConflictingAssetIds({
   items,
   contracts,
   requestedInterval,
+  excludeContractId,
 }: {
   items: RentalAssetAvailabilityItem[];
   contracts: RentalAssetAvailabilityContract[];
   requestedInterval: RentalAssetAvailabilityInterval;
+  excludeContractId?: string;
 }) {
   const contractsById = new Map(contracts.map((contract) => [contract.id, contract]));
   const conflictingAssetIds = new Set<string>();
@@ -119,6 +122,9 @@ export function findConflictingAssetIds({
     }
 
     const contract = contractsById.get(item.contract_id);
+    if (contract?.id === excludeContractId) {
+      return;
+    }
     if (contract?.status === 'cancelled') {
       return;
     }
@@ -159,6 +165,7 @@ export async function listAvailableRentalAssets(
     items,
     contracts,
     requestedInterval: interval,
+    excludeContractId: interval.exclude_contract_id,
   });
 
   return activeAssets.filter((asset) => !conflictingAssetIds.has(asset.id));

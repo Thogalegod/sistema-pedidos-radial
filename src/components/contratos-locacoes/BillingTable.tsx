@@ -1,20 +1,13 @@
 import Link from 'next/link';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import type { BillingListItem } from '@/lib/contratos-locacoes/queries';
+import { buildBillingListReference } from '@/lib/contratos-locacoes/contract-reference';
+import { BillingStatusBadge } from './BillingStatusBadge';
 
 interface BillingTableProps {
   billings: BillingListItem[];
   loading: boolean;
 }
-
-const statusLabels: Record<BillingListItem['status'], string> = {
-  cancelled: 'Cancelada',
-  draft: 'A emitir',
-  exempt: 'Isenta',
-  issued: 'Emitida',
-  overdue: 'Vencida',
-  paid: 'Paga',
-};
 
 function formatDateLabel(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${value}T00:00:00.000Z`));
@@ -41,15 +34,18 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
       {billings.map((billing) => {
         const paidAmount = Number.parseInt(billing.paid_amount, 10);
         const balanceAmount = Number.parseInt(billing.balance_amount, 10);
-        const isPartial = paidAmount > 0 && balanceAmount > 0;
-
+        const reference = buildBillingListReference({
+          legacyOrderNumber: billing.legacy_order_number,
+          documentNumber: billing.document_number,
+        });
         return (
           <article className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm" key={billing.id}>
             <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
               <div>
                 <p className="text-sm font-semibold text-gray-900">
-                  {billing.document_number ?? 'Sem número'} • Locação #{billing.internal_number}
+                  {reference.primary}
                 </p>
+                {reference.secondary ? <p className="text-xs font-medium text-gray-500">{reference.secondary}</p> : null}
                 <p className="text-sm text-gray-600">{billing.customer_name}</p>
                 <p className="text-xs text-gray-500">{billing.site_name}</p>
               </div>
@@ -72,7 +68,14 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
-                <p className="font-medium text-gray-900">{isPartial ? 'Recebido parcialmente' : statusLabels[billing.status]}</p>
+                <div className="mt-1">
+                  <BillingStatusBadge
+                    alert={billing.alert}
+                    balanceAmount={balanceAmount}
+                    paidAmount={paidAmount}
+                    status={billing.status}
+                  />
+                </div>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase text-gray-500">Envio</p>

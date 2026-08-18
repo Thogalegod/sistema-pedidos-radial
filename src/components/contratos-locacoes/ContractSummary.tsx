@@ -103,12 +103,11 @@ export function ContractSummary({
     <div className="space-y-4">
       <Section title="Dados da locação">
         <dl className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="Locação" value={`#${detail.contract.internal_number}`} />
+          <Field label="Nº do Pedido" value={detail.contract.legacy_order_number ?? 'Não informado'} />
           <Field label="Cliente" value={detail.customer?.legal_name ?? 'Cliente indisponível'} />
           <Field label="Obra/local" value={detail.site?.name ?? 'Local indisponível'} />
           <Field label="Empresa" value={getContractCompanyLabel(detail.contract.contract_company)} />
           <Field label="Início" value={detail.contract.start_date} />
-          <Field label="Nº do pedido" value={detail.contract.legacy_order_number ?? 'Sem referência'} />
           <Field label="Status atual" value={detail.contract.status} />
           <Field label="Valor mensal total" value={formatBRL(monthlyTotal)} />
         </dl>
@@ -116,6 +115,12 @@ export function ContractSummary({
           <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700">
             <span className="font-semibold text-gray-900">Observações: </span>
             {detail.contract.notes}
+          </div>
+        ) : null}
+        {detail.contract.transport_notes?.trim() ? (
+          <div className="mt-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <span className="font-semibold">Transporte: </span>
+            {detail.contract.transport_notes}
           </div>
         ) : null}
       </Section>

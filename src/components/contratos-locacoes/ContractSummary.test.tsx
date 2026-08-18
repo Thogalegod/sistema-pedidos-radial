@@ -131,14 +131,18 @@ describe('ContractSummary', () => {
     ]);
 
     const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
-    expect(within(rentalData).getByText('#123')).toBeInTheDocument();
+    expect(within(rentalData).getByText('Nº do Pedido')).toBeInTheDocument();
+    expect(within(rentalData).getByText('OS-1')).toBeInTheDocument();
+    expect(within(rentalData).queryByText(/Referência principal/i)).not.toBeInTheDocument();
+    expect(within(rentalData).queryByText(/Referência técnica/i)).not.toBeInTheDocument();
+    expect(within(rentalData).queryByText(/Locação interna|#123/i)).not.toBeInTheDocument();
     expect(within(rentalData).getByText('Radial Energia')).toBeInTheDocument();
     expect(within(rentalData).getByText('Matriz')).toBeInTheDocument();
     expect(within(rentalData).getAllByText('Radial')).toHaveLength(1);
     expect(within(rentalData).getByText('2026-07-06')).toBeInTheDocument();
-    expect(within(rentalData).getByText('OS-1')).toBeInTheDocument();
     expect(within(rentalData).getByText('active')).toBeInTheDocument();
     expect(within(rentalData).getByText('Locação com acesso pela portaria principal.')).toBeInTheDocument();
+    expect(within(rentalData).getByText('Radial entrega com caminhão próprio')).toBeInTheDocument();
     expect(within(rentalData).getByText('R$ 3.250,00')).toBeInTheDocument();
 
     expect(screen.queryByText(/^Tipo$/i)).not.toBeInTheDocument();

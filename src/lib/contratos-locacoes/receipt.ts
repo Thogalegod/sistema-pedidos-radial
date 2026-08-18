@@ -91,6 +91,12 @@ export function buildReceiptSnapshot({
     billing.total_amount,
     payments.map((payment) => payment.amount)
   );
+  const recurringLines = billingLines.filter((line) => line.kind === 'recurring');
+  const recurringLineByRentalItemId = new Map(
+    recurringLines
+      .filter((line) => line.rental_item_id)
+      .map((line) => [line.rental_item_id as string, line])
+  );
 
   return {
     receiptNumber,
@@ -120,14 +126,21 @@ export function buildReceiptSnapshot({
       name: site?.name ?? 'Local não informado',
       addressLabel: formatSiteAddress(site),
     },
-    items: rentalItems.map((item) => ({
-      id: item.id,
-      description: item.description,
-      quantity: item.quantity,
-      equipmentLabel: `${item.equipment_type} • ${item.capacity}`,
-      unitAmountLabel: formatBRL(Number.parseInt(item.unit_amount, 10)),
-      status: item.status,
-    })),
+    items: rentalItems.map((item) => {
+      const historicalLine = recurringLineByRentalItemId.get(item.id)
+        ?? (rentalItems.length === 1 && recurringLines.length === 1 ? recurringLines[0] : null);
+
+      return {
+        id: item.id,
+        description: item.description,
+        quantity: item.quantity,
+        equipmentLabel: `${item.equipment_type} • ${item.capacity}`,
+        unitAmountLabel: historicalLine
+          ? formatBRL(Number.parseInt(historicalLine.unit_amount, 10))
+          : 'Consulte as linhas de cobrança',
+        status: item.status,
+      };
+    }),
     lines: billingLines.map((line) => ({
       id: line.id,
       description: line.description,

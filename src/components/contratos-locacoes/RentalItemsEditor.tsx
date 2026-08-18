@@ -6,10 +6,19 @@ import type { RentalItemDraftInput } from '@/lib/contratos-locacoes/schemas';
 import type { RentalAsset } from '@/lib/contratos-locacoes/types';
 import { CurrencyInput } from './CurrencyInput';
 
-type RentalItemsEditorProps = {
-  items: RentalItemDraftInput[];
+export type RentalItemEditorValue = Pick<
+  RentalItemDraftInput,
+  'id' | 'asset_id' | 'description' | 'equipment_type' | 'capacity' | 'serial_number' | 'internal_code' | 'quantity' | 'unit_amount'
+>;
+
+type RentalItemsEditorProps<T extends RentalItemEditorValue> = {
+  items: T[];
   availableAssets?: RentalAsset[];
-  onChange: (items: RentalItemDraftInput[]) => void;
+  createItem?: () => T;
+  onChange: (items: T[]) => void;
+  priceHelpText?: string;
+  showExtendedIdentityFields?: boolean;
+  structureLocked?: boolean;
 };
 
 function normalizeReactId(value: string) {
@@ -32,16 +41,25 @@ export function createEmptyRentalItem(id: string): RentalItemDraftInput {
   };
 }
 
-export function RentalItemsEditor({ items, availableAssets = [], onChange }: RentalItemsEditorProps) {
+export function RentalItemsEditor<T extends RentalItemEditorValue>({
+  items,
+  availableAssets = [],
+  createItem,
+  onChange,
+  priceHelpText,
+  showExtendedIdentityFields = false,
+  structureLocked = false,
+}: RentalItemsEditorProps<T>) {
   const itemIdSeed = normalizeReactId(useId());
   const itemCounterRef = useRef(0);
   const inputClass =
     'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
-  const createItemDraft = () => createEmptyRentalItem(`item-${itemIdSeed}-${itemCounterRef.current++}`);
+  const createItemDraft = () => createItem?.()
+    ?? createEmptyRentalItem(`item-${itemIdSeed}-${itemCounterRef.current++}`) as unknown as T;
 
   const updateItem = (
     itemId: string,
-    key: keyof RentalItemDraftInput,
+    key: keyof T,
     value: string | number | null
   ) => {
     onChange(
@@ -50,6 +68,9 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
   };
 
   const selectAsset = (itemId: string, assetId: string) => {
+    if (structureLocked) {
+      return;
+    }
     const asset = availableAssets.find((entry) => entry.id === assetId);
 
     onChange(
@@ -80,6 +101,9 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
   };
 
   const removeItem = (itemId: string) => {
+    if (structureLocked) {
+      return;
+    }
     const next = items.filter((item) => item.id !== itemId);
     onChange(next.length > 0 ? next : [createItemDraft()]);
   };
@@ -93,6 +117,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
         </div>
         <button
           className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          disabled={structureLocked}
           type="button"
           onClick={() => onChange([...items, createItemDraft()])}
         >
@@ -116,6 +141,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
             <h4 className="text-sm font-semibold text-gray-900">Item {index + 1}</h4>
             <button
               className="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700"
+              disabled={structureLocked}
               type="button"
               onClick={() => removeItem(item.id)}
             >
@@ -131,6 +157,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
                 <select
                   aria-label="Ativo físico"
                   className={inputClass}
+                  disabled={structureLocked}
                   id={`item-asset-${item.id}`}
                   value={item.asset_id ?? ''}
                   onChange={(event) => selectAsset(item.id, event.target.value)}
@@ -165,6 +192,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
               <input
                 aria-label="Descrição do item"
                 className={inputClass}
+                disabled={structureLocked}
                 id={`item-description-${item.id}`}
                 value={item.description}
                 onChange={(event) => updateItem(item.id, 'description', event.target.value)}
@@ -175,6 +203,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
               <input
                 aria-label="Tipo do item"
                 className={inputClass}
+                disabled={structureLocked}
                 id={`item-type-${item.id}`}
                 value={item.equipment_type}
                 onChange={(event) => updateItem(item.id, 'equipment_type', event.target.value)}
@@ -184,17 +213,44 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
               <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor={`item-serial-${item.id}`}>Série</label>
               <input
                 className={inputClass}
+                disabled={structureLocked}
                 id={`item-serial-${item.id}`}
                 value={item.serial_number ?? ''}
                 onChange={(event) => updateItem(item.id, 'serial_number', event.target.value)}
               />
             </div>
+            {showExtendedIdentityFields ? (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor={`item-capacity-${item.id}`}>Capacidade</label>
+                  <input
+                    aria-label="Capacidade"
+                    className={inputClass}
+                    disabled={structureLocked}
+                    id={`item-capacity-${item.id}`}
+                    value={item.capacity ?? ''}
+                    onChange={(event) => updateItem(item.id, 'capacity', event.target.value || null)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor={`item-internal-code-${item.id}`}>Código interno</label>
+                  <input
+                    aria-label="Código interno"
+                    className={inputClass}
+                    disabled={structureLocked}
+                    id={`item-internal-code-${item.id}`}
+                    value={item.internal_code ?? ''}
+                    onChange={(event) => updateItem(item.id, 'internal_code', event.target.value || null)}
+                  />
+                </div>
+              </>
+            ) : null}
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor={`item-quantity-${item.id}`}>Quantidade</label>
               <input
                 className={inputClass}
                 id={`item-quantity-${item.id}`}
-                disabled={Boolean(item.asset_id)}
+                disabled={structureLocked || Boolean(item.asset_id)}
                 min={1}
                 type="number"
                 value={item.quantity}
@@ -210,6 +266,7 @@ export function RentalItemsEditor({ items, availableAssets = [], onChange }: Ren
                 value={item.unit_amount}
                 onValueChange={(value) => updateItem(item.id, 'unit_amount', value)}
               />
+              {priceHelpText ? <p className="mt-1 text-xs text-purple-700">{priceHelpText}</p> : null}
             </div>
           </div>
         </div>

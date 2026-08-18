@@ -3,6 +3,7 @@ import type { BillingCycle, Contract, Customer, CustomerContact, CustomerSite, P
 import { createBillingSnapshot, type BillingSnapshotInput, type DashboardSnapshot } from './dashboard';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
 import { alertLevel } from './dates';
+import { resolveEffectiveBillingStatus } from './billing-status-presentation';
 import { buildReceiptSnapshot, type ReceiptSnapshot } from './receipt';
 import type { BillingLine } from './types';
 import {
@@ -728,7 +729,10 @@ export async function listBillings(
       const site = contract ? sitesById.get(contract.site_id) : null;
       const paidAmounts = (paymentsByBillingId.get(billing.id) ?? []).map((payment) => payment.amount);
       const balance = calculateBillingBalance(billing.total_amount, paidAmounts);
-      const status = buildBillingStatus(billing.total_amount, paidAmounts, today, billing.due_date);
+      const status = resolveEffectiveBillingStatus(
+        billing.status,
+        buildBillingStatus(billing.total_amount, paidAmounts, today, billing.due_date)
+      );
       const computedAlert = status === 'paid' ? 'ok' : alertLevel(today, billing.due_date);
 
       return {
