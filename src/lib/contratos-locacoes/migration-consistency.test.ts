@@ -112,6 +112,16 @@ function readRentalBookingFunctionExecuteRestrictionMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readContractsRentalsPrivilegeHardeningMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_harden_contracts_rentals_privileges\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one contracts and rentals privilege hardening migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
 describe('contracts and rentals migration consistency', () => {
   it('protects internal contract numbering against duplicate generation', () => {
     expect(baseSql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS contracts_org_internal_number_uidx/i);
@@ -184,6 +194,50 @@ describe('contracts and rentals migration consistency', () => {
     expect(grantSql).toMatch(/SET search_path = public/i);
     expect(grantSql).toMatch(/INSERT INTO public\.organization_contract_counters AS counter/i);
     expect(grantSql).not.toMatch(/GRANT [^;]* ON public\.organization_contract_counters TO authenticated/i);
+  });
+
+  it('hardens contracts and rentals table and function privileges to the minimum required access', () => {
+    const sql = readContractsRentalsPrivilegeHardeningMigration();
+    const tableGrants = [
+      ['organizations', 'SELECT'],
+      ['organization_members', 'SELECT'],
+      ['customers', 'SELECT, INSERT, UPDATE'],
+      ['customer_sites', 'SELECT, INSERT, UPDATE, DELETE'],
+      ['customer_contacts', 'SELECT, INSERT, UPDATE, DELETE'],
+      ['contracts', 'SELECT, INSERT, UPDATE'],
+      ['rental_items', 'SELECT, INSERT, UPDATE, DELETE'],
+      ['billing_cycles', 'SELECT, INSERT, UPDATE'],
+      ['billing_lines', 'SELECT, INSERT, UPDATE, DELETE'],
+      ['payments', 'SELECT, INSERT'],
+      ['contract_documents', 'SELECT, INSERT'],
+    ] as const;
+
+    for (const [table, privileges] of tableGrants) {
+      expect(sql).toMatch(
+        new RegExp(
+          `REVOKE ALL ON TABLE public\\.${table} FROM PUBLIC,\\s*anon,\\s*authenticated`,
+          'i'
+        )
+      );
+      expect(sql).toMatch(
+        new RegExp(
+          `GRANT ${privileges} ON TABLE public\\.${table} TO authenticated`,
+          'i'
+        )
+      );
+    }
+
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.is_organization_member\(uuid\)\s+FROM PUBLIC,\s*anon,\s*service_role/i);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.is_organization_member\(uuid\) TO authenticated/i);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.is_organization_admin\(uuid\)\s+FROM PUBLIC,\s*anon,\s*service_role/i);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.is_organization_admin\(uuid\) TO authenticated/i);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.set_contract_internal_number\(\)\s+FROM PUBLIC,\s*anon,\s*authenticated,\s*service_role/i);
+
+    expect(sql).not.toMatch(/GRANT [^;]* TO anon/i);
+    expect(sql).not.toMatch(/GRANT [^;]* ON TABLE public\.rental_assets/i);
+    expect(sql).not.toMatch(/GRANT [^;]* ON TABLE public\.organization_contract_counters/i);
+    expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.set_contract_internal_number\(\)/i);
+    expect(sql).not.toMatch(/ALTER DEFAULT PRIVILEGES/i);
   });
 
   it('prevents direct client inserts into audit_events', () => {
