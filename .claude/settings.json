@@ -21,6 +21,70 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-WindowStyle",
+              "Hidden",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/scripts/ai/notify-windows.ps1",
+              "-Kind",
+              "stop"
+            ]
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-WindowStyle",
+              "Hidden",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/scripts/ai/notify-windows.ps1",
+              "-Kind",
+              "permission"
+            ]
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-WindowStyle",
+              "Hidden",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/scripts/ai/notify-windows.ps1",
+              "-Kind",
+              "failure"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

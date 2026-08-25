@@ -13,11 +13,12 @@
 - MISFY: `misfyiznwnuvldoccciw` — protected production, explicit authorization required
 
 ## Current workflow work
-- Branch: `feat/filtro-cliente-contratos`
-- Goal: add a "Cliente" filter to the rental contracts list (user-approved feature, first feature run through the AI agent workflow).
+- Branch: `feat/notificacoes-windows-claude`
+- Goal: native Windows toast notifications for Claude Code (task finished `Stop`, approval needed `Notification`/`permission_prompt`, API failure `StopFailure`). User-approved plan; second feature through the AI agent workflow.
 - Database changes required: none.
-- Status: implemented, tested (16 targeted tests), independently reviewed (APPROVE), user-approved (`aprovado` 2026-08-25); committed and pushed to `origin/feat/filtro-cliente-contratos`. NOT yet integrated into `codex/controle-locacoes` — user explicitly deferred integration.
-- Changed files: `src/app/contratos-locacoes/contratos/page.tsx`, `src/app/contratos-locacoes/contratos/page.test.tsx` (new), `src/lib/contratos-locacoes/queries.ts`, `src/lib/contratos-locacoes/queries.test.ts`.
+- Status: implemented (scripts/ai/notify-windows.ps1 + hooks in .claude/settings.json alongside the untouched guard), tested (ai:notify:test 4/4 dry-run + real-toast smoke, all AI gates green, tsc green). Pending independent review, then `PRONTO PARA TESTE MANUAL`; NOT integrated into `codex/controle-locacoes` until user approves after manual test.
+- Changed files: `scripts/ai/notify-windows.ps1` (new), `scripts/ai/notify-windows.test.mjs` (new), `.claude/settings.json`, `package.json` (+`ai:notify:test`), `docs/AI_CHECKPOINT.md`.
+- Previous feature `feat/filtro-cliente-contratos` was integrated into `codex/controle-locacoes` @ `3d8e124dd7bd660cb28be794d51554e769e47525` after user approval.
 - IURQ actions: none required (no schema/RLS changes).
 
 ## Resume rule

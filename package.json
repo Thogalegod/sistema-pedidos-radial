@@ -15,6 +15,7 @@
     "ai:guard:test": "node --test scripts/ai/guard-tool-call.test.mjs",
     "ai:gate:staged": "node scripts/ai/staged-gate.mjs",
     "ai:gate:test": "node --test scripts/ai/staged-gate.test.mjs",
+    "ai:notify:test": "node --test scripts/ai/notify-windows.test.mjs",
     "ai:agents:validate": "claude plugin validate .claude/agents"
   },
   "dependencies": {
