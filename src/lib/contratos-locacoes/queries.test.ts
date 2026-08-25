@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { getContract, listBillings, listContracts, type ContractsLocacoesReadClient } from './queries';
-import type { BillingCycle, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalItem } from './types';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createSupabaseContractsLocacoesReadClient,
+  getContract,
+  listBillings,
+  listContracts,
+  type ContractsLocacoesReadClient,
+} from './queries';
+import type { BillingCycle, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalItem } from './types';
 
 function makeBillingCycle(overrides: Partial<BillingCycle> = {}): BillingCycle {
   return {
@@ -21,6 +27,11 @@ function makeBillingCycle(overrides: Partial<BillingCycle> = {}): BillingCycle {
     document_number: 'R000077001',
     status: 'issued',
     sent_at: '2026-08-10T17:30:00.000Z',
+    needs_resend: false,
+    content_revision: '0',
+    boleto_change_pending: false,
+    boleto_change_operation_id: null,
+    boleto_change_started_at: null,
     notes: null,
     created_at: '2026-08-08T00:00:00.000Z',
     updated_at: '2026-08-08T00:00:00.000Z',
@@ -31,6 +42,37 @@ function makeBillingCycle(overrides: Partial<BillingCycle> = {}): BillingCycle {
 class FakeReadClient implements ContractsLocacoesReadClient {
   async getCurrentOrganizationId() {
     return 'org-1';
+  }
+
+  async getCurrentOrganizationMembership(): Promise<OrganizationMember> {
+    return {
+      organization_id: 'org-1',
+      user_id: 'user-1',
+      role: 'admin',
+      can_manage_billing: false,
+      created_at: '2026-08-08T00:00:00.000Z',
+    } as OrganizationMember;
+  }
+
+  async listBillingDeliveryIndicatorsByOrganization() {
+    return [{ id: 'billing-1', sent_at: '2026-08-10T17:30:00.000Z', needs_resend: true }];
+  }
+
+  async listBoletoDocumentsByContractIds(): Promise<ContractDocument[]> {
+    return [{
+      id: 'boleto-1',
+      organization_id: 'org-1',
+      contract_id: 'contract-1',
+      billing_cycle_id: 'billing-1',
+      payment_id: null,
+      inspection_id: null,
+      kind: 'boleto',
+      storage_path: 'org-1/contract-1/boleto/billing-1.pdf',
+      file_name: 'billing-1.pdf',
+      content_type: 'application/pdf',
+      created_by: 'user-1',
+      created_at: '2026-08-10T00:00:00.000Z',
+    } as ContractDocument];
   }
 
   async listCustomersByOrganization(): Promise<Customer[]> {
@@ -126,6 +168,21 @@ class FakeReadClient implements ContractsLocacoesReadClient {
     return [makeBillingCycle()];
   }
 
+  async listBillingCyclesForMonthlyList() {
+    return (await this.listBillingCyclesByOrganization()).map((billing) => ({
+      id: billing.id,
+      contract_id: billing.contract_id,
+      document_number: billing.document_number,
+      document_type: billing.document_type,
+      due_date: billing.due_date,
+      issue_date: billing.issue_date,
+      period_start: billing.period_start,
+      period_end: billing.period_end,
+      total_amount: billing.total_amount,
+      status: billing.status,
+    }));
+  }
+
   async listBillingCyclesByContractId(_organizationId: string, contractId: string): Promise<BillingCycle[]> {
     const billingCycles = [makeBillingCycle()];
     return billingCycles.filter((billing) => billing.contract_id === contractId);
@@ -218,11 +275,44 @@ describe('contracts rental queries', () => {
       site_name: 'Obra QA',
       period_start: '2026-08-08',
       period_end: '2026-09-07',
-      sent_at: '2026-08-10T17:30:00.000Z',
       paid_amount: '100000',
       balance_amount: '200000',
       status: 'issued',
+      delivery_indicators: {
+        sent_at: '2026-08-10T17:30:00.000Z',
+        needs_resend: true,
+        has_boleto: true,
+      },
     });
+  });
+
+  it('does not query or infer restricted delivery indicators for a common member', async () => {
+    class CommonMemberReadClient extends FakeReadClient {
+      public restrictedQueries = 0;
+
+      async getCurrentOrganizationMembership(): Promise<OrganizationMember> {
+        return {
+          organization_id: 'org-1', user_id: 'user-1', role: 'member',
+          can_manage_billing: false, created_at: '2026-08-08T00:00:00.000Z',
+        } as OrganizationMember;
+      }
+
+      async listBillingDeliveryIndicatorsByOrganization() {
+        this.restrictedQueries += 1;
+        return [];
+      }
+
+      async listBoletoDocumentsByContractIds(): Promise<ContractDocument[]> {
+        this.restrictedQueries += 1;
+        return [];
+      }
+    }
+
+    const client = new CommonMemberReadClient();
+    const [billing] = await listBillings(client, '2026-08-12');
+
+    expect(billing.delivery_indicators).toBeNull();
+    expect(client.restrictedQueries).toBe(0);
   });
 
   it('limits billings to the selected due-date month before applying filters and priority', async () => {
@@ -337,8 +427,96 @@ describe('contracts rental queries', () => {
 
     expect(detail.customer?.id).toBe('customer-1');
     expect(detail.billingCycles.map((billing) => billing.id)).toEqual(['billing-1']);
+    expect(detail.membership.role).toBe('admin');
+    expect(detail.boletoDocuments.map((document) => document.id)).toEqual(['boleto-1']);
     expect(client.listedCustomers).toBe(false);
     expect(client.listedBillingCyclesByOrganization).toBe(false);
+  });
+
+  it('requests only the explicit common projection for contract billing detail', async () => {
+    let selectedColumns = '';
+    const query = {
+      select: vi.fn((columns: string) => {
+        selectedColumns = columns;
+        return query;
+      }),
+      eq: vi.fn(() => query),
+      order: vi.fn(async () => ({ data: [], error: null })),
+    };
+    const client = createSupabaseContractsLocacoesReadClient({
+      from: vi.fn(() => query),
+    } as never);
+
+    await client.listBillingCyclesByContractId?.('org-1', 'contract-1');
+
+    expect(selectedColumns).not.toBe('*');
+    for (const restricted of [
+      'sent_at',
+      'needs_resend',
+      'content_revision',
+      'boleto_change_pending',
+      'boleto_change_operation_id',
+      'boleto_change_started_at',
+    ]) {
+      expect(selectedColumns.split(',').map((column) => column.trim())).not.toContain(restricted);
+    }
+  });
+
+  it('removes restricted billing state from a common member contract detail', async () => {
+    class MemberDetailReadClient extends FakeReadClient {
+      async getCurrentOrganizationMembership(): Promise<OrganizationMember> {
+        return {
+          organization_id: 'org-1',
+          user_id: 'member-1',
+          role: 'member',
+          can_manage_billing: false,
+          created_at: '2026-08-08T00:00:00.000Z',
+        } as OrganizationMember;
+      }
+    }
+
+    const detail = await getContract(new MemberDetailReadClient(), 'contract-1');
+    const billing = detail.billingCycles[0] as unknown as Record<string, unknown>;
+
+    for (const restricted of [
+      'sent_at',
+      'needs_resend',
+      'content_revision',
+      'boleto_change_pending',
+      'boleto_change_operation_id',
+      'boleto_change_started_at',
+    ]) {
+      expect(billing).not.toHaveProperty(restricted);
+    }
+    expect(detail.boletoDocuments).toEqual([]);
+  });
+
+  it('loads restricted billing state separately for an authorized contract detail', async () => {
+    const listBillingDetailIndicatorsByContractId = vi.fn<
+      NonNullable<ContractsLocacoesReadClient['listBillingDetailIndicatorsByContractId']>
+    >(async () => [{
+      id: 'billing-1',
+      sent_at: '2026-08-10T17:30:00.000Z',
+      needs_resend: true,
+      content_revision: '7',
+      boleto_change_pending: true,
+      boleto_change_operation_id: 'operation-1',
+      boleto_change_started_at: '2026-08-10T18:00:00.000Z',
+    }]);
+    const client: ContractsLocacoesReadClient = Object.assign(new FakeReadClient(), {
+      listBillingDetailIndicatorsByContractId,
+    });
+
+    const detail = await getContract(client, 'contract-1');
+
+    expect(listBillingDetailIndicatorsByContractId).toHaveBeenCalledWith('org-1', 'contract-1');
+    expect(detail.billingCycles[0]).toMatchObject({
+      sent_at: '2026-08-10T17:30:00.000Z',
+      needs_resend: true,
+      content_revision: '7',
+      boleto_change_pending: true,
+      boleto_change_operation_id: 'operation-1',
+    });
   });
 });
 

@@ -18,10 +18,13 @@ interface ContractBillingSectionProps {
   detail: ContractDetail;
   openNewBillingForm?: boolean;
   onAttachPaymentProof: (billing: BillingCycle, payment: Payment, file: File) => Promise<void>;
+  onAttachBoleto: (billing: BillingCycle, file: File) => Promise<void>;
   onCreateBillingPeriod: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
-  onMarkBillingSent: (billing: BillingCycle) => Promise<void>;
+  onOpenBoleto: (document: ContractDocument) => Promise<void>;
   onOpenPaymentProof: (document: ContractDocument) => Promise<void>;
   onRecordBillingPayment: (billing: BillingCycle, values: BillingPaymentFormValues, file: File | null) => Promise<void>;
+  onRepairPendingBoleto: (billing: BillingCycle, file: File) => Promise<void>;
+  onReplaceBoleto: (billing: BillingCycle, document: ContractDocument, file: File) => Promise<void>;
   onUpdateBillingPeriod: (billing: BillingCycle, values: BillingPeriodFormValues) => Promise<void>;
   paymentProofDocuments: ContractDocument[];
 }
@@ -51,10 +54,13 @@ export function ContractBillingSection({
   detail,
   openNewBillingForm = false,
   onAttachPaymentProof,
+  onAttachBoleto,
   onCreateBillingPeriod,
-  onMarkBillingSent,
+  onOpenBoleto,
   onOpenPaymentProof,
   onRecordBillingPayment,
+  onRepairPendingBoleto,
+  onReplaceBoleto,
   onUpdateBillingPeriod,
   paymentProofDocuments,
 }: ContractBillingSectionProps) {
@@ -147,17 +153,22 @@ export function ContractBillingSection({
               <div className="space-y-3" key={billing.id}>
                 <BillingPeriodCard
                   billing={billing}
+                  boletoDocument={(detail.boletoDocuments ?? []).find((document) => document.billing_cycle_id === billing.id) ?? null}
+                  canManageBilling={Boolean(detail.membership && (detail.membership.role === 'admin' || detail.membership.can_manage_billing))}
                   payments={billingPayments}
                   proofDocuments={paymentProofDocuments}
                   onAttachProof={(entry, payment, file) => void onAttachPaymentProof(entry, payment, file)}
+                  onAttachBoleto={(entry, file) => void onAttachBoleto(entry, file)}
                   onEdit={(entry) => setActiveForm({ type: 'edit', billing: entry, values: toPeriodFormValues(entry) })}
-                  onMarkSent={(entry) => void onMarkBillingSent(entry)}
+                  onOpenBoleto={(document) => void onOpenBoleto(document)}
                   onOpenProof={(document) => void onOpenPaymentProof(document)}
                   onRegisterPayment={(entry) => setActiveForm({
                     type: 'payment',
                     billing: entry,
                     initialAmount: balance.balance_amount,
                   })}
+                  onRepairPendingBoleto={(entry, file) => void onRepairPendingBoleto(entry, file)}
+                  onReplaceBoleto={(entry, document, file) => void onReplaceBoleto(entry, document, file)}
                 />
 
                 {activeForm?.type === 'edit' && activeForm.billing.id === billing.id ? (

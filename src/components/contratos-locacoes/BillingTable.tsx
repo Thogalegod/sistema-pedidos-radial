@@ -7,6 +7,7 @@ import { BillingStatusBadge } from './BillingStatusBadge';
 interface BillingTableProps {
   billings: BillingListItem[];
   loading: boolean;
+  canManageBilling: boolean;
 }
 
 function formatDateLabel(value: string) {
@@ -20,7 +21,7 @@ function formatDateTimeLabel(value: string) {
   }).format(new Date(value));
 }
 
-export function BillingTable({ billings, loading }: BillingTableProps) {
+export function BillingTable({ billings, loading, canManageBilling }: BillingTableProps) {
   if (loading) {
     return <div className="rounded-3xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">Carregando cobranças...</div>;
   }
@@ -63,7 +64,13 @@ export function BillingTable({ billings, loading }: BillingTableProps) {
                 <span>Vence: {formatDateLabel(billing.due_date)}</span>
                 <span>Recebido: {formatBRL(paidAmount)}</span>
                 <span>Saldo: {formatBRL(balanceAmount)}</span>
-                <span>{billing.sent_at ? `Enviado em ${formatDateTimeLabel(billing.sent_at)}` : 'Não enviado'}</span>
+                {canManageBilling && billing.delivery_indicators ? (
+                  <>
+                    <span>{billing.delivery_indicators.has_boleto ? 'Boleto anexado' : 'Boleto não anexado'}</span>
+                    <span>{billing.delivery_indicators.sent_at ? `Enviada em ${formatDateTimeLabel(billing.delivery_indicators.sent_at)}` : 'Não enviada'}</span>
+                    {billing.delivery_indicators.needs_resend ? <span className="font-semibold text-amber-700">Alterada após envio</span> : null}
+                  </>
+                ) : null}
                 <span className="text-gray-500">Período: {formatDateLabel(billing.period_start)}–{formatDateLabel(billing.period_end)}</span>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">

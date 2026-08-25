@@ -47,6 +47,7 @@ export interface OrganizationMember {
   organization_id: string;
   user_id: string;
   role: 'admin' | 'member';
+  can_manage_billing: boolean;
   created_at: string;
 }
 
@@ -167,6 +168,11 @@ export interface BillingCycle {
   document_number: string | null;
   status: BillingStatus;
   sent_at: string | null;
+  needs_resend: boolean;
+  content_revision: DbBigInt;
+  boleto_change_pending: boolean;
+  boleto_change_operation_id: string | null;
+  boleto_change_started_at: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -267,10 +273,23 @@ export interface ContractDocument {
   billing_cycle_id: string | null;
   payment_id: string | null;
   inspection_id: string | null;
-  kind: 'order' | 'shipping' | 'contract' | 'receipt_nf' | 'payment_proof' | 'remittance_nf' | 'other';
+  kind: 'order' | 'shipping' | 'contract' | 'receipt_nf' | 'payment_proof' | 'remittance_nf' | 'boleto' | 'other';
   storage_path: string;
   file_name: string;
   content_type: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface BillingDeliveryEvent {
+  id: string;
+  organization_id: string;
+  billing_cycle_id: string;
+  sent_at: string;
+  recipients: string[];
+  provider_message_id: string;
+  send_request_id: string;
+  additional_message: string | null;
   created_by: string;
   created_at: string;
 }

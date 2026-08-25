@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  createSupabaseContractsLocacoesRemittanceDocumentClient,
   findRemittanceInvoiceDocument,
   loadContractAttachmentDocuments,
   saveRemittanceInvoiceDocument,
@@ -221,6 +222,36 @@ function buildRentalContract(overrides: Partial<Contract> = {}): Contract {
 }
 
 describe('remittance documents', () => {
+  it('loads detail attachments with an explicit projection limited to NF and payment proofs', async () => {
+    const documents = [
+      buildRemittanceDocument(),
+      buildRemittanceDocument({
+        id: 'doc-payment',
+        billing_cycle_id: 'billing-1',
+        payment_id: 'payment-1',
+        kind: 'payment_proof',
+      }),
+    ];
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      in: vi.fn(() => query),
+      order: vi.fn(async () => ({ data: documents, error: null })),
+    };
+    const from = vi.fn(() => query);
+    const client = createSupabaseContractsLocacoesRemittanceDocumentClient({ from } as never);
+
+    const attachments = await loadContractAttachmentDocuments(client, buildRentalContract());
+
+    expect(from).toHaveBeenCalledWith('contract_documents');
+    expect(query.select).toHaveBeenCalledWith(
+      'id, organization_id, contract_id, billing_cycle_id, payment_id, inspection_id, kind, storage_path, file_name, content_type, created_by, created_at'
+    );
+    expect(query.in).toHaveBeenCalledWith('kind', ['remittance_nf', 'payment_proof']);
+    expect(attachments.remittanceDocument?.id).toBe('doc-existing');
+    expect(attachments.paymentProofDocuments.map((document) => document.id)).toEqual(['doc-payment']);
+  });
+
   it('finds the remittance document among contract attachments', () => {
     const document = findRemittanceInvoiceDocument([
       {

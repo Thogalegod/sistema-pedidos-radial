@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { BillingTable } from '@/components/contratos-locacoes/BillingTable';
-import { createSupabaseContractsLocacoesReadClient, listBillings, type BillingListItem } from '@/lib/contratos-locacoes/queries';
+import { canManageBilling, createSupabaseContractsLocacoesReadClient, listBillings, type BillingListItem } from '@/lib/contratos-locacoes/queries';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 import {
   buildBillingMonthHref,
@@ -22,6 +22,7 @@ export default function CobrancasPage() {
   const selectedMonth = resolveBillingMonth(searchParams.get('month'));
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [billingManager, setBillingManager] = useState(false);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled'>(
     normalizeStatusFilter(searchParams.get('status'))
@@ -35,6 +36,8 @@ export default function CobrancasPage() {
       setLoading(true);
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+        const organizationId = await readClient.getCurrentOrganizationId();
+        const membership = await readClient.getCurrentOrganizationMembership(organizationId);
         const data = await listBillings(readClient, toLocalDateKey(), {
           month: selectedMonth,
           search: debouncedSearch,
@@ -42,10 +45,12 @@ export default function CobrancasPage() {
         });
 
         if (!cancelled) {
+          setBillingManager(canManageBilling(membership));
           setBillings(data);
         }
       } catch (error) {
         if (!cancelled) {
+          setBillingManager(false);
           toast.error(error instanceof Error ? error.message : 'Não foi possível carregar cobranças.');
         }
       } finally {
@@ -108,7 +113,7 @@ export default function CobrancasPage() {
         </select>
       </div>
 
-      <BillingTable billings={billings} loading={loading} />
+      <BillingTable billings={billings} canManageBilling={billingManager} loading={loading} />
     </div>
   );
 }

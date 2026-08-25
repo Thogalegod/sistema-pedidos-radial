@@ -13,11 +13,14 @@ describe('ContractBillingSection future pricing', () => {
       <ContractBillingSection
         detail={detailWithUpdatedPrice()}
         paymentProofDocuments={[]}
+        onAttachBoleto={vi.fn()}
         onAttachPaymentProof={vi.fn()}
         onCreateBillingPeriod={vi.fn()}
-        onMarkBillingSent={vi.fn()}
+        onOpenBoleto={vi.fn()}
         onOpenPaymentProof={vi.fn()}
         onRecordBillingPayment={vi.fn()}
+        onRepairPendingBoleto={vi.fn()}
+        onReplaceBoleto={vi.fn()}
         onUpdateBillingPeriod={vi.fn()}
       />
     );
@@ -38,11 +41,14 @@ describe('ContractBillingSection future pricing', () => {
         detail={detailWithUpdatedPrice()}
         openNewBillingForm
         paymentProofDocuments={[]}
+        onAttachBoleto={vi.fn()}
         onAttachPaymentProof={vi.fn()}
         onCreateBillingPeriod={onCreateBillingPeriod}
-        onMarkBillingSent={vi.fn()}
+        onOpenBoleto={vi.fn()}
         onOpenPaymentProof={vi.fn()}
         onRecordBillingPayment={vi.fn()}
+        onRepairPendingBoleto={vi.fn()}
+        onReplaceBoleto={vi.fn()}
         onUpdateBillingPeriod={vi.fn()}
       />
     );
@@ -77,8 +83,14 @@ function detailWithUpdatedPrice(): ContractDetail {
       period_start: '2026-07-01', period_end: '2026-07-31', issue_date: '2026-07-01', due_date: '2026-07-31',
       base_amount: '300000', discount_amount: '0', surcharge_amount: '0', exemption_amount: '0',
       total_amount: '300000', document_type: 'receipt', document_number: 'R000008001', status: 'issued',
-      sent_at: null, notes: null, created_at: '', updated_at: '',
+      sent_at: null, needs_resend: false, content_revision: '0', boleto_change_pending: false,
+      boleto_change_operation_id: null, boleto_change_started_at: null,
+      notes: null, created_at: '', updated_at: '',
     }],
     payments: [],
+    membership: {
+      organization_id: 'org-1', user_id: 'user-1', role: 'member', can_manage_billing: true, created_at: '',
+    },
+    boletoDocuments: [],
   };
 }

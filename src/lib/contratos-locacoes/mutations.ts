@@ -32,6 +32,8 @@ import {
   hasPendingPhysicalReturns,
 } from './rental-closure';
 
+const BILLING_CYCLE_COMMON_SELECT = 'id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, created_at, updated_at';
+
 export interface CustomerMutationResult {
   customer: Customer;
   sites: CustomerSite[];
@@ -56,6 +58,18 @@ export interface BillingCycleEditInput {
   amount: string;
   notes: string | null;
 }
+
+export type BillingCycleInsertRecord = Pick<
+  BillingCycle,
+  'organization_id' | 'contract_id' | 'sequence_number' | 'period_start' | 'period_end' |
+  'issue_date' | 'due_date' | 'base_amount' | 'discount_amount' | 'surcharge_amount' |
+  'exemption_amount' | 'total_amount' | 'document_type' | 'document_number' | 'status' | 'notes'
+>;
+
+export type BillingCycleMutablePatch = Pick<
+  Partial<BillingCycle>,
+  'period_start' | 'period_end' | 'issue_date' | 'due_date' | 'notes' | 'status' | 'needs_resend'
+>;
 
 export interface PaymentMutationResult {
   billing: BillingCycle;
@@ -84,10 +98,10 @@ export interface ContractsLocacoesMutationClient {
   listRentalItemsByContractId?(organizationId: string, contractId: string): Promise<RentalItem[]>;
   getRentalItemById?(organizationId: string, itemId: string): Promise<RentalItem>;
   updateRentalItem?(itemId: string, patch: Partial<RentalItem>): Promise<RentalItem>;
-  insertBillingCycle?(record: Omit<BillingCycle, 'id' | 'created_at' | 'updated_at'>): Promise<BillingCycle>;
+  insertBillingCycle?(record: BillingCycleInsertRecord): Promise<BillingCycle>;
   getBillingCycleById?(organizationId: string, billingCycleId: string): Promise<BillingCycle>;
   listBillingCyclesByContractId?(organizationId: string, contractId: string): Promise<BillingCycle[]>;
-  updateBillingCycle?(billingCycleId: string, patch: Partial<BillingCycle>): Promise<BillingCycle>;
+  updateBillingCycle?(organizationId: string, billingCycleId: string, patch: BillingCycleMutablePatch): Promise<BillingCycle>;
   upsertBillingLines?(records: BillingLine[]): Promise<BillingLine[]>;
   deleteMissingBillingLines?(billingCycleId: string, keepIds: string[]): Promise<void>;
   insertPayment?(record: Omit<Payment, 'id' | 'created_at' | 'updated_at'>): Promise<Payment>;
@@ -354,19 +368,19 @@ export function createSupabaseContractsLocacoesMutationClient(
       const { data, error } = await client
         .from('billing_cycles')
         .insert(record)
-        .select('*')
+        .select(BILLING_CYCLE_COMMON_SELECT)
         .single();
 
       return ensureData(data as BillingCycle | null, error, 'Não foi possível criar a cobrança');
     },
 
-    async updateBillingCycle(billingCycleId, patch) {
+    async updateBillingCycle(organizationId, billingCycleId, patch) {
       const { data, error } = await client
         .from('billing_cycles')
         .update(patch)
         .eq('id', billingCycleId)
-        .eq('organization_id', patch.organization_id ?? '')
-        .select('*')
+        .eq('organization_id', organizationId)
+        .select(BILLING_CYCLE_COMMON_SELECT)
         .single();
 
       return ensureData(data as BillingCycle | null, error, 'Não foi possível atualizar a cobrança');
@@ -375,7 +389,7 @@ export function createSupabaseContractsLocacoesMutationClient(
     async getBillingCycleById(organizationId, billingCycleId) {
       const { data, error } = await client
         .from('billing_cycles')
-        .select('*')
+        .select(BILLING_CYCLE_COMMON_SELECT)
         .eq('organization_id', organizationId)
         .eq('id', billingCycleId)
         .single();
@@ -386,7 +400,7 @@ export function createSupabaseContractsLocacoesMutationClient(
     async listBillingCyclesByContractId(organizationId, contractId) {
       const { data, error } = await client
         .from('billing_cycles')
-        .select('*')
+        .select(BILLING_CYCLE_COMMON_SELECT)
         .eq('organization_id', organizationId)
         .eq('contract_id', contractId)
         .order('period_start', { ascending: true });
@@ -401,8 +415,8 @@ export function createSupabaseContractsLocacoesMutationClient(
 
       const { data, error } = await client
         .from('billing_lines')
-        .upsert(records, { onConflict: 'id' })
-        .select('*');
+        .insert(records)
+        .select('id, organization_id, billing_cycle_id, rental_item_id, description, quantity, unit_amount, total_amount, kind, created_at, updated_at');
 
       return ensureData((data ?? []) as BillingLine[] | null, error, 'Não foi possível salvar as linhas da cobrança');
     },
@@ -1043,7 +1057,7 @@ function buildBillingCycleRecord(
   organizationId: string,
   payload: BillingDraftInput,
   contract: Contract
-): Omit<BillingCycle, 'id' | 'created_at' | 'updated_at'> {
+): BillingCycleInsertRecord {
   const baseAmount = payload.items.reduce(
     (sum, item) => sum + item.quantity * Number.parseInt(item.unit_amount, 10),
     0
@@ -1075,7 +1089,6 @@ function buildBillingCycleRecord(
     document_type: payload.document_type,
     document_number: documentNumber,
     status: 'issued',
-    sent_at: null,
     notes: payload.notes,
   };
 }
@@ -1222,8 +1235,7 @@ export async function updateBillingCycleDetails(
     );
   }
 
-  const patch: Partial<BillingCycle> = {
-    organization_id: organizationId,
+  const patch: BillingCycleMutablePatch = {
     period_start: rawPayload.period_start,
     period_end: rawPayload.period_end,
     issue_date: rawPayload.issue_date,
@@ -1231,26 +1243,12 @@ export async function updateBillingCycleDetails(
     notes: normalizeNotes(rawPayload.notes),
   };
 
-  const billing = await updateBillingCycle(billingCycleId, patch);
+  const billing = await updateBillingCycle(organizationId, billingCycleId, patch);
 
   return {
     billing,
     lines: [],
   };
-}
-
-export async function markBillingCycleSent(
-  client: ContractsLocacoesMutationClient,
-  billingCycleId: string,
-  now = new Date()
-) {
-  const organizationId = await client.getCurrentOrganizationId();
-  const updateBillingCycle = requireBillingMethod(client.updateBillingCycle?.bind(client), 'updateBillingCycle');
-
-  return updateBillingCycle(billingCycleId, {
-    organization_id: organizationId,
-    sent_at: now.toISOString(),
-  });
 }
 
 export async function recordBillingPayment(
@@ -1282,8 +1280,7 @@ export async function recordBillingPayment(
   const totalPaid = payments.map((entry) => entry.amount);
   const balance = calculateBillingBalance(billingCycle.total_amount, totalPaid);
   const status = buildBillingStatus(billingCycle.total_amount, totalPaid, payload.paid_at, billingCycle.due_date);
-  const billing = await updateBillingCycle(billingCycleId, {
-    organization_id: organizationId,
+  const billing = await updateBillingCycle(organizationId, billingCycleId, {
     status,
   });
 

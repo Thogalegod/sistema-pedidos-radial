@@ -11,10 +11,13 @@ type ContractSummaryProps = {
   detail: ContractDetail;
   openNewBillingForm?: boolean;
   onAttachPaymentProof?: (billing: BillingCycle, payment: Payment, file: File) => Promise<void>;
+  onAttachBoleto?: (billing: BillingCycle, file: File) => Promise<void>;
   onCreateBillingPeriod?: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
-  onMarkBillingSent?: (billing: BillingCycle) => Promise<void>;
+  onOpenBoleto?: (document: ContractDocument) => Promise<void>;
   onOpenPaymentProof?: (document: ContractDocument) => Promise<void>;
   onRecordBillingPayment?: (billing: BillingCycle, values: BillingPaymentFormValues, file: File | null) => Promise<void>;
+  onRepairPendingBoleto?: (billing: BillingCycle, file: File) => Promise<void>;
+  onReplaceBoleto?: (billing: BillingCycle, document: ContractDocument, file: File) => Promise<void>;
   onCloseContract?: () => Promise<void> | void;
   onRegisterItemReturn?: (item: RentalItem, returnedAt: string) => Promise<void> | void;
   onStartClosure?: (endDate: string) => Promise<void> | void;
@@ -78,13 +81,16 @@ function Section({
 
 export function ContractSummary({
   detail,
+  onAttachBoleto,
   onAttachPaymentProof,
   onCloseContract,
   onCreateBillingPeriod,
-  onMarkBillingSent,
+  onOpenBoleto,
   onOpenPaymentProof,
   onRegisterItemReturn,
   onRecordBillingPayment,
+  onRepairPendingBoleto,
+  onReplaceBoleto,
   onStartClosure,
   onUpdateBillingPeriod,
   openNewBillingForm = false,
@@ -243,16 +249,19 @@ export function ContractSummary({
       ) : null}
 
       <Section title="Financeiro da locação">
-        {onAttachPaymentProof && onCreateBillingPeriod && onMarkBillingSent && onOpenPaymentProof && onRecordBillingPayment && onUpdateBillingPeriod ? (
+        {onAttachPaymentProof && onAttachBoleto && onCreateBillingPeriod && onOpenBoleto && onOpenPaymentProof && onRecordBillingPayment && onRepairPendingBoleto && onReplaceBoleto && onUpdateBillingPeriod ? (
           <ContractBillingSection
             detail={detail}
             openNewBillingForm={openNewBillingForm}
             paymentProofDocuments={paymentProofDocuments}
             onAttachPaymentProof={onAttachPaymentProof}
+            onAttachBoleto={onAttachBoleto}
             onCreateBillingPeriod={onCreateBillingPeriod}
-            onMarkBillingSent={onMarkBillingSent}
+            onOpenBoleto={onOpenBoleto}
             onOpenPaymentProof={onOpenPaymentProof}
             onRecordBillingPayment={onRecordBillingPayment}
+            onRepairPendingBoleto={onRepairPendingBoleto}
+            onReplaceBoleto={onReplaceBoleto}
             onUpdateBillingPeriod={onUpdateBillingPeriod}
           />
         ) : (

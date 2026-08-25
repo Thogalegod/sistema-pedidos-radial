@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Pencil, Play, Pause } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractEditForm } from '@/components/contratos-locacoes/ContractEditForm';
@@ -31,7 +31,6 @@ import {
   closeContract,
   createBillingCycle,
   createSupabaseContractsLocacoesMutationClient,
-  markBillingCycleSent,
   pauseContract,
   reactivateContract,
   registerRentalItemReturn,
@@ -39,6 +38,14 @@ import {
   startContractClosure,
   updateBillingCycleDetails,
 } from '@/lib/contratos-locacoes/mutations';
+import {
+  createBoletoChangeOperationId,
+  createSupabaseContractsLocacoesBoletoDocumentClient,
+  getBoletoSignedUrl,
+  repairPendingBoletoChange,
+  replaceBoletoDocument,
+  saveBoletoDocument,
+} from '@/lib/contratos-locacoes/boleto-documents';
 import {
   createSupabaseContractsLocacoesRemittanceDocumentClient,
   getRemittanceInvoiceSignedUrl,
@@ -73,6 +80,7 @@ export default function ContractDetailPage() {
   const [loading, setLoading] = useState(true);
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const boletoChangesInFlight = useRef(new Set<string>());
   const isFinalContractStatus = detail?.contract.status === 'closed' || detail?.contract.status === 'cancelled';
 
   const load = async () => {
@@ -265,11 +273,63 @@ export default function ContractDetailPage() {
     await load();
   };
 
-  const handleMarkBillingSent = async (billing: BillingCycle) => {
-    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
-    await markBillingCycleSent(mutationClient, billing.id);
-    toast.success('Cobrança marcada como enviada.');
-    await load();
+  const handleAttachBoleto = async (billing: BillingCycle, file: File) => {
+    if (!detail || boletoChangesInFlight.current.has(billing.id)) return;
+    boletoChangesInFlight.current.add(billing.id);
+    try {
+      const client = createSupabaseContractsLocacoesBoletoDocumentClient(supabase);
+      await saveBoletoDocument(client, detail.contract, billing, file, createBoletoChangeOperationId());
+      toast.success('Boleto anexado.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível anexar o boleto.');
+      await load();
+    } finally {
+      boletoChangesInFlight.current.delete(billing.id);
+    }
+  };
+
+  const handleReplaceBoleto = async (billing: BillingCycle, document: ContractDocument, file: File) => {
+    if (!detail || boletoChangesInFlight.current.has(billing.id)) return;
+    boletoChangesInFlight.current.add(billing.id);
+    try {
+      const client = createSupabaseContractsLocacoesBoletoDocumentClient(supabase);
+      await replaceBoletoDocument(client, detail.contract, billing, document, file, createBoletoChangeOperationId());
+      toast.success('Boleto substituído.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível substituir o boleto.');
+      await load();
+    } finally {
+      boletoChangesInFlight.current.delete(billing.id);
+    }
+  };
+
+  const handleRepairPendingBoleto = async (billing: BillingCycle, file: File) => {
+    if (!detail || boletoChangesInFlight.current.has(billing.id)) return;
+    boletoChangesInFlight.current.add(billing.id);
+    try {
+      const client = createSupabaseContractsLocacoesBoletoDocumentClient(supabase);
+      await repairPendingBoletoChange(client, detail.contract, billing, file);
+      toast.success('Alteração pendente concluída.');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível concluir a alteração pendente.');
+      await load();
+    } finally {
+      boletoChangesInFlight.current.delete(billing.id);
+    }
+  };
+
+  const handleOpenBoleto = async (document: ContractDocument) => {
+    try {
+      await openDocumentInNewTab(() => getBoletoSignedUrl(
+        createSupabaseContractsLocacoesBoletoDocumentClient(supabase),
+        document
+      ));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível abrir o boleto.');
+    }
   };
 
   const handleAttachPaymentProof = async (billing: BillingCycle, payment: Payment, file: File) => {
@@ -445,13 +505,16 @@ export default function ContractDetailPage() {
             detail={detail}
             openNewBillingForm={searchParams.get('action') === 'new-billing'}
             paymentProofDocuments={paymentProofDocuments}
+            onAttachBoleto={handleAttachBoleto}
             onAttachPaymentProof={handleAttachPaymentProof}
             onCloseContract={handleCloseContract}
             onCreateBillingPeriod={handleCreateBillingPeriod}
-            onMarkBillingSent={handleMarkBillingSent}
+            onOpenBoleto={handleOpenBoleto}
             onOpenPaymentProof={handleOpenPaymentProof}
             onRegisterItemReturn={handleRegisterItemReturn}
             onRecordBillingPayment={handleRecordBillingPayment}
+            onRepairPendingBoleto={handleRepairPendingBoleto}
+            onReplaceBoleto={handleReplaceBoleto}
             onStartClosure={handleStartClosure}
             onUpdateBillingPeriod={handleUpdateBillingPeriod}
             remittanceAttachmentSlot={

@@ -1,17 +1,24 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BillingPeriodCard } from './BillingPeriodCard';
-import type { BillingCycle } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, ContractDocument } from '@/lib/contratos-locacoes/types';
+
+afterEach(cleanup);
 
 describe('BillingPeriodCard', () => {
   it('opens the single rental invoice for a billing period', () => {
     render(
       <BillingPeriodCard
         billing={makeBilling()}
+        boletoDocument={null}
+        canManageBilling={false}
+        onAttachBoleto={vi.fn()}
         onAttachProof={vi.fn()}
         onEdit={vi.fn()}
-        onMarkSent={vi.fn()}
+        onOpenBoleto={vi.fn()}
         onOpenProof={vi.fn()}
+        onRepairPendingBoleto={vi.fn()}
+        onReplaceBoleto={vi.fn()}
         onRegisterPayment={vi.fn()}
         payments={[]}
         proofDocuments={[]}
@@ -23,9 +30,70 @@ describe('BillingPeriodCard', () => {
       '/contratos-locacoes/recibos/billing-1'
     );
   });
+
+  it('shows boleto controls only to an authorized billing manager', () => {
+    const { rerender } = render(<BillingPeriodCard billing={makeBilling()} boletoDocument={null} canManageBilling={false} onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.queryByText('Anexar boleto')).not.toBeInTheDocument();
+    rerender(<BillingPeriodCard billing={makeBilling()} boletoDocument={null} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.getByText('Anexar boleto')).toBeInTheDocument();
+    expect(screen.queryByText(/marcar como enviado/i)).not.toBeInTheDocument();
+  });
+
+  it('blocks normal replacement while pending and offers only repair', () => {
+    render(<BillingPeriodCard billing={makeBilling({ boleto_change_pending: true, boleto_change_operation_id: 'op-1' })} boletoDocument={null} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.getByText('Concluir alteração pendente')).toBeInTheDocument();
+    expect(screen.queryByText('Anexar boleto')).not.toBeInTheDocument();
+  });
+
+  it('opens or replaces the single ready boleto without exposing delete or release actions', () => {
+    render(<BillingPeriodCard billing={makeBilling()} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.getByText('Abrir boleto')).toBeInTheDocument();
+    expect(screen.getByText('Substituir boleto')).toBeInTheDocument();
+    expect(screen.queryByText(/excluir|liberar/i)).not.toBeInTheDocument();
+  });
+
+  it('distinguishes a current send from content changed after send', () => {
+    const { rerender } = render(<BillingPeriodCard billing={makeBilling({ sent_at: '2026-08-10T12:00:00.000Z' })} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.queryByText(/alterada após o último envio/i)).not.toBeInTheDocument();
+    rerender(<BillingPeriodCard billing={makeBilling({ sent_at: '2026-08-10T12:00:00.000Z', needs_resend: true })} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.getByText(/alterada após o último envio/i)).toBeInTheDocument();
+  });
+
+  it('shows sent time only to an authorized billing manager', () => {
+    const billing = makeBilling({ sent_at: '2026-08-10T12:00:00.000Z' });
+    const props = {
+      billing,
+      boletoDocument: null,
+      onAttachBoleto: vi.fn(),
+      onAttachProof: vi.fn(),
+      onEdit: vi.fn(),
+      onOpenBoleto: vi.fn(),
+      onOpenProof: vi.fn(),
+      onRegisterPayment: vi.fn(),
+      onRepairPendingBoleto: vi.fn(),
+      onReplaceBoleto: vi.fn(),
+      payments: [],
+      proofDocuments: [],
+    };
+    const { rerender } = render(<BillingPeriodCard {...props} canManageBilling={false} />);
+
+    expect(screen.queryByText(/enviado em/i)).not.toBeInTheDocument();
+
+    rerender(<BillingPeriodCard {...props} canManageBilling />);
+    expect(screen.getByText(/enviado em/i)).toBeInTheDocument();
+  });
 });
 
-function makeBilling(): BillingCycle {
+function makeBoleto(): ContractDocument {
+  return {
+    id: 'boleto-1', organization_id: 'org-1', contract_id: 'contract-1', billing_cycle_id: 'billing-1',
+    payment_id: null, inspection_id: null, kind: 'boleto',
+    storage_path: 'org-1/contract-1/boleto/billing-1.pdf', file_name: 'billing-1.pdf',
+    content_type: 'application/pdf', created_by: 'user-1', created_at: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+function makeBilling(overrides: Partial<BillingCycle> = {}): BillingCycle {
   return {
     id: 'billing-1',
     organization_id: 'org-1',
@@ -44,8 +112,14 @@ function makeBilling(): BillingCycle {
     document_number: 'R000008001',
     status: 'issued',
     sent_at: null,
+    needs_resend: false,
+    content_revision: '0',
+    boleto_change_pending: false,
+    boleto_change_operation_id: null,
+    boleto_change_started_at: null,
     notes: null,
     created_at: '2026-08-01T00:00:00.000Z',
     updated_at: '2026-08-01T00:00:00.000Z',
+    ...overrides,
   };
 }

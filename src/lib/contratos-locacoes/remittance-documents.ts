@@ -102,9 +102,12 @@ export function createSupabaseContractsLocacoesRemittanceDocumentClient(
     async listContractDocuments(organizationId, contractId) {
       const { data, error } = await client
         .from('contract_documents')
-        .select('*')
+        .select(
+          'id, organization_id, contract_id, billing_cycle_id, payment_id, inspection_id, kind, storage_path, file_name, content_type, created_by, created_at'
+        )
         .eq('organization_id', organizationId)
         .eq('contract_id', contractId)
+        .in('kind', ['remittance_nf', 'payment_proof'])
         .order('created_at', { ascending: false });
 
       return ensureData(

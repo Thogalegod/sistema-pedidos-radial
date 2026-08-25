@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { BillingCycle, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalAsset, RentalItem } from './types';
+import type { BillingCycle, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalAsset, RentalItem } from './types';
 import { createBillingSnapshot, type BillingSnapshotInput, type DashboardSnapshot } from './dashboard';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
 import { alertLevel, isDateInBillingMonth } from './dates';
@@ -74,7 +74,21 @@ export interface ContractDetail {
   items: RentalItem[];
   billingCycles: BillingCycle[];
   payments: Payment[];
+  membership: OrganizationMember;
+  boletoDocuments: ContractDocument[];
 }
+
+export interface BillingDeliveryIndicators {
+  sent_at: string | null;
+  needs_resend: boolean;
+  has_boleto: boolean;
+}
+
+export type BillingMonthlyBaseRow = Pick<
+  BillingCycle,
+  'id' | 'contract_id' | 'document_number' | 'document_type' | 'due_date' |
+  'issue_date' | 'period_start' | 'period_end' | 'total_amount' | 'status'
+>;
 
 export interface BillingListFilters {
   month?: string;
@@ -95,7 +109,7 @@ export interface BillingListItem {
   issue_date: string;
   period_start: string;
   period_end: string;
-  sent_at: string | null;
+  delivery_indicators: BillingDeliveryIndicators | null;
   total_amount: string;
   paid_amount: string;
   balance_amount: string;
@@ -110,6 +124,7 @@ export interface RentalAssetListFilters {
 
 export interface ContractsLocacoesReadClient {
   getCurrentOrganizationId(): Promise<string>;
+  getCurrentOrganizationMembership(organizationId: string): Promise<OrganizationMember>;
   listCustomersByOrganization(
     organizationId: string,
     filters?: Pick<CustomerListFilters, 'status'>
@@ -125,7 +140,26 @@ export interface ContractsLocacoesReadClient {
   getBillingCycleById?(organizationId: string, billingId: string): Promise<BillingCycle>;
   listRentalItemsByContractIds(organizationId: string, contractIds: string[]): Promise<RentalItem[]>;
   listBillingCyclesByOrganization?(organizationId: string): Promise<BillingCycle[]>;
+  listBillingCyclesForMonthlyList(organizationId: string): Promise<BillingMonthlyBaseRow[]>;
+  listBillingDeliveryIndicatorsByOrganization(
+    organizationId: string,
+    billingIds: string[]
+  ): Promise<Array<Pick<BillingCycle, 'id' | 'sent_at' | 'needs_resend'>>>;
+  listBoletoDocumentsByContractIds(organizationId: string, contractIds: string[]): Promise<ContractDocument[]>;
   listBillingCyclesByContractId?(organizationId: string, contractId: string): Promise<BillingCycle[]>;
+  listBillingDetailIndicatorsByContractId?(
+    organizationId: string,
+    contractId: string
+  ): Promise<Array<Pick<
+    BillingCycle,
+    | 'id'
+    | 'sent_at'
+    | 'needs_resend'
+    | 'content_revision'
+    | 'boleto_change_pending'
+    | 'boleto_change_operation_id'
+    | 'boleto_change_started_at'
+  >>>;
   listBillingLinesByBillingCycleIds?(organizationId: string, billingCycleIds: string[]): Promise<BillingLine[]>;
   listPaymentsByBillingCycleIds?(organizationId: string, billingCycleIds: string[]): Promise<Payment[]>;
   listRentalAssetsByOrganization?(
@@ -144,6 +178,10 @@ export interface ContractsLocacoesReadClient {
 }
 
 type SupabaseRow = Record<string, unknown>;
+
+export function canManageBilling(member: OrganizationMember) {
+  return member.role === 'admin' || member.can_manage_billing;
+}
 
 function ensureData<T>(data: T | null, error: { message: string } | null, message: string) {
   if (error) {
@@ -175,6 +213,22 @@ export function createSupabaseContractsLocacoesReadClient(
       );
 
       return membership.organization_id;
+    },
+
+    async getCurrentOrganizationMembership(organizationId) {
+      const { data: authData, error: authError } = await client.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error(`Não foi possível identificar o usuário atual${authError ? `: ${authError.message}` : ''}`);
+      }
+
+      const { data, error } = await client
+        .from('organization_members')
+        .select('organization_id, user_id, role, can_manage_billing, created_at')
+        .eq('organization_id', organizationId)
+        .eq('user_id', authData.user.id)
+        .single();
+
+      return ensureData(data as OrganizationMember | null, error, 'Não foi possível carregar a permissão financeira');
     },
 
     async listCustomersByOrganization(organizationId, filters = {}) {
@@ -308,15 +362,75 @@ export function createSupabaseContractsLocacoesReadClient(
       return ensureData((data ?? []) as BillingCycle[] | null, error, 'Não foi possível listar cobranças');
     },
 
+    async listBillingCyclesForMonthlyList(organizationId) {
+      const { data, error } = await client
+        .from('billing_cycles')
+        .select('id, contract_id, document_number, document_type, due_date, issue_date, period_start, period_end, total_amount, status')
+        .eq('organization_id', organizationId)
+        .order('due_date', { ascending: true });
+
+      return ensureData((data ?? []) as BillingMonthlyBaseRow[] | null, error, 'Não foi possível listar cobranças');
+    },
+
+    async listBillingDeliveryIndicatorsByOrganization(organizationId, billingIds) {
+      if (billingIds.length === 0) return [];
+      const { data, error } = await client
+        .from('billing_cycles')
+        .select('id, sent_at, needs_resend')
+        .eq('organization_id', organizationId)
+        .in('id', billingIds);
+
+      return ensureData(
+        (data ?? []) as Array<Pick<BillingCycle, 'id' | 'sent_at' | 'needs_resend'>> | null,
+        error,
+        'Não foi possível carregar indicadores de envio'
+      );
+    },
+
+    async listBoletoDocumentsByContractIds(organizationId, contractIds) {
+      if (contractIds.length === 0) return [];
+      const { data, error } = await client
+        .from('contract_documents')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('kind', 'boleto')
+        .in('contract_id', contractIds);
+
+      return ensureData((data ?? []) as ContractDocument[] | null, error, 'Não foi possível carregar boletos');
+    },
+
     async listBillingCyclesByContractId(organizationId, contractId) {
       const { data, error } = await client
         .from('billing_cycles')
-        .select('*')
+        .select('id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, created_at, updated_at')
         .eq('organization_id', organizationId)
         .eq('contract_id', contractId)
         .order('due_date', { ascending: true });
 
       return ensureData((data ?? []) as BillingCycle[] | null, error, 'Não foi possível listar cobranças do contrato');
+    },
+
+    async listBillingDetailIndicatorsByContractId(organizationId, contractId) {
+      const { data, error } = await client
+        .from('billing_cycles')
+        .select('id, sent_at, needs_resend, content_revision, boleto_change_pending, boleto_change_operation_id, boleto_change_started_at')
+        .eq('organization_id', organizationId)
+        .eq('contract_id', contractId);
+
+      return ensureData(
+        (data ?? []) as Array<Pick<
+          BillingCycle,
+          | 'id'
+          | 'sent_at'
+          | 'needs_resend'
+          | 'content_revision'
+          | 'boleto_change_pending'
+          | 'boleto_change_operation_id'
+          | 'boleto_change_started_at'
+        >> | null,
+        error,
+        'Não foi possível carregar o estado financeiro das cobranças'
+      );
     },
 
     async getBillingCycleById(organizationId, billingId) {
@@ -708,17 +822,43 @@ export async function getContract(
   contractId: string
 ): Promise<ContractDetail> {
   const organizationId = await client.getCurrentOrganizationId();
-  const contract = await client.getContractById(organizationId, contractId);
+  const [contract, membership] = await Promise.all([
+    client.getContractById(organizationId, contractId),
+    client.getCurrentOrganizationMembership(organizationId),
+  ]);
   const listBillingCyclesByContractId = client.listBillingCyclesByContractId;
+  const listBillingDetailIndicatorsByContractId = client.listBillingDetailIndicatorsByContractId;
   const listPaymentsByBillingCycleIds = client.listPaymentsByBillingCycleIds;
-  const [customer, sites, items, billingCycles] = await Promise.all([
+  const authorized = canManageBilling(membership);
+  const [customer, sites, items, baseBillingCycles, boletoDocuments, billingIndicators] = await Promise.all([
     client.getCustomerById(organizationId, contract.customer_id),
     client.listSitesByCustomerIds(organizationId, [contract.customer_id]),
     client.listRentalItemsByContractIds(organizationId, [contractId]),
     listBillingCyclesByContractId
       ? listBillingCyclesByContractId(organizationId, contractId)
       : Promise.resolve([]),
+    authorized
+      ? client.listBoletoDocumentsByContractIds(organizationId, [contractId])
+      : Promise.resolve([]),
+    authorized && listBillingDetailIndicatorsByContractId
+      ? listBillingDetailIndicatorsByContractId(organizationId, contractId)
+      : Promise.resolve([]),
   ]);
+  const indicatorsByBillingId = new Map(billingIndicators.map((indicator) => [indicator.id, indicator]));
+  const billingCycles = baseBillingCycles.map((billing) => {
+    if (authorized) {
+      return { ...billing, ...indicatorsByBillingId.get(billing.id) };
+    }
+
+    const visible = { ...billing } as Partial<BillingCycle>;
+    delete visible.sent_at;
+    delete visible.needs_resend;
+    delete visible.content_revision;
+    delete visible.boleto_change_pending;
+    delete visible.boleto_change_operation_id;
+    delete visible.boleto_change_started_at;
+    return visible as BillingCycle;
+  });
   const billingIds = billingCycles.map((billing) => billing.id);
   const payments = listPaymentsByBillingCycleIds && billingIds.length > 0
     ? await listPaymentsByBillingCycleIds(organizationId, billingIds)
@@ -731,6 +871,8 @@ export async function getContract(
     items,
     billingCycles,
     payments,
+    membership,
+    boletoDocuments,
   };
 }
 
@@ -740,23 +882,30 @@ export async function listBillings(
   filters: BillingListFilters = {}
 ): Promise<BillingListItem[]> {
   const organizationId = await client.getCurrentOrganizationId();
-  const listBillingCyclesByOrganization = client.listBillingCyclesByOrganization;
   const listPaymentsByBillingCycleIds = client.listPaymentsByBillingCycleIds;
 
-  if (!listBillingCyclesByOrganization || !listPaymentsByBillingCycleIds) {
+  if (!listPaymentsByBillingCycleIds) {
     throw new Error('Cliente de leitura sem suporte para cobranças');
   }
 
-  const allBillings = await listBillingCyclesByOrganization(organizationId);
+  const membership = await client.getCurrentOrganizationMembership(organizationId);
+  const allBillings = await client.listBillingCyclesForMonthlyList(organizationId);
   const billings = filters.month
     ? allBillings.filter((billing) => isDateInBillingMonth(billing.due_date, filters.month!))
     : allBillings;
   const contractIds = [...new Set(billings.map((billing) => billing.contract_id))];
   const billingIds = billings.map((billing) => billing.id);
-  const [contracts, customers, payments] = await Promise.all([
+  const authorized = canManageBilling(membership);
+  const [contracts, customers, payments, indicatorRows, boletoDocuments] = await Promise.all([
     client.listContractsByOrganization(organizationId),
     client.listCustomersByOrganization(organizationId),
     listPaymentsByBillingCycleIds(organizationId, billingIds),
+    authorized
+      ? client.listBillingDeliveryIndicatorsByOrganization(organizationId, billingIds)
+      : Promise.resolve([]),
+    authorized
+      ? client.listBoletoDocumentsByContractIds(organizationId, contractIds)
+      : Promise.resolve([]),
   ]);
 
   const contractsById = new Map(contracts.map((contract) => [contract.id, contract]));
@@ -767,6 +916,10 @@ export async function listBillings(
   );
   const sitesById = new Map(sites.map((site) => [site.id, site]));
   const paymentsByBillingId = new Map<string, Payment[]>();
+  const indicatorsByBillingId = new Map(indicatorRows.map((row) => [row.id, row]));
+  const boletoBillingIds = new Set(
+    boletoDocuments.map((document) => document.billing_cycle_id).filter((id): id is string => id !== null)
+  );
 
   payments.forEach((payment) => {
     const bucket = paymentsByBillingId.get(payment.billing_cycle_id) ?? [];
@@ -802,7 +955,13 @@ export async function listBillings(
         issue_date: billing.issue_date,
         period_start: billing.period_start,
         period_end: billing.period_end,
-        sent_at: billing.sent_at,
+        delivery_indicators: authorized
+          ? {
+              sent_at: indicatorsByBillingId.get(billing.id)?.sent_at ?? null,
+              needs_resend: indicatorsByBillingId.get(billing.id)?.needs_resend ?? false,
+              has_boleto: boletoBillingIds.has(billing.id),
+            }
+          : null,
         total_amount: billing.total_amount,
         paid_amount: balance.paid_amount,
         balance_amount: balance.balance_amount,

@@ -12,11 +12,15 @@ const mocks = vi.hoisted(() => ({
   getCurrentOrganizationId: vi.fn(),
   getPaymentProofSignedUrl: vi.fn(),
   getRemittanceInvoiceSignedUrl: vi.fn(),
+  getBoletoSignedUrl: vi.fn(),
   loadContractAttachmentDocuments: vi.fn(),
   listAvailableRentalAssets: vi.fn(),
   listCustomers: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
+  repairPendingBoletoChange: vi.fn(),
+  replaceBoletoDocument: vi.fn(),
+  saveBoletoDocument: vi.fn(),
   updateContract: vi.fn(),
   updateContractSafely: vi.fn(),
 }));
@@ -60,7 +64,6 @@ vi.mock('@/lib/contratos-locacoes/mutations', () => ({
     upsertRentalItems: vi.fn(),
     updateContract: mocks.updateContract,
   }),
-  markBillingCycleSent: vi.fn(),
   pauseContract: vi.fn(),
   reactivateContract: vi.fn(),
   registerRentalItemReturn: vi.fn(),
@@ -81,6 +84,15 @@ vi.mock('@/lib/contratos-locacoes/payment-proofs', async (importOriginal) => ({
   createSupabaseContractsLocacoesPaymentProofClient: () => ({}),
   getPaymentProofSignedUrl: mocks.getPaymentProofSignedUrl,
   savePaymentProofDocument: vi.fn(),
+}));
+
+vi.mock('@/lib/contratos-locacoes/boleto-documents', () => ({
+  createBoletoChangeOperationId: () => '00000000-0000-4000-8000-000000000001',
+  createSupabaseContractsLocacoesBoletoDocumentClient: () => ({}),
+  getBoletoSignedUrl: mocks.getBoletoSignedUrl,
+  repairPendingBoletoChange: mocks.repairPendingBoletoChange,
+  replaceBoletoDocument: mocks.replaceBoletoDocument,
+  saveBoletoDocument: mocks.saveBoletoDocument,
 }));
 
 function buildDetail(): ContractDetail {
@@ -118,6 +130,14 @@ function buildDetail(): ContractDetail {
     items: [],
     billingCycles: [],
     payments: [],
+    membership: {
+      organization_id: 'org-1',
+      user_id: 'user-1',
+      role: 'member',
+      can_manage_billing: false,
+      created_at: '2026-08-01T12:00:00.000Z',
+    },
+    boletoDocuments: [],
   };
 }
 
@@ -133,6 +153,7 @@ beforeEach(() => {
   mocks.getCurrentOrganizationId.mockResolvedValue('org-1');
   mocks.getPaymentProofSignedUrl.mockResolvedValue('https://storage.example/payment-proof.pdf');
   mocks.getRemittanceInvoiceSignedUrl.mockResolvedValue('https://storage.example/remittance.pdf');
+  mocks.getBoletoSignedUrl.mockResolvedValue('https://storage.example/boleto.pdf');
   mocks.loadContractAttachmentDocuments.mockResolvedValue({
     remittanceDocument: null,
     paymentProofDocuments: [],
@@ -140,6 +161,9 @@ beforeEach(() => {
   mocks.listCustomers.mockResolvedValue([]);
   mocks.getCustomer.mockResolvedValue({ sites: [] });
   mocks.listAvailableRentalAssets.mockResolvedValue([]);
+  mocks.repairPendingBoletoChange.mockResolvedValue({});
+  mocks.replaceBoletoDocument.mockResolvedValue({});
+  mocks.saveBoletoDocument.mockResolvedValue({});
   mocks.updateContractSafely.mockImplementation(async (_client, _id, value) => ({
     contract: {
       ...detail.contract,
@@ -156,6 +180,57 @@ beforeEach(() => {
 });
 
 describe('ContractDetailPage remittance editing', () => {
+  it('finishes a boleto attachment before showing success and reloading the detail', async () => {
+    const user = userEvent.setup();
+    const detail = buildDetail();
+    detail.membership.can_manage_billing = true;
+    detail.billingCycles = [buildBilling()];
+    mocks.getContract.mockResolvedValue(detail);
+
+    render(<ContractDetailPage />);
+    await user.upload(await screen.findByLabelText('Anexar boleto'), new File(['%PDF'], 'boleto.pdf', { type: 'application/pdf' }));
+
+    await waitFor(() => expect(mocks.saveBoletoDocument).toHaveBeenCalledOnce());
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Boleto anexado.');
+    expect(mocks.getContract).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a partial boleto failure without a success toast', async () => {
+    const user = userEvent.setup();
+    const detail = buildDetail();
+    detail.membership.can_manage_billing = true;
+    detail.billingCycles = [buildBilling()];
+    mocks.getContract.mockResolvedValue(detail);
+    mocks.saveBoletoDocument.mockRejectedValue(new Error('alteração permaneceu pendente'));
+
+    render(<ContractDetailPage />);
+    await user.upload(await screen.findByLabelText('Anexar boleto'), new File(['%PDF'], 'boleto.pdf', { type: 'application/pdf' }));
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('alteração permaneceu pendente'));
+    expect(mocks.toastSuccess).not.toHaveBeenCalledWith('Boleto anexado.');
+  });
+
+  it('reuploads a selected PDF to repair the operation loaded with a pending cycle', async () => {
+    const user = userEvent.setup();
+    const detail = buildDetail();
+    detail.membership.can_manage_billing = true;
+    detail.billingCycles = [buildBilling({
+      boleto_change_pending: true,
+      boleto_change_operation_id: '00000000-0000-4000-8000-000000000009',
+      boleto_change_started_at: '2026-08-24T10:00:00.000Z',
+    })];
+    mocks.getContract.mockResolvedValue(detail);
+
+    render(<ContractDetailPage />);
+    const file = new File(['%PDF repaired'], 'boleto.pdf', { type: 'application/pdf' });
+    await user.upload(await screen.findByLabelText('Concluir alteração pendente'), file);
+
+    await waitFor(() => expect(mocks.repairPendingBoletoChange).toHaveBeenCalledWith(
+      expect.anything(), detail.contract, detail.billingCycles[0], file
+    ));
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Alteração pendente concluída.');
+  });
+
   it('opens the dedicated rental editor and reflects a saved change without leaving the detail', async () => {
     const user = userEvent.setup();
     render(<ContractDetailPage />);
@@ -253,6 +328,11 @@ describe('ContractDetailPage remittance editing', () => {
         document_number: 'REC-1',
         status: 'paid',
         sent_at: null,
+        needs_resend: false,
+        content_revision: '0',
+        boleto_change_pending: false,
+        boleto_change_operation_id: null,
+        boleto_change_started_at: null,
         notes: null,
         created_at: '2026-08-01T12:00:00.000Z',
         updated_at: '2026-08-01T12:00:00.000Z',
@@ -302,3 +382,15 @@ describe('ContractDetailPage remittance editing', () => {
     expect(openedWindow.opener).toBeNull();
   });
 });
+
+function buildBilling(overrides: Partial<ContractDetail['billingCycles'][number]> = {}): ContractDetail['billingCycles'][number] {
+  return {
+    id: 'billing-1', organization_id: 'org-1', contract_id: 'contract-1', sequence_number: 1,
+    period_start: '2026-08-01', period_end: '2026-08-31', issue_date: '2026-08-01', due_date: '2026-08-10',
+    base_amount: '10000', discount_amount: '0', surcharge_amount: '0', exemption_amount: '0', total_amount: '10000',
+    document_type: 'receipt', document_number: 'REC-1', status: 'issued', sent_at: null, needs_resend: false,
+    content_revision: '0', boleto_change_pending: false, boleto_change_operation_id: null,
+    boleto_change_started_at: null, notes: null, created_at: '2026-08-01T12:00:00.000Z', updated_at: '2026-08-01T12:00:00.000Z',
+    ...overrides,
+  };
+}

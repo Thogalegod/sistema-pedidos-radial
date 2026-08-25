@@ -13,6 +13,10 @@ async function loginAsQaUser(page: Page) {
   }
 
   await page.goto('/login');
+  await page.waitForFunction(() => {
+    const emailInput = document.querySelector('input[type="email"]');
+    return emailInput !== null && Object.keys(emailInput).some((key) => key.startsWith('__reactProps$'));
+  });
   await page.getByPlaceholder('Seu e-mail de acesso').fill(qaEmail);
   await page.getByPlaceholder('Sua senha').fill(qaPassword);
   await page.getByRole('button', { name: 'Entrar no Sistema' }).click();
@@ -108,7 +112,10 @@ test.describe('Nova locacao', () => {
   test('shows the QA rental in the list and opens its detail page', async ({ page }) => {
     await page.goto('/contratos-locacoes/contratos');
 
-    const qaRentalLink = page.getByRole('link', { name: /Pedido\/OS: QA-1786110500705/ });
+    const qaRentalLink = page
+      .locator('article')
+      .filter({ hasText: 'QA-1786110500705' })
+      .getByRole('link', { name: 'Abrir locação de QA E2E Cliente 1786110500705' });
     await expect(qaRentalLink).toBeVisible();
     await expect(qaRentalLink).toContainText('QA E2E Cliente 1786110500705');
     await expect(qaRentalLink).toContainText('QA E2E Obra 1786110500705');

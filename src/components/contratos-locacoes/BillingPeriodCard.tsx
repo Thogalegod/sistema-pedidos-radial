@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FileText, Paperclip, Send, Wallet } from 'lucide-react';
+import { FileText, Paperclip, Wallet } from 'lucide-react';
 import { calculateBillingBalance, buildBillingStatus } from '@/lib/contratos-locacoes/dashboard';
 import { resolveEffectiveBillingStatus } from '@/lib/contratos-locacoes/billing-status-presentation';
 import { alertLevel } from '@/lib/contratos-locacoes/dates';
@@ -12,11 +12,16 @@ import { BillingStatusBadge } from './BillingStatusBadge';
 
 interface BillingPeriodCardProps {
   billing: BillingCycle;
+  boletoDocument: ContractDocument | null;
+  canManageBilling: boolean;
+  onAttachBoleto: (billing: BillingCycle, file: File) => void;
   onAttachProof: (billing: BillingCycle, payment: Payment, file: File) => void;
   onEdit: (billing: BillingCycle) => void;
-  onMarkSent: (billing: BillingCycle) => void;
+  onOpenBoleto: (document: ContractDocument) => void;
   onOpenProof: (document: ContractDocument) => void;
   onRegisterPayment: (billing: BillingCycle) => void;
+  onRepairPendingBoleto: (billing: BillingCycle, file: File) => void;
+  onReplaceBoleto: (billing: BillingCycle, document: ContractDocument, file: File) => void;
   payments: Payment[];
   proofDocuments: ContractDocument[];
 }
@@ -46,11 +51,16 @@ function normalizeStatus(billing: BillingCycle, payments: Payment[]) {
 
 export function BillingPeriodCard({
   billing,
+  boletoDocument,
+  canManageBilling,
+  onAttachBoleto,
   onAttachProof,
   onEdit,
-  onMarkSent,
+  onOpenBoleto,
   onOpenProof,
   onRegisterPayment,
+  onRepairPendingBoleto,
+  onReplaceBoleto,
   payments,
   proofDocuments,
 }: BillingPeriodCardProps) {
@@ -93,7 +103,7 @@ export function BillingPeriodCard({
                 status={status}
               />
             </div>
-            {billing.sent_at ? <p className="text-xs text-blue-700">Enviado em {formatDateTimeLabel(billing.sent_at)}</p> : null}
+            {canManageBilling && billing.sent_at ? <p className="text-xs text-blue-700">Enviado em {formatDateTimeLabel(billing.sent_at)}</p> : null}
           </div>
         </div>
 
@@ -110,10 +120,6 @@ export function BillingPeriodCard({
         <button className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700" onClick={() => onEdit(billing)} type="button">
           Editar
         </button>
-        <button className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={Boolean(billing.sent_at)} onClick={() => onMarkSent(billing)} type="button">
-          <Send size={14} />
-          Marcar como enviado
-        </button>
         <Link className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700" href={`/contratos-locacoes/recibos/${billing.id}`}>
           <FileText size={14} />
           Abrir fatura
@@ -123,6 +129,47 @@ export function BillingPeriodCard({
           Registrar recebimento
         </button>
       </div>
+
+      {canManageBilling ? (
+        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+          <p className="font-semibold">Boleto</p>
+          {billing.boleto_change_pending ? (
+            <div className="mt-2">
+              <p className="text-xs">Alteração de boleto pendente. Reenvie o PDF para concluir.</p>
+              <label className="mt-2 inline-flex cursor-pointer rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white">
+                Concluir alteração pendente
+                <input accept="application/pdf,.pdf" className="sr-only" type="file" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) onRepairPendingBoleto(billing, file);
+                  event.target.value = '';
+                }} />
+              </label>
+            </div>
+          ) : boletoDocument ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold" onClick={() => onOpenBoleto(boletoDocument)} type="button">Abrir boleto</button>
+              <label className="cursor-pointer rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold">
+                Substituir boleto
+                <input accept="application/pdf,.pdf" className="sr-only" type="file" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) onReplaceBoleto(billing, boletoDocument, file);
+                  event.target.value = '';
+                }} />
+              </label>
+            </div>
+          ) : (
+            <label className="mt-2 inline-flex cursor-pointer rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold">
+              Anexar boleto
+              <input accept="application/pdf,.pdf" className="sr-only" type="file" onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onAttachBoleto(billing, file);
+                event.target.value = '';
+              }} />
+            </label>
+          )}
+          {billing.sent_at && billing.needs_resend ? <p className="mt-2 text-xs font-semibold text-amber-700">Alterada após o último envio — reenviar cobrança.</p> : null}
+        </div>
+      ) : null}
 
       <div className="mt-4 border-t border-gray-100 pt-3">
         <p className="text-xs font-semibold uppercase text-gray-500">Recebimentos</p>

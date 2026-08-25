@@ -122,7 +122,130 @@ function readContractsRentalsPrivilegeHardeningMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readBoletoBillingMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_add_boleto_billing_permissions\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one boleto billing permissions migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
 describe('contracts and rentals migration consistency', () => {
+  it('adds boleto billing permissions and structural delivery history', () => {
+    const sql = readBoletoBillingMigration();
+
+    expect(sql).toMatch(/can_manage_billing boolean NOT NULL DEFAULT false/i);
+    expect(sql).toMatch(/needs_resend boolean NOT NULL DEFAULT false/i);
+    expect(sql).toMatch(/content_revision bigint NOT NULL DEFAULT 0/i);
+    expect(sql).toMatch(/boleto_change_pending boolean NOT NULL DEFAULT false/i);
+    expect(sql).toMatch(/boleto_change_operation_id uuid/i);
+    expect(sql).toMatch(/boleto_change_started_at timestamptz/i);
+    expect(sql).toMatch(/content_revision >= 0/i);
+    expect(sql).toMatch(/boleto_change_pending[\s\S]*boleto_change_operation_id IS NOT NULL[\s\S]*boleto_change_started_at IS NOT NULL/i);
+    expect(sql).toMatch(/NOT boleto_change_pending[\s\S]*boleto_change_started_at IS NULL/i);
+
+    expect(sql).toMatch(/kind IN \([^)]*'boleto'/i);
+    expect(sql).toMatch(/kind <> 'boleto'[\s\S]*OR[\s\S]*billing_cycle_id IS NOT NULL/i);
+    expect(sql).toMatch(/payment_id IS NULL/i);
+    expect(sql).toMatch(/inspection_id IS NULL/i);
+    expect(sql).toMatch(/content_type = 'application\/pdf'/i);
+    expect(sql).toMatch(/contract_documents_one_boleto_per_billing_uidx/i);
+    expect(sql).toMatch(/contract_documents_contract_org_fkey/i);
+    expect(sql).toMatch(/contract_documents_billing_cycle_contract_org_fkey/i);
+    expect(sql).not.toMatch(/CREATE (?:OR REPLACE )?FUNCTION[^;]*boleto[^;]*coher/i);
+
+    expect(sql).toMatch(/CREATE TABLE public\.billing_delivery_events/i);
+    expect(sql).toMatch(/send_request_id uuid NOT NULL UNIQUE/i);
+    expect(sql).toMatch(/provider_message_id text NOT NULL UNIQUE/i);
+    expect(sql).toMatch(/cardinality\(recipients\) BETWEEN 1 AND 50/i);
+    expect(sql).toMatch(/CREATE SCHEMA IF NOT EXISTS private/i);
+    expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS contracts_org_site_idx\s+ON public\.contracts\s*\(organization_id, site_id\)/i);
+
+    expect(sql).not.toMatch(/api\.schemas[^;]*private/i);
+    expect(sql).not.toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.(?:guard|bump|mark)_/i);
+    expect(sql).not.toMatch(/fingerprint|invoice_version|boleto_version/i);
+  });
+
+  it('keeps boleto and delivery event privileges tenant-scoped', () => {
+    const sql = readBoletoBillingMigration();
+
+    expect(sql).toMatch(/REVOKE ALL ON TABLE public\.billing_delivery_events[\s\S]*FROM PUBLIC, anon, authenticated/i);
+    expect(sql).toMatch(/GRANT SELECT, INSERT ON TABLE public\.billing_delivery_events TO authenticated/i);
+    expect(sql).toMatch(/ALTER TABLE public\.billing_delivery_events ENABLE ROW LEVEL SECURITY/i);
+    expect(sql).not.toMatch(/billing_delivery_events[\s\S]{0,160}FOR (?:UPDATE|DELETE)/i);
+
+    expect(sql).toMatch(/REVOKE INSERT ON TABLE public\.billing_cycles FROM PUBLIC, anon, authenticated/i);
+    expect(sql).toMatch(/REVOKE UPDATE ON TABLE public\.billing_cycles FROM PUBLIC, anon, authenticated/i);
+    expect(sql).not.toMatch(/GRANT\s+(?:SELECT,\s*)?INSERT\s+ON(?:\s+TABLE)?\s+public\.billing_cycles\s+TO\s+authenticated/i);
+    expect(sql).not.toMatch(/GRANT\s+(?:SELECT,\s*)?UPDATE\s+ON(?:\s+TABLE)?\s+public\.billing_cycles\s+TO\s+authenticated/i);
+
+    const insertGrant = sql.match(/GRANT INSERT\s*\(([^)]+)\) ON public\.billing_cycles TO authenticated/i)?.[1];
+    const updateGrant = sql.match(/GRANT UPDATE\s*\(([^)]+)\) ON public\.billing_cycles TO authenticated/i)?.[1];
+    const normalize = (columns: string | undefined) =>
+      columns?.split(',').map((column) => column.trim()).filter(Boolean);
+
+    expect(normalize(insertGrant)).toEqual([
+      'organization_id', 'contract_id', 'sequence_number', 'period_start', 'period_end',
+      'issue_date', 'due_date', 'base_amount', 'discount_amount', 'surcharge_amount',
+      'exemption_amount', 'total_amount', 'document_type', 'document_number', 'status', 'notes',
+    ]);
+    expect(normalize(updateGrant)).toEqual([
+      'period_start', 'period_end', 'issue_date', 'due_date', 'notes', 'status', 'needs_resend',
+    ]);
+
+    expect(sql).toMatch(/kind <> 'boleto'/i);
+    expect(sql).toMatch(/membership\.role = 'admin' OR membership\.can_manage_billing = true/i);
+    expect(sql).not.toMatch(/GRANT[^;]*(?:UPDATE|DELETE)[^;]*contract_documents/i);
+    expect(sql).not.toMatch(/GRANT[^;]*UPDATE[^;]*organization_members TO authenticated/i);
+  });
+
+  it('adds private deterministic boleto storage policies without widening other document ACLs', () => {
+    const sql = readBoletoBillingMigration();
+    const updatePolicy = sql.match(
+      /CREATE POLICY "Boleto storage update by billing managers"[\s\S]*?\n\);/i
+    )?.[0];
+
+    expect(sql).toMatch(/CREATE POLICY "Boleto storage select by billing managers"[\s\S]*FOR SELECT[\s\S]*\(storage\.foldername\(name\)\)\[3\] = 'boleto'/i);
+    expect(sql).toMatch(/CREATE POLICY "Boleto storage insert by billing managers"[\s\S]*FOR INSERT[\s\S]*metadata ->> 'mimetype'\) = 'application\/pdf'/i);
+    expect(updatePolicy).toBeTruthy();
+    expect(updatePolicy).toMatch(/USING \([\s\S]*billing\.boleto_change_pending = true[\s\S]*WITH CHECK \([\s\S]*billing\.boleto_change_pending = true/i);
+    expect(updatePolicy).not.toMatch(/document\.kind = 'boleto'[\s\S]*OR \(/i);
+    expect(sql).toMatch(/Boleto storage insert by billing managers[\s\S]*boleto_change_pending = true/i);
+    expect(sql).not.toMatch(/Boleto storage[^;]*FOR DELETE/i);
+    expect(sql).not.toMatch(/UPDATE[^;]*storage\.objects[^;]*(?:remittance_nf|payment_proof)/i);
+  });
+
+  it('marks needs_resend only for rendered billing content', () => {
+    const sql = readBoletoBillingMigration();
+
+    for (const column of ['contract_id', 'sequence_number', 'period_start', 'period_end', 'issue_date', 'due_date', 'base_amount', 'discount_amount', 'surcharge_amount', 'exemption_amount', 'total_amount', 'document_number', 'notes']) {
+      expect(sql).toMatch(new RegExp(`OLD\\.${column} IS DISTINCT FROM NEW\\.${column}`, 'i'));
+    }
+    for (const column of ['billing_cycle_id', 'description', 'quantity', 'kind', 'unit_amount', 'total_amount']) {
+      expect(sql).toMatch(new RegExp(`OLD\\.${column} IS DISTINCT FROM NEW\\.${column}`, 'i'));
+    }
+    for (const column of ['internal_number', 'contract_company', 'customer_id', 'site_id', 'legacy_order_number', 'notes', 'has_remittance_invoice', 'remittance_invoice_number', 'remittance_invoice_issue_date']) {
+      expect(sql).toMatch(new RegExp(`OLD\\.${column} IS DISTINCT FROM NEW\\.${column}`, 'i'));
+    }
+    for (const column of ['legal_name', 'trade_name', 'tax_id', 'state_registration', 'address_line', 'postal_code']) {
+      expect(sql).toMatch(new RegExp(`OLD\\.${column} IS DISTINCT FROM NEW\\.${column}`, 'i'));
+    }
+
+    expect(sql).toMatch(/OLD\.needs_resend = true[\s\S]*NEW\.needs_resend = false[\s\S]*RAISE EXCEPTION/i);
+    expect(sql).toMatch(/kind IN \('recurring', 'damage'\)/i);
+    expect(sql).toMatch(/billing\.organization_id = OLD\.organization_id[\s\S]*billing\.id = OLD\.billing_cycle_id/i);
+    expect(sql).toMatch(/billing\.organization_id = NEW\.organization_id[\s\S]*billing\.id = NEW\.billing_cycle_id/i);
+    expect(sql).toMatch(/ORDER BY billing\.organization_id, billing\.id[\s\S]*FOR UPDATE/i);
+    expect(sql).toMatch(/content_revision = content_revision \+ 1/i);
+    expect(sql).toMatch(/needs_resend = CASE WHEN sent_at IS NOT NULL THEN true ELSE needs_resend END/i);
+    expect(sql).not.toMatch(/TRIGGER[^;]*payments/i);
+    expect(sql).not.toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.(?:guard_and_bump|bump_(?:billing_line|contract|customer|customer_site)_content_revision)/i);
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.begin_boleto_change\([\s\S]*SECURITY DEFINER[\s\S]*SET search_path = ''/i);
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.finish_boleto_change\([\s\S]*FROM storage\.objects[\s\S]*FOR UPDATE;/i);
+  });
+
   it('protects internal contract numbering against duplicate generation', () => {
     expect(baseSql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS contracts_org_internal_number_uidx/i);
     expect(baseSql).not.toMatch(/SELECT max\(internal_number\) FROM contracts/i);

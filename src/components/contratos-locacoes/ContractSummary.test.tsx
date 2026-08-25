@@ -109,6 +109,14 @@ function buildDetail(overrides: Partial<ContractDetail> = {}): ContractDetail {
     ],
     billingCycles: [],
     payments: [],
+    membership: {
+      organization_id: 'org-1',
+      user_id: 'user-1',
+      role: 'member',
+      can_manage_billing: false,
+      created_at: '2026-07-06T00:00:00.000Z',
+    },
+    boletoDocuments: [],
     ...overrides,
   } as ContractDetail;
 }

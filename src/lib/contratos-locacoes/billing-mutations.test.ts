@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createBillingCycle,
-  markBillingCycleSent,
+  createSupabaseContractsLocacoesMutationClient,
   updateBillingCycleDetails,
   recordBillingPayment,
+  type BillingCycleInsertRecord,
+  type BillingCycleMutablePatch,
   type ContractsLocacoesMutationClient,
 } from './mutations';
 import type {
@@ -19,10 +21,10 @@ import type {
 
 class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
   public readonly organizationId = 'org-1';
-  public insertedBilling: Omit<BillingCycle, 'id' | 'created_at' | 'updated_at'> | null = null;
+  public insertedBilling: BillingCycleInsertRecord | null = null;
   public upsertedBillingLines: BillingLine[] = [];
   public insertedPayment: Omit<Payment, 'id' | 'created_at' | 'updated_at'> | null = null;
-  public updatedBillingStatus: { billingCycleId: string; patch: Partial<BillingCycle> } | null = null;
+  public updatedBillingStatus: { organizationId: string; billingCycleId: string; patch: BillingCycleMutablePatch } | null = null;
   public billingTotalAmount = '150000';
   public billingDueDate = '2026-07-31';
   public billingCycles: BillingCycle[] = [];
@@ -105,19 +107,25 @@ class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
     throw new Error('not used');
   }
 
-  async insertBillingCycle(record: Omit<BillingCycle, 'id' | 'created_at' | 'updated_at'>): Promise<BillingCycle> {
+  async insertBillingCycle(record: BillingCycleInsertRecord): Promise<BillingCycle> {
     this.insertedBilling = record;
     this.billingTotalAmount = record.total_amount;
     return {
       id: 'billing-1',
       created_at: '2026-07-06T00:00:00.000Z',
       updated_at: '2026-07-06T00:00:00.000Z',
+      sent_at: null,
+      needs_resend: false,
+      content_revision: '0',
+      boleto_change_pending: false,
+      boleto_change_operation_id: null,
+      boleto_change_started_at: null,
       ...record,
     };
   }
 
-  async updateBillingCycle(billingCycleId: string, patch: Partial<BillingCycle>): Promise<BillingCycle> {
-    this.updatedBillingStatus = { billingCycleId, patch };
+  async updateBillingCycle(organizationId: string, billingCycleId: string, patch: BillingCycleMutablePatch): Promise<BillingCycle> {
+    this.updatedBillingStatus = { organizationId, billingCycleId, patch };
     return {
       id: billingCycleId,
       organization_id: this.organizationId,
@@ -136,6 +144,11 @@ class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
       document_number: 'R260701001',
       status: 'issued',
       sent_at: null,
+      needs_resend: false,
+      content_revision: '0',
+      boleto_change_pending: false,
+      boleto_change_operation_id: null,
+      boleto_change_started_at: null,
       notes: null,
       created_at: '2026-07-06T00:00:00.000Z',
       updated_at: '2026-07-06T00:00:00.000Z',
@@ -167,6 +180,11 @@ class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
       document_number: 'R260701001',
       status: 'issued',
       sent_at: null,
+      needs_resend: false,
+      content_revision: '0',
+      boleto_change_pending: false,
+      boleto_change_operation_id: null,
+      boleto_change_started_at: null,
       notes: null,
       created_at: '2026-07-06T00:00:00.000Z',
       updated_at: '2026-07-06T00:00:00.000Z',
@@ -215,6 +233,82 @@ class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
 }
 
 describe('billing mutations', () => {
+  it('returns only the common billing projection from affected mutation queries', async () => {
+    const selectedColumns: string[] = [];
+    const billing = {
+      id: 'billing-1',
+      organization_id: 'org-1',
+      contract_id: 'contract-1',
+      period_start: '2026-08-01',
+      period_end: '2026-08-31',
+      issue_date: '2026-08-01',
+      due_date: '2026-08-10',
+      total_amount: '10000',
+      status: 'issued',
+    } as BillingCycle;
+    const query = {
+      insert: vi.fn(() => query),
+      update: vi.fn(() => query),
+      select: vi.fn((columns: string) => {
+        selectedColumns.push(columns);
+        return query;
+      }),
+      eq: vi.fn(() => query),
+      single: vi.fn(async () => ({ data: billing, error: null })),
+      order: vi.fn(async () => ({ data: [billing], error: null })),
+    };
+    const client = createSupabaseContractsLocacoesMutationClient({
+      from: vi.fn(() => query),
+    } as never);
+
+    await client.insertBillingCycle?.(billing as BillingCycleInsertRecord);
+    await client.updateBillingCycle?.('org-1', 'billing-1', { notes: 'Atualizada' });
+    await client.getBillingCycleById?.('org-1', 'billing-1');
+    await client.listBillingCyclesByContractId?.('org-1', 'contract-1');
+
+    expect(selectedColumns).toHaveLength(4);
+    for (const projection of selectedColumns) {
+      expect(projection).not.toBe('*');
+      for (const restricted of [
+        'sent_at',
+        'needs_resend',
+        'content_revision',
+        'boleto_change_pending',
+        'boleto_change_operation_id',
+        'boleto_change_started_at',
+      ]) {
+        expect(projection.split(',').map((column) => column.trim())).not.toContain(restricted);
+      }
+    }
+  });
+
+  it('inserts new billing lines without requiring update access to immutable columns', async () => {
+    const line: BillingLine = {
+      id: 'line-1',
+      organization_id: 'org-1',
+      billing_cycle_id: 'billing-1',
+      rental_item_id: 'item-1',
+      description: 'Locação mensal',
+      quantity: 1,
+      unit_amount: '150000',
+      total_amount: '150000',
+      kind: 'recurring',
+      created_at: '2026-08-01T00:00:00.000Z',
+      updated_at: '2026-08-01T00:00:00.000Z',
+    };
+    const insert = vi.fn(() => query);
+    const query = {
+      insert,
+      select: vi.fn(async () => ({ data: [line], error: null })),
+    };
+    const client = createSupabaseContractsLocacoesMutationClient({
+      from: vi.fn(() => query),
+    } as never);
+
+    await expect(client.upsertBillingLines?.([line])).resolves.toEqual([line]);
+    expect(insert).toHaveBeenCalledWith([line]);
+  });
+
   it('creates a manual monthly billing cycle with recurring lines', async () => {
     const client = new FakeBillingMutationClient();
 
@@ -615,22 +709,6 @@ describe('billing mutations', () => {
 
     expect(client.updatedBillingStatus).toBeNull();
     expect(client.insertedPayment).toBeNull();
-  });
-
-  it('marks a billing cycle as sent using sent_at only', async () => {
-    const client = new FakeBillingMutationClient();
-
-    const billing = await markBillingCycleSent(
-      client,
-      'billing-1',
-      new Date('2026-08-07T17:30:00.000Z')
-    );
-
-    expect(billing.sent_at).toBe('2026-08-07T17:30:00.000Z');
-    expect(client.updatedBillingStatus?.patch).toEqual({
-      organization_id: 'org-1',
-      sent_at: '2026-08-07T17:30:00.000Z',
-    });
   });
 
   it('rejects a payment payload for a different billing cycle before inserting it', async () => {
