@@ -97,6 +97,16 @@ test('settings.json: hooks de notificacao presentes e guard intacto', () => {
     );
   assert.ok(callsNotify(hooks.Stop), 'hook Stop deveria chamar notify-windows.ps1');
   assert.ok(callsNotify(hooks.StopFailure), 'hook StopFailure deveria chamar notify-windows.ps1');
+  // Stop e StopFailure devem cobrir TODOS os casos (sem matcher restritivo).
+  for (const [eventName, entries] of [['Stop', hooks.Stop], ['StopFailure', hooks.StopFailure]]) {
+    for (const entry of entries ?? []) {
+      assert.equal(
+        entry.matcher,
+        undefined,
+        `entradas de ${eventName} nao deveriam ter matcher (deve valer para todos os casos)`,
+      );
+    }
+  }
 
   // Notification SOMENTE para permission_prompt (sem idle_prompt etc.).
   const notif = hooks.Notification ?? [];

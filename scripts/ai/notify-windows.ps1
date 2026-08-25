@@ -37,14 +37,19 @@ if ($DryRun) {
 }
 
 # Toast WinRT via Windows PowerShell 5.1 (projetoes WinRT nao existem no pwsh 7).
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+# Best-effort: se o toast falhar (ex.: notificacoes desabilitadas por politica),
+# sai em silencio com exit 0 para nao poluir a saida do hook.
+try {
+  [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 
-$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-$texts = $template.GetElementsByTagName('text')
-[void]$texts.Item(0).AppendChild($template.CreateTextNode($title))
-[void]$texts.Item(1).AppendChild($template.CreateTextNode($text))
+  $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+  $texts = $template.GetElementsByTagName('text')
+  [void]$texts.Item(0).AppendChild($template.CreateTextNode($title))
+  [void]$texts.Item(1).AppendChild($template.CreateTextNode($text))
 
-$toast = [Windows.UI.Notifications.ToastNotification]::new($template)
-$appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
+  $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
+  $appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
+} catch {
+}
 exit 0
