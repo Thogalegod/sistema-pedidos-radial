@@ -50,3 +50,7 @@ supabase/.temp/
 next-env.d.ts
 
 .vercel
+
+# Claude Code local/personal state
+/.claude/settings.local.json
+/CLAUDE.local.md
