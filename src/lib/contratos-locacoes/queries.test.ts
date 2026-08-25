@@ -366,6 +366,82 @@ describe('contracts rental queries', () => {
     expect(contracts.find((contract) => contract.id === 'first')?.notes).toBe('Cliente pede aviso antes da emissão.');
   });
 
+  it('filters contracts by the selected customer and keeps every contract when the filter is empty', async () => {
+    class TwoCustomerReadClient extends FakeReadClient {
+      async listCustomersByOrganization(): Promise<Customer[]> {
+        const [baseCustomer] = await super.listCustomersByOrganization();
+        return [
+          baseCustomer,
+          { ...baseCustomer, id: 'customer-2', legal_name: 'Cliente Obra Sul', trade_name: 'Obra Sul' },
+        ];
+      }
+
+      async listContractsByOrganization(): Promise<Contract[]> {
+        const [baseContract] = await super.listContractsByOrganization();
+        return [
+          baseContract,
+          { ...baseContract, id: 'contract-2', internal_number: '78', customer_id: 'customer-2', legacy_order_number: 'OS-QA-78' },
+        ];
+      }
+    }
+
+    const client = new TwoCustomerReadClient();
+
+    const filtered = await listContracts(client, { customerId: 'customer-2' }, '2026-08-12');
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]).toMatchObject({ id: 'contract-2', customer_name: 'Cliente Obra Sul' });
+
+    const withEmptyCustomer = await listContracts(client, { customerId: '' }, '2026-08-12');
+    const withoutCustomerFilter = await listContracts(client, {}, '2026-08-12');
+
+    expect(withEmptyCustomer.map((contract) => contract.id).sort()).toEqual(['contract-1', 'contract-2']);
+    expect(withoutCustomerFilter.map((contract) => contract.id).sort()).toEqual(['contract-1', 'contract-2']);
+  });
+
+  it('combines the customer filter with kind, status and search filters and handles customers without contracts', async () => {
+    class CombinedCustomerFilterReadClient extends FakeReadClient {
+      async listCustomersByOrganization(): Promise<Customer[]> {
+        const [baseCustomer] = await super.listCustomersByOrganization();
+        return [
+          baseCustomer,
+          { ...baseCustomer, id: 'customer-2', legal_name: 'Cliente Obra Sul', trade_name: 'Obra Sul' },
+          { ...baseCustomer, id: 'customer-empty', legal_name: 'Cliente Sem Contrato', trade_name: 'Sem Contrato' },
+        ];
+      }
+
+      async listContractsByOrganization(): Promise<Contract[]> {
+        const [baseContract] = await super.listContractsByOrganization();
+        return [
+          baseContract,
+          { ...baseContract, id: 'contract-2', internal_number: '78', customer_id: 'customer-2', legacy_order_number: 'OS-QA-78', status: 'closed' },
+          { ...baseContract, id: 'contract-3', internal_number: '79', customer_id: 'customer-1', kind: 'energy_management', legacy_order_number: 'OS-QA-79' },
+          { ...baseContract, id: 'contract-orphan', internal_number: '80', customer_id: 'customer-gone', legacy_order_number: 'OS-QA-80' },
+        ];
+      }
+    }
+
+    const client = new CombinedCustomerFilterReadClient();
+
+    const unfiltered = await listContracts(client, {}, '2026-08-12');
+    expect(unfiltered.find((contract) => contract.id === 'contract-orphan')?.customer_name).toBe('Cliente removido');
+
+    const byKind = await listContracts(client, { customerId: 'customer-1', kind: 'energy_management' }, '2026-08-12');
+    expect(byKind.map((contract) => contract.id)).toEqual(['contract-3']);
+
+    const byStatus = await listContracts(client, { customerId: 'customer-2', status: 'closed' }, '2026-08-12');
+    expect(byStatus.map((contract) => contract.id)).toEqual(['contract-2']);
+
+    const byStatusMiss = await listContracts(client, { customerId: 'customer-2', status: 'active' }, '2026-08-12');
+    expect(byStatusMiss).toEqual([]);
+
+    const bySearch = await listContracts(client, { customerId: 'customer-1', search: 'OS-QA-77' }, '2026-08-12');
+    expect(bySearch.map((contract) => contract.id)).toEqual(['contract-1']);
+
+    const customerWithoutContracts = await listContracts(client, { customerId: 'customer-empty' }, '2026-08-12');
+    expect(customerWithoutContracts).toEqual([]);
+  });
+
   it('searches billings when Supabase returns numeric contract internal numbers', async () => {
     class NumericInternalNumberReadClient extends FakeReadClient {
       async listContractsByOrganization(): Promise<Contract[]> {

@@ -47,6 +47,7 @@ export interface ContractListFilters {
   search?: string;
   kind?: 'all' | Contract['kind'];
   status?: 'all' | Contract['status'];
+  customerId?: string;
 }
 
 export interface ContractListItem {
@@ -758,6 +759,7 @@ export async function listContracts(
   const normalizedSearch = normalizeSearchText(filters.search);
 
   const filteredContracts = contracts
+    .filter((contract) => !filters.customerId || contract.customer_id === filters.customerId)
     .map((contract) => {
       const isRental = contract.kind === 'rental';
       const contractItems = itemsByContract.get(contract.id) ?? [];

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { listContracts, createSupabaseContractsLocacoesReadClient, type ContractListItem } from '@/lib/contratos-locacoes/queries';
+import { listContracts, listCustomers, createSupabaseContractsLocacoesReadClient, type ContractListItem, type CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
@@ -16,7 +16,32 @@ export default function ContratosPage() {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | 'rental' | 'energy_management' | 'recurring_service' | 'other'>('all');
   const [status, setStatus] = useState<'all' | 'draft' | 'active' | 'paused' | 'closing_requested' | 'awaiting_return' | 'inspection' | 'closed' | 'cancelled'>('all');
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [customerId, setCustomerId] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const readClient = createSupabaseContractsLocacoesReadClient(supabase);
+        const data = await listCustomers(readClient, { status: 'all' });
+        if (!cancelled) {
+          setCustomers(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Não foi possível carregar clientes.');
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +54,7 @@ export default function ContratosPage() {
           search: debouncedSearch,
           kind,
           status,
+          customerId: customerId || undefined,
         }, toLocalDateKey());
         if (!cancelled) {
           setContracts(data);
@@ -48,7 +74,7 @@ export default function ContratosPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, kind, status]);
+  }, [debouncedSearch, kind, status, customerId]);
 
   return (
     <div className="space-y-6">
@@ -64,6 +90,12 @@ export default function ContratosPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select aria-label="Cliente" className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
+            <option value="">Todos os clientes</option>
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>{customer.legal_name}</option>
+            ))}
+          </select>
           <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
             <option value="all">Todos os tipos</option>
             <option value="rental">Locação</option>

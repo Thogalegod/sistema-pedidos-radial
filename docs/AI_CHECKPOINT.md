@@ -13,10 +13,12 @@
 - MISFY: `misfyiznwnuvldoccciw` — protected production, explicit authorization required
 
 ## Current workflow work
-- Branch: `chore/ai-agent-workflow`
-- Goal: install/validate repository-owned Claude Code + GLM multi-agent orchestration.
-- Database changes required for this workflow: none.
-- Status: project agents/settings/gates passed local smoke validation (agent discovery, read-only orchestration up to the approval gate, PreToolUse blocks for `git add .` and the MISFY ref). Infrastructure branch ready for user workflow test/integration.
+- Branch: `feat/filtro-cliente-contratos`
+- Goal: add a "Cliente" filter to the rental contracts list (user-approved feature, first feature run through the AI agent workflow).
+- Database changes required: none.
+- Status: implemented, tested (16 targeted tests), independently reviewed (APPROVE), user-approved (`aprovado` 2026-08-25); committed and pushed to `origin/feat/filtro-cliente-contratos`. NOT yet integrated into `codex/controle-locacoes` — user explicitly deferred integration.
+- Changed files: `src/app/contratos-locacoes/contratos/page.tsx`, `src/app/contratos-locacoes/contratos/page.test.tsx` (new), `src/lib/contratos-locacoes/queries.ts`, `src/lib/contratos-locacoes/queries.test.ts`.
+- IURQ actions: none required (no schema/RLS changes).
 
 ## Resume rule
 Before continuing from another PC/model: fetch GitHub, verify branch/upstream/ahead-behind, preserve unrelated local changes, then read this checkpoint plus the active spec/plan.
