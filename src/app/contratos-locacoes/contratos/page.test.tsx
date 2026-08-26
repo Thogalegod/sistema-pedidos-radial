@@ -96,6 +96,49 @@ describe('ContratosPage', () => {
     });
   });
 
+  it('clears all filters and refetches with defaults when Limpar filtros is clicked', async () => {
+    render(<ContratosPage />);
+
+    const customerSelect = await screen.findByRole('combobox', { name: 'Cliente' });
+    fireEvent.change(customerSelect, { target: { value: 'customer-2' } });
+    const kindSelect = screen.getByDisplayValue('Todos os tipos');
+    fireEvent.change(kindSelect, { target: { value: 'rental' } });
+    const statusSelect = screen.getByDisplayValue('Todos os status');
+    fireEvent.change(statusSelect, { target: { value: 'active' } });
+    const searchInput = screen.getByPlaceholderText('Buscar por cliente, obra, número ou pedido/OS');
+    fireEvent.change(searchInput, { target: { value: 'alpha' } });
+
+    await waitFor(() => {
+      expect(mocks.listContracts).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ search: 'alpha', kind: 'rental', status: 'active', customerId: 'customer-2' }),
+        expect.anything()
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+
+    await waitFor(() => {
+      expect(mocks.listContracts).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ search: '', kind: 'all', status: 'all', customerId: undefined }),
+        expect.anything()
+      );
+    });
+    expect(screen.getByDisplayValue('Todos os clientes')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Todos os tipos')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Todos os status')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Buscar por cliente, obra, número ou pedido/OS')).toHaveValue('');
+  });
+
+  it('does not render Limpar filtros when no filter is applied', async () => {
+    render(<ContratosPage />);
+
+    await screen.findByRole('combobox', { name: 'Cliente' });
+
+    expect(screen.queryByRole('button', { name: 'Limpar filtros' })).not.toBeInTheDocument();
+  });
+
   it('keeps rendering contracts when loading customer options fails', async () => {
     mocks.listCustomers.mockRejectedValue(new Error('Falha ao carregar clientes'));
     mocks.listContracts.mockResolvedValue([

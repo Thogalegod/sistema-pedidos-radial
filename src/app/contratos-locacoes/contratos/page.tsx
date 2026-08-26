@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, RotateCcw, Search } from 'lucide-react';
 import { listContracts, listCustomers, createSupabaseContractsLocacoesReadClient, type ContractListItem, type CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
@@ -19,6 +19,14 @@ export default function ContratosPage() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [customerId, setCustomerId] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
+  const hasActiveFilters = search.trim() !== '' || customerId !== '' || kind !== 'all' || status !== 'all';
+
+  const clearFilters = () => {
+    setSearch('');
+    setCustomerId('');
+    setKind('all');
+    setStatus('all');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +119,16 @@ export default function ContratosPage() {
             <option value="closed">Encerrado</option>
             <option value="cancelled">Cancelado</option>
           </select>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+              onClick={clearFilters}
+            >
+              <RotateCcw size={16} />
+              Limpar filtros
+            </button>
+          )}
           <Link
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 whitespace-nowrap"
             href="/contratos-locacoes/contratos/novo"
