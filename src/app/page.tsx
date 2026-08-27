@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Order, Priority, Task, Atividade, TeamMember } from '../types';
 import { sortOrders } from '../lib/sorting';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
 import { NewOrderDrawer } from '../components/NewOrderDrawer';
 import { memberColor } from '../components/StatusBadge';
-import { LayoutDashboard, CheckSquare, Search, Plus, LogOut, AlertCircle, Clock, CheckCircle2, Flame } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Search, Plus, LogOut, AlertCircle, Clock, CheckCircle2, Flame, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
@@ -22,7 +22,10 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'todos' | 'meus'>('todos');
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
+  const hasResolvedInitialSession = useRef(false);
+  const hasFetchedOrders = useRef(false);
 
   // User logic
   const [currentUser, setCurrentUser] = useState<TeamMember>('Thomás');
@@ -110,27 +113,90 @@ export default function Home() {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.replace('/login');
-      } else {
-        setSession(session);
-        fetchOrders();
+    let isActive = true;
+
+    const ensureOrdersLoaded = async () => {
+      if (hasFetchedOrders.current) {
+        return;
       }
+
+      hasFetchedOrders.current = true;
+      await fetchOrders();
+    };
+
+    const resolveAuthenticatedState = async (nextSession: any) => {
+      setSession(nextSession);
+      await ensureOrdersLoaded();
+    };
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!isActive) {
+        return;
+      }
+
+      hasResolvedInitialSession.current = true;
+
+      if (!session) {
+        setSession(null);
+        setIsAuthLoading(false);
+        router.replace('/login');
+        return;
+      }
+
+      await resolveAuthenticatedState(session);
+
+      if (!isActive) {
+        return;
+      }
+
+      setIsAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.replace('/login');
-      } else {
-        setSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      if (!isActive) {
+        return;
       }
+
+      if (!hasResolvedInitialSession.current) {
+        if (nextSession) {
+          hasResolvedInitialSession.current = true;
+          await resolveAuthenticatedState(nextSession);
+
+          if (!isActive) {
+            return;
+          }
+
+          setIsAuthLoading(false);
+        }
+
+        return;
+      }
+
+      if (!nextSession) {
+        setSession(null);
+        hasFetchedOrders.current = false;
+        setIsAuthLoading(false);
+        router.replace('/login');
+        return;
+      }
+
+      await resolveAuthenticatedState(nextSession);
+
+      if (!isActive) {
+        return;
+      }
+
+      setIsAuthLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   const handleLogout = async () => {
+    hasFetchedOrders.current = false;
     await supabase.auth.signOut();
   };
 
@@ -180,6 +246,17 @@ export default function Home() {
       return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
     });
   }, [tarefasVencidas, tarefasVencemHoje]);
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50/50 flex items-center justify-center">
+        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-medium text-gray-600 shadow-sm">
+          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+          Validando autenticacao...
+        </div>
+      </div>
+    );
+  }
 
 
   // Handlers

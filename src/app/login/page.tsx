@@ -26,7 +26,8 @@ export default function Login() {
       setError('Credenciais inválidas. Verifique seu e-mail e senha.');
       setIsLoading(false);
     } else {
-      router.push('/');
+      router.replace('/');
+      router.refresh();
     }
   };
 

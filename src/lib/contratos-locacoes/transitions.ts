@@ -2,7 +2,7 @@ import { ContractStatus, RentalItemStatus } from './types';
 
 const ALLOWED_CONTRACT_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
   draft: ['active', 'cancelled'],
-  active: ['paused', 'closing_requested', 'cancelled', 'closed'],
+  active: ['paused', 'closing_requested', 'cancelled'],
   paused: ['active', 'closing_requested', 'cancelled'],
   closing_requested: ['awaiting_return', 'inspection', 'closed', 'active', 'cancelled'],
   awaiting_return: ['inspection', 'closed', 'active', 'cancelled'],
@@ -26,8 +26,7 @@ export function canTransitionContract(from: ContractStatus, to: ContractStatus):
  * In other words, all items must be returned, replaced, lost/damaged, or suspended/exempt.
  */
 export function canCloseRental(items: { status: RentalItemStatus }[]): boolean {
-  // If there are no items, it's eligible to be closed (e.g., service contracts)
-  if (items.length === 0) return true;
+  if (items.length === 0) return false;
   
   return items.every(item => item.status !== 'rented');
 }

@@ -22,10 +22,10 @@ describe('transitions utility', () => {
       expect(canTransitionContract('draft', 'closed')).toBe(false);
     });
 
-    it('handles active contract flows (pausing, closing)', () => {
+    it('handles active contract flows without skipping closure steps', () => {
       expect(canTransitionContract('active', 'paused')).toBe(true);
       expect(canTransitionContract('active', 'cancelled')).toBe(true);
-      expect(canTransitionContract('active', 'closed')).toBe(true); // e.g. for non-equipment contracts
+      expect(canTransitionContract('active', 'closed')).toBe(false);
     });
 
     it('handles paused contract flows', () => {
@@ -64,8 +64,8 @@ describe('transitions utility', () => {
       ).toBe(false);
     });
 
-    it('returns true if the list of items is empty (e.g. service contracts)', () => {
-      expect(canCloseRental([])).toBe(true);
+    it('returns false if the rental has no items resolved yet', () => {
+      expect(canCloseRental([])).toBe(false);
     });
   });
 
