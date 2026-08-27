@@ -11,11 +11,8 @@
     "test:e2e": "playwright test --config=playwright.config.ts",
     "test:e2e:ui": "playwright test --config=playwright.config.ts --ui",
     "test:watch": "vitest",
-    "ai:preflight": "node scripts/ai/preflight.mjs --fetch",
-    "ai:guard:test": "node --test scripts/ai/guard-tool-call.test.mjs",
     "ai:gate:staged": "node scripts/ai/staged-gate.mjs",
-    "ai:gate:test": "node --test scripts/ai/staged-gate.test.mjs",
-    "ai:agents:validate": "claude plugin validate .claude/agents"
+    "ai:gate:test": "node --test scripts/ai/staged-gate.test.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
