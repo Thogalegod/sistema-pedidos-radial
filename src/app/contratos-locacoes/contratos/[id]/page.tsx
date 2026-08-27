@@ -11,6 +11,7 @@ import { RemittanceInvoiceAttachmentCard } from '@/components/contratos-locacoes
 import { RemittanceInvoiceEditor } from '@/components/contratos-locacoes/RemittanceInvoiceEditor';
 import type { BillingPaymentFormValues } from '@/components/contratos-locacoes/BillingPaymentForm';
 import type { BillingPeriodFormValues } from '@/components/contratos-locacoes/BillingPeriodForm';
+import type { BillingSendResult } from '@/lib/contratos-locacoes/types';
 import {
   createSupabaseContractsLocacoesReadClient,
   getContract,
@@ -422,6 +423,15 @@ export default function ContractDetailPage() {
     }
   };
 
+  const handleBillingSent = async (result: BillingSendResult) => {
+    if (result.status === 'sent_content_changed' || (result.status === 'reconciled' && result.review_required)) {
+      toast.success('Cobrança enviada. O conteúdo mudou durante a finalização; revise e reenvie.');
+    } else {
+      toast.success(result.status === 'reconciled' ? 'Envio reconciliado com sucesso.' : 'Cobrança enviada com sucesso.');
+    }
+    await load();
+  };
+
   const handleSaveEdit = async (value: ContractEditInput) => {
     if (!detail) return;
     const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
@@ -511,6 +521,7 @@ export default function ContractDetailPage() {
             onCreateBillingPeriod={handleCreateBillingPeriod}
             onOpenBoleto={handleOpenBoleto}
             onOpenPaymentProof={handleOpenPaymentProof}
+            onBillingSent={handleBillingSent}
             onRegisterItemReturn={handleRegisterItemReturn}
             onRecordBillingPayment={handleRecordBillingPayment}
             onRepairPendingBoleto={handleRepairPendingBoleto}

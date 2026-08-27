@@ -9,7 +9,8 @@ import {
 } from '@/lib/contratos-locacoes/billing-periods';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
-import type { BillingCycle, ContractDocument, Payment } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, BillingSendResult, ContractDocument, Payment } from '@/lib/contratos-locacoes/types';
+import { BillingEmailModal } from './BillingEmailModal';
 import { BillingPaymentForm, type BillingPaymentFormValues } from './BillingPaymentForm';
 import { BillingPeriodCard } from './BillingPeriodCard';
 import { BillingPeriodForm, type BillingPeriodFormValues } from './BillingPeriodForm';
@@ -22,6 +23,7 @@ interface ContractBillingSectionProps {
   onCreateBillingPeriod: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
   onOpenBoleto: (document: ContractDocument) => Promise<void>;
   onOpenPaymentProof: (document: ContractDocument) => Promise<void>;
+  onBillingSent?: (result: BillingSendResult) => Promise<void>;
   onRecordBillingPayment: (billing: BillingCycle, values: BillingPaymentFormValues, file: File | null) => Promise<void>;
   onRepairPendingBoleto: (billing: BillingCycle, file: File) => Promise<void>;
   onReplaceBoleto: (billing: BillingCycle, document: ContractDocument, file: File) => Promise<void>;
@@ -58,6 +60,7 @@ export function ContractBillingSection({
   onCreateBillingPeriod,
   onOpenBoleto,
   onOpenPaymentProof,
+  onBillingSent,
   onRecordBillingPayment,
   onRepairPendingBoleto,
   onReplaceBoleto,
@@ -65,6 +68,7 @@ export function ContractBillingSection({
   paymentProofDocuments,
 }: ContractBillingSectionProps) {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
+  const [billingForEmail, setBillingForEmail] = useState<BillingCycle | null>(null);
   const didAutoOpenNewBillingForm = useRef(false);
   const monthlyTotal = useMemo(() => suggestBillingAmountFromItems(detail.items), [detail.items]);
   const billingCycles = useMemo(
@@ -155,6 +159,7 @@ export function ContractBillingSection({
                   billing={billing}
                   boletoDocument={(detail.boletoDocuments ?? []).find((document) => document.billing_cycle_id === billing.id) ?? null}
                   canManageBilling={Boolean(detail.membership && (detail.membership.role === 'admin' || detail.membership.can_manage_billing))}
+                  deliveryEvents={(detail.billingDeliveryEvents ?? []).filter((event) => event.billing_cycle_id === billing.id)}
                   payments={billingPayments}
                   proofDocuments={paymentProofDocuments}
                   onAttachProof={(entry, payment, file) => void onAttachPaymentProof(entry, payment, file)}
@@ -169,6 +174,7 @@ export function ContractBillingSection({
                   })}
                   onRepairPendingBoleto={(entry, file) => void onRepairPendingBoleto(entry, file)}
                   onReplaceBoleto={(entry, document, file) => void onReplaceBoleto(entry, document, file)}
+                  onSendBilling={onBillingSent ? setBillingForEmail : undefined}
                 />
 
                 {activeForm?.type === 'edit' && activeForm.billing.id === billing.id ? (
@@ -204,6 +210,16 @@ export function ContractBillingSection({
           })}
         </div>
       )}
+      {billingForEmail && onBillingSent ? (
+        <BillingEmailModal
+          billingId={billingForEmail.id}
+          onClose={() => setBillingForEmail(null)}
+          onSuccess={async (result) => {
+            await onBillingSent(result);
+            setBillingForEmail(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

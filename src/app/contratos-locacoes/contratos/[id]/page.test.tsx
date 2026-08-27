@@ -138,6 +138,7 @@ function buildDetail(): ContractDetail {
       created_at: '2026-08-01T12:00:00.000Z',
     },
     boletoDocuments: [],
+    billingDeliveryEvents: [],
   };
 }
 

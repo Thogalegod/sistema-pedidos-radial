@@ -294,6 +294,49 @@ export interface BillingDeliveryEvent {
   created_at: string;
 }
 
+export interface BillingSendRequest {
+  send_request_id: string;
+  recipients: string[];
+  additional_message: string | null;
+}
+
+export interface BillingSendPreparation {
+  contacts: CustomerContact[];
+  defaultRecipients: string[];
+  allowedRecipients: string[];
+  mode: 'restricted' | 'production';
+  hasBoleto: boolean;
+  invoiceFileName: string;
+  boletoFileName: string;
+}
+
+export interface PreparedProviderEmail {
+  from: string;
+  replyTo: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  attachments: Array<{ filename: string; content: string }>;
+}
+
+export type BillingSendResult =
+  | { status: 'sent'; event: BillingDeliveryEvent; sent_at: string; needs_resend: false }
+  | { status: 'sent_content_changed'; event: BillingDeliveryEvent; sent_at: string; needs_resend: true; review_required: true }
+  | { status: 'reconciled'; event: BillingDeliveryEvent; sent_at: string; needs_resend: boolean; review_required: boolean }
+  | { status: 'manual_reconciliation_required'; send_request_id: string; review_required: true };
+
+export interface BillingDeliveryFinalizationInput {
+  organizationId: string;
+  billingCycleId: string;
+  sentAt: string;
+  recipients: string[];
+  providerMessageId: string;
+  sendRequestId: string;
+  additionalMessage: string | null;
+  expectedContentRevision: DbBigInt;
+}
+
 export interface AuditEvent {
   id: string;
   organization_id: string;

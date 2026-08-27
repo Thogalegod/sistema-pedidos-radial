@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { BillingCycle, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalAsset, RentalItem } from './types';
+import type { BillingCycle, BillingDeliveryEvent, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalAsset, RentalItem } from './types';
 import { createBillingSnapshot, type BillingSnapshotInput, type DashboardSnapshot } from './dashboard';
 import { buildBillingStatus, calculateBillingBalance } from './dashboard';
 import { alertLevel, isDateInBillingMonth } from './dates';
@@ -77,6 +77,7 @@ export interface ContractDetail {
   payments: Payment[];
   membership: OrganizationMember;
   boletoDocuments: ContractDocument[];
+  billingDeliveryEvents: BillingDeliveryEvent[];
 }
 
 export interface BillingDeliveryIndicators {
@@ -161,6 +162,10 @@ export interface ContractsLocacoesReadClient {
     | 'boleto_change_operation_id'
     | 'boleto_change_started_at'
   >>>;
+  listBillingDeliveryEvents?(
+    organizationId: string,
+    billingCycleIds: string[]
+  ): Promise<BillingDeliveryEvent[]>;
   listBillingLinesByBillingCycleIds?(organizationId: string, billingCycleIds: string[]): Promise<BillingLine[]>;
   listPaymentsByBillingCycleIds?(organizationId: string, billingCycleIds: string[]): Promise<Payment[]>;
   listRentalAssetsByOrganization?(
@@ -434,6 +439,24 @@ export function createSupabaseContractsLocacoesReadClient(
       );
     },
 
+    async listBillingDeliveryEvents(organizationId, billingCycleIds) {
+      if (billingCycleIds.length === 0) return [];
+      const { data, error } = await client
+        .from('billing_delivery_events')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .in('billing_cycle_id', billingCycleIds)
+        .order('sent_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+
+      return ensureData(
+        (data ?? []) as BillingDeliveryEvent[] | null,
+        error,
+        'Não foi possível carregar o histórico de envios'
+      );
+    },
+
     async getBillingCycleById(organizationId, billingId) {
       const { data, error } = await client
         .from('billing_cycles')
@@ -455,7 +478,8 @@ export function createSupabaseContractsLocacoesReadClient(
         .select('*')
         .eq('organization_id', organizationId)
         .in('billing_cycle_id', billingCycleIds)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
 
       return ensureData((data ?? []) as BillingLine[] | null, error, 'Não foi possível listar as linhas da cobrança');
     },
@@ -862,9 +886,14 @@ export async function getContract(
     return visible as BillingCycle;
   });
   const billingIds = billingCycles.map((billing) => billing.id);
-  const payments = listPaymentsByBillingCycleIds && billingIds.length > 0
-    ? await listPaymentsByBillingCycleIds(organizationId, billingIds)
-    : [];
+  const [payments, billingDeliveryEvents] = await Promise.all([
+    listPaymentsByBillingCycleIds && billingIds.length > 0
+      ? listPaymentsByBillingCycleIds(organizationId, billingIds)
+      : Promise.resolve([]),
+    authorized && client.listBillingDeliveryEvents && billingIds.length > 0
+      ? client.listBillingDeliveryEvents(organizationId, billingIds)
+      : Promise.resolve([]),
+  ]);
 
   return {
     contract,
@@ -875,6 +904,7 @@ export async function getContract(
     payments,
     membership,
     boletoDocuments,
+    billingDeliveryEvents,
   };
 }
 

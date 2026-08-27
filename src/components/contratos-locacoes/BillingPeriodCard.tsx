@@ -7,13 +7,15 @@ import { resolveEffectiveBillingStatus } from '@/lib/contratos-locacoes/billing-
 import { alertLevel } from '@/lib/contratos-locacoes/dates';
 import { findPaymentProofDocument } from '@/lib/contratos-locacoes/payment-proofs';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
-import type { BillingCycle, ContractDocument, Payment } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, BillingDeliveryEvent, ContractDocument, Payment } from '@/lib/contratos-locacoes/types';
 import { BillingStatusBadge } from './BillingStatusBadge';
+import { BillingDeliveryHistory } from './BillingDeliveryHistory';
 
 interface BillingPeriodCardProps {
   billing: BillingCycle;
   boletoDocument: ContractDocument | null;
   canManageBilling: boolean;
+  deliveryEvents?: BillingDeliveryEvent[];
   onAttachBoleto: (billing: BillingCycle, file: File) => void;
   onAttachProof: (billing: BillingCycle, payment: Payment, file: File) => void;
   onEdit: (billing: BillingCycle) => void;
@@ -22,6 +24,7 @@ interface BillingPeriodCardProps {
   onRegisterPayment: (billing: BillingCycle) => void;
   onRepairPendingBoleto: (billing: BillingCycle, file: File) => void;
   onReplaceBoleto: (billing: BillingCycle, document: ContractDocument, file: File) => void;
+  onSendBilling?: (billing: BillingCycle) => void;
   payments: Payment[];
   proofDocuments: ContractDocument[];
 }
@@ -53,6 +56,7 @@ export function BillingPeriodCard({
   billing,
   boletoDocument,
   canManageBilling,
+  deliveryEvents = [],
   onAttachBoleto,
   onAttachProof,
   onEdit,
@@ -61,6 +65,7 @@ export function BillingPeriodCard({
   onRegisterPayment,
   onRepairPendingBoleto,
   onReplaceBoleto,
+  onSendBilling,
   payments,
   proofDocuments,
 }: BillingPeriodCardProps) {
@@ -168,6 +173,23 @@ export function BillingPeriodCard({
             </label>
           )}
           {billing.sent_at && billing.needs_resend ? <p className="mt-2 text-xs font-semibold text-amber-700">Alterada após o último envio — reenviar cobrança.</p> : null}
+          {onSendBilling ? (
+            boletoDocument && !billing.boleto_change_pending ? (
+              <div className="mt-3">
+                {billing.sent_at && deliveryEvents[0] ? (
+                  <p className="mb-2 text-xs text-blue-800">Último envio para {deliveryEvents[0].recipients.join(', ')}</p>
+                ) : null}
+                <button className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => onSendBilling(billing)} type="button">
+                  {billing.sent_at ? 'Reenviar cobrança' : 'Enviar cobrança'}
+                </button>
+              </div>
+            ) : (
+              <button className="mt-3 cursor-not-allowed rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-500" disabled type="button">
+                {billing.boleto_change_pending ? 'Conclua a alteração do boleto antes de enviar' : 'Anexe o boleto antes de enviar'}
+              </button>
+            )
+          ) : null}
+          <BillingDeliveryHistory events={deliveryEvents} />
         </div>
       ) : null}
 

@@ -132,7 +132,36 @@ function readBoletoBillingMigration() {
   return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
 }
 
+function readBillingDeliveryFinalizationMigration() {
+  const matches = readdirSync(migrationsDir).filter((filename) =>
+    /_finalize_billing_delivery\.sql$/i.test(filename)
+  );
+
+  expect(matches, 'expected exactly one billing delivery finalization migration').toHaveLength(1);
+
+  return readFileSync(path.join(migrationsDir, matches[0]), 'utf8');
+}
+
 describe('contracts and rentals migration consistency', () => {
+  it('finalizes billing delivery with hardened revision CAS', () => {
+    const sql = readBillingDeliveryFinalizationMigration();
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.finalize_billing_delivery\([\s\S]*SECURITY DEFINER[\s\S]*SET search_path = ''/i);
+    expect(sql).toMatch(/RETURNS TABLE\s*\(\s*event_id uuid,\s*effective_sent_at timestamptz,\s*needs_resend boolean,\s*inserted_event boolean,\s*review_required boolean\s*\)/i);
+    expect(sql).toMatch(/\(select auth\.uid\(\)\) IS NULL[\s\S]*ERRCODE = '42501'/i);
+    expect(sql).toMatch(/FROM public\.organization_members AS membership[\s\S]*membership\.user_id = \(select auth\.uid\(\)\)[\s\S]*membership\.role = 'admin' OR membership\.can_manage_billing = true/i);
+    expect(sql).toMatch(/FROM public\.billing_cycles AS billing[\s\S]*FOR UPDATE/i);
+    expect(sql).toMatch(/INSERT INTO public\.billing_delivery_events[\s\S]*ON CONFLICT \(send_request_id\) DO NOTHING[\s\S]*RETURNING \*/i);
+    expect(sql).toMatch(/IF v_inserted_event THEN[\s\S]*UPDATE public\.billing_cycles[\s\S]*needs_resend = CASE[\s\S]*content_revision = p_expected_content_revision[\s\S]*boleto_change_pending = false[\s\S]*THEN false/i);
+    expect(sql).toMatch(/ELSE[\s\S]*provider_message_id IS DISTINCT FROM p_provider_message_id[\s\S]*recipients IS DISTINCT FROM p_recipients[\s\S]*additional_message IS DISTINCT FROM p_additional_message/i);
+    expect(sql).toMatch(/SELECT max\(event\.sent_at\)[\s\S]*FROM public\.billing_delivery_events AS event/i);
+    expect(sql).toMatch(/ALTER FUNCTION public\.finalize_billing_delivery[\s\S]*OWNER TO postgres/i);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.finalize_billing_delivery\(\s*uuid,\s*uuid,\s*timestamptz,\s*text\[\],\s*text,\s*uuid,\s*text,\s*bigint\s*\)\s+FROM PUBLIC, anon, authenticated, service_role/i);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.finalize_billing_delivery\(\s*uuid,\s*uuid,\s*timestamptz,\s*text\[\],\s*text,\s*uuid,\s*text,\s*bigint\s*\)\s+TO authenticated/i);
+    expect(sql).not.toMatch(/service_role[\s\S]*(?:SELECT|INSERT|UPDATE|DELETE)/i);
+    expect(sql).not.toMatch(/fingerprint|invoice_version|boleto_version/i);
+    expect(sql).not.toMatch(/INSERT INTO public\.billing_delivery_events\s*\([^)]*content_revision/i);
+  });
+
   it('adds boleto billing permissions and structural delivery history', () => {
     const sql = readBoletoBillingMigration();
 

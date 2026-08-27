@@ -57,6 +57,29 @@ describe('ContractBillingSection future pricing', () => {
     expect(screen.getByRole('button', { name: 'Salvar período' })).toBeInTheDocument();
     expect(onCreateBillingPeriod).not.toHaveBeenCalled();
   });
+
+  it('opens the send modal from a ready boleto for an authorized user', async () => {
+    const user = userEvent.setup();
+    const detail = detailWithUpdatedPrice();
+    detail.boletoDocuments = [{
+      id: 'boleto-1', organization_id: 'org-1', contract_id: 'contract-1', billing_cycle_id: 'billing-1',
+      payment_id: null, inspection_id: null, kind: 'boleto', storage_path: 'org-1/boleto.pdf',
+      file_name: 'boleto.pdf', content_type: 'application/pdf', created_by: 'user-1', created_at: '',
+    }];
+    render(
+      <ContractBillingSection
+        detail={detail}
+        paymentProofDocuments={[]}
+        onAttachBoleto={vi.fn()} onAttachPaymentProof={vi.fn()} onCreateBillingPeriod={vi.fn()}
+        onOpenBoleto={vi.fn()} onOpenPaymentProof={vi.fn()} onRecordBillingPayment={vi.fn()}
+        onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} onUpdateBillingPeriod={vi.fn()}
+        onBillingSent={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /^enviar cobrança$/i }));
+    expect(screen.getByRole('dialog', { name: /enviar cobrança por e-mail/i })).toBeInTheDocument();
+  });
 });
 
 function detailWithUpdatedPrice(): ContractDetail {
@@ -92,5 +115,6 @@ function detailWithUpdatedPrice(): ContractDetail {
       organization_id: 'org-1', user_id: 'user-1', role: 'member', can_manage_billing: true, created_at: '',
     },
     boletoDocuments: [],
+    billingDeliveryEvents: [],
   };
 }

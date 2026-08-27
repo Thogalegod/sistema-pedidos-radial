@@ -2,11 +2,11 @@
 
 **Data:** 19/08/2026
 
-**Status:** desenho final para revisão; implementação não iniciada
+**Status:** desenho final emendado para revisão independente; implementação não iniciada
 
 **Escopo desta entrega:** especificação somente
 
-**Branch/HEAD de referência:** `codex/controle-locacoes` em `4b4ed10d603f8f088323e6e51ab8b54743656c70`
+**Branch/HEAD de referência:** `codex/controle-locacoes` em `765c8a152a5f5f405d0de0650795f94012a1a318`
 
 ## 1. Objetivo
 
@@ -101,16 +101,18 @@ Ela não concede automaticamente edição de contrato ou cobrança, alteração 
 
 Não haverá tela de gerenciamento. A ativação inicial no IURQ será uma operação administrativa deliberada para um usuário de QA. A migration não deve conceder `UPDATE` de `organization_members` a `authenticated`; assim, member comum não consegue alterar a flag nem se autoautorizar. O `SELECT` endurecido atual deve permanecer.
 
-### 4.2 Policies sem novo `SECURITY DEFINER`
+### 4.2 Policies e transições internas de menor privilégio
 
 As policies novas devem preferir um `EXISTS` direto sobre a própria linha de membership de `(select auth.uid())`. As policies atuais de `organization_members` permitem que o usuário leia a própria membership; portanto, a checagem financeira pode ser resolvida sem novo helper `SECURITY DEFINER`.
 
-Se a implementação provar, por teste real, que a avaliação cruzada de RLS impede essa abordagem, qualquer exceção deverá ser justificada antes de implementada. Um eventual helper deverá:
+As transições internas de `content_revision`, coordenação de boleto, `sent_at` e limpeza segura de `needs_resend` não podem receber grants genéricos de coluna no Data API. Para esses casos estritos, funções focais `SECURITY DEFINER` são aprovadas porque `SECURITY INVOKER` exigiria devolver ao caller exatamente os privilégios diretos que a ACL precisa retirar. Isso não autoriza helper genérico nem bypass silencioso de RLS.
+
+Cada função privilegiada aprovada por esta emenda deve:
 
 - ficar com `search_path` fixo e referências qualificadas;
 - verificar `auth.uid() IS NOT NULL` internamente;
-- aplicar o predicado exato `admin OR can_manage_billing` e o tenant informado;
-- revogar `EXECUTE` de `PUBLIC`, `anon` e qualquer papel não necessário;
+- aplicar o predicado exato de membership do fluxo que disparou a mudança; RPCs de boleto/finalização exigem `admin OR can_manage_billing` e o tenant informado;
+- revogar `EXECUTE` de `PUBLIC`, `anon`, `authenticated` e `service_role` antes de conceder somente a assinatura RPC necessária a `authenticated`; funções de trigger permanecem sem execução direta por roles de API;
 - conceder a ACL mínima a `authenticated`;
 - ser coberto por testes de member comum, financeiro, admin, anon e cross-tenant.
 
@@ -128,6 +130,10 @@ Adicionar:
 
 ```text
 needs_resend boolean NOT NULL DEFAULT false
+content_revision bigint NOT NULL DEFAULT 0
+boleto_change_pending boolean NOT NULL DEFAULT false
+boleto_change_operation_id uuid NULL
+boleto_change_started_at timestamptz NULL
 ```
 
 Semântica:
@@ -136,6 +142,20 @@ Semântica:
 - `needs_resend=false`: o conteúdo atual da cobrança/boleto corresponde ao último envio, ou a cobrança nunca foi enviada;
 - `needs_resend=true`: houve mudança relevante depois do último envio;
 - uma mudança relevante nunca apaga `sent_at`.
+- `content_revision`: geração monotônica do conteúdo corrente que pode afetar Fatura ou boleto; não é histórico, snapshot, fingerprint, hash, versão recuperável ou versão de documento;
+- `boleto_change_pending=true`: uma operação externa de primeiro upload/substituição começou e ainda não teve finalização PostgreSQL confirmada;
+- `boleto_change_operation_id`: UUID da operação corrente quando pending e da última operação concluída quando estável; conserva somente um token de coordenação, sem histórico;
+- `boleto_change_started_at`: instante da operação ainda pending; fica nulo depois da finalização.
+
+Constraints exigem `content_revision >= 0`, operação e início não nulos enquanto pending e `boleto_change_started_at IS NULL` quando não pending. O UUID concluído pode permanecer para tornar retry de `finish` idempotente; um novo `begin` estável o substitui.
+
+ACL de `authenticated`:
+
+- revogar o `INSERT` de tabela e conceder `INSERT` somente em `organization_id`, `contract_id`, `sequence_number`, `period_start`, `period_end`, `issue_date`, `due_date`, `base_amount`, `discount_amount`, `surcharge_amount`, `exemption_amount`, `total_amount`, `document_type`, `document_number`, `status` e `notes`;
+- revogar o `UPDATE` de tabela e conceder `UPDATE` somente em `period_start`, `period_end`, `issue_date`, `due_date`, `notes`, `status` e `needs_resend`;
+- `id`, `sent_at`, `needs_resend`, `content_revision`, os três campos de coordenação de boleto e timestamps não podem ser fornecidos na criação;
+- `sequence_number` é informado na criação e imutável depois; `sent_at`, revisão e coordenação nunca são campos genéricos do frontend;
+- a transição comum de `needs_resend` continua monotônica; somente a finalização focal do envio pode limpar a flag.
 
 ### 5.2 `contract_documents` para boleto
 
@@ -243,7 +263,9 @@ Cada policy deve validar simultaneamente:
 - nome do arquivo exatamente `<billing_cycle_id>.pdf`;
 - contrato do tenant existente;
 - ciclo existente com o mesmo `organization_id` e `contract_id`;
-- em `SELECT/UPDATE`, linha correspondente em `contract_documents` com `kind='boleto'`, mesmo tenant, contrato, ciclo e `storage_path`;
+- em `INSERT`, ciclo com `boleto_change_pending=true`, operação corrente não nula e `boleto_change_started_at` não nulo; nenhum write de boleto é permitido sem `begin_boleto_change` confirmado;
+- em `SELECT/UPDATE`, **um** dos dois ramos estreitos: (a) linha correspondente em `contract_documents` com `kind='boleto'`, mesmo tenant, contrato, ciclo e `storage_path`; ou (b) recovery do path canônico quando o ciclo correspondente está com `boleto_change_pending=true`, operação corrente/início válidos e o caller financeiro pertence ao mesmo tenant;
+- em `UPDATE`, aplicar o mesmo predicado `documento registrado OR recovery pending válido` tanto no `USING` quanto no `WITH CHECK`, sempre preso ao bucket, tenant, contrato, ciclo e path canônico exatos;
 - em `INSERT/UPDATE`, metadata MIME `application/pdf` e extensão `.pdf`.
 
 Não transformar o bucket em público, não criar signed URL permanente e não reutilizar a policy de leitura geral dos demais documentos para boleto.
@@ -257,38 +279,67 @@ As policies gerais atuais de `contract_documents` permitem member da organizaç�
 3. manter a ausência de privilégio efetivo de `UPDATE/DELETE` para documentos;
 4. provar por testes que NF de remessa e comprovantes não ganharam nem perderam acesso acidentalmente.
 
-### 6.4 Anexar, abrir e substituir
+### 6.4 Protocolo durável de anexar/substituir
 
-No primeiro anexo:
+Um boolean isolado é insuficiente: não distingue retry da mesma operação de uma substituição concorrente nem impede um retry antigo de liberar a operação nova. O protocolo usa o trio de coordenação da seção 5.1 e duas RPCs focais:
 
-1. validar PDF e tamanho no cliente para UX;
-2. revalidar por policy/metadata;
-3. enviar para o path determinístico;
-4. inserir a única linha `contract_documents kind='boleto'`;
-5. em falha do insert, reconciliar objeto órfão de modo restrito, sem habilitar exclusão normal de boletos.
+```text
+begin_boleto_change(organization_id, contract_id, billing_cycle_id, operation_id)
+finish_boleto_change(organization_id, contract_id, billing_cycle_id, operation_id)
+```
 
-Ao abrir, gerar URL assinada curta somente depois do `SELECT` autorizado.
+As RPCs são `SECURITY DEFINER` estritas, com `search_path=''`, relações qualificadas, autorização financeira e tenant validados internamente, `PUBLIC`/`anon`/`service_role` sem `EXECUTE` e grant apenas da assinatura necessária a `authenticated`. `SECURITY INVOKER` não serve aqui porque os campos de coordenação/revisão são deliberadamente inacessíveis ao caller.
 
-Na substituição:
+#### Begin
 
-1. confirmar que a linha e o objeto pertencem ao ciclo/contrato/tenant;
-2. validar o novo PDF;
-3. sobrescrever o mesmo path;
-4. se já houve envio, marcar `needs_resend=true` sem limpar `sent_at`;
-5. só mostrar sucesso depois de overwrite e marcação concluídos.
+1. o browser gera um UUID v4 de operação antes de qualquer chamada;
+2. a RPC bloqueia o ciclo, valida usuário, capability, tenant, contrato e ciclo;
+3. se não há pending, grava `pending=true`, o UUID e `started_at=now()` atomicamente;
+4. se já há pending com o mesmo UUID, retorna sucesso idempotente;
+5. se há pending com UUID diferente, retorna conflito e não altera o estado;
+6. se a mesma operação já foi finalizada (`pending=false` e UUID igual), retorna `already_finished`; o caller não repete o upload.
 
-Se o overwrite funcionar e a atualização de `needs_resend` falhar, retornar falha parcial explícita e manter uma ação idempotente de reparo. Repetir a mesma substituição no mesmo path é seguro. Um envio que já esteja em preparação compara novamente o conteúdo imediatamente antes da finalização e não pode limpar `needs_resend` se detectar a substituição concorrente.
+#### Storage
+
+Somente após `begin` ativo, validar PDF/10 MB e executar upload inicial sem overwrite ou substituição com upsert no path determinístico. O bucket permanece privado, sem staging, path versionado ou delete. A policy de `INSERT/UPDATE` exige o pending do ciclo. Se o primeiro upload criou o objeto e o `finish` falhou antes de reconciliar `contract_documents`, o retry com a mesma operação usa `upsert=true`; nesse estado, `SELECT/UPDATE` são autorizados pelo ramo estreito de recovery pending, sem depender de metadata que justamente ainda pode não existir.
+
+#### Finish
+
+Depois de confirmação inequívoca da Storage API, a RPC bloqueia novamente o ciclo e:
+
+1. exige o mesmo UUID pending; UUID diferente é conflito;
+2. valida a linha `storage.objects` no bucket/path exatos, MIME PDF e `updated_at >= boleto_change_started_at`;
+3. insere ou reconcilia a única linha `contract_documents kind='boleto'` com organização/contrato/ciclo/path coerentes;
+4. incrementa `content_revision` exatamente uma vez;
+5. força `needs_resend=true` quando `sent_at IS NOT NULL`, preservando `sent_at`, ou mantém false quando nunca houve envio;
+6. grava `pending=false`, mantém o UUID concluído e limpa `started_at`, tudo na mesma transação PostgreSQL.
+
+Retry de `finish` com o mesmo UUID já concluído retorna o resultado atual sem novo incremento. Um `finish` atrasado de UUID anterior nunca limpa o pending de operação posterior.
+
+Uma nova operação confirmada incrementa a revisão uma vez mesmo que o usuário tenha escolhido bytes iguais aos anteriores; sem hash persistido, esse falso positivo conservador é preferível a declarar estabilidade sem prova. Retry da mesma operação não incrementa novamente.
+
+#### Falha e recuperação
+
+Qualquer erro, timeout ambíguo ou morte do processo depois do `begin` mantém pending e bloqueia preparação/finalização de envio. Não existe timeout que libere automaticamente nem ação de abortar que apenas limpe a flag. Após reload, usuário financeiro carrega o UUID pending, seleciona novamente o PDF desejado, repete o upload com `upsert=true` no mesmo path e com o mesmo UUID e chama `finish`. O ramo de recovery das policies permite o `SELECT/UPDATE` exigido pelo upsert mesmo quando o primeiro upload já criou `storage.objects`, mas o `finish` anterior não chegou a criar `contract_documents`. O `finish` então reconcilia uma única linha, incrementa revision uma única vez e limpa pending. UUID diferente, member comum, tenant diferente e qualquer kind/path não boleto continuam bloqueados.
+
+`storage.objects.updated_at >= boleto_change_started_at` é evidência operacional de um write posterior ao `begin`, não prova criptográfica de vínculo entre bytes e `operation_id`. Dentro do modelo de confiança aprovado, a garantia combina pending, UUID corrente validado pela RPC, capability financeira, tenant, contrato, ciclo, path/MIME exatos, metadata temporal e o objeto atual; o UUID não aparece no path.
+
+Ao abrir um boleto estável, gerar URL assinada curta somente depois do `SELECT` autorizado. Durante pending a operação de envio fica bloqueada, embora a leitura operacional autorizada do objeto atual possa continuar.
 
 ## 7. `needs_resend`
 
 ### 7.1 Mudanças relevantes
 
-Depois de ao menos um envio bem-sucedido, devem marcar `needs_resend=true`:
+Toda mudança PostgreSQL relevante incrementa `content_revision` na mesma transação da fonte e, depois de ao menos um envio, também força `needs_resend=true`:
 
-- em `billing_cycles`: `period_start`, `period_end`, `issue_date`, `due_date`, `base_amount`, `discount_amount`, `surcharge_amount`, `exemption_amount`, `total_amount`, `document_type`, `document_number` e `notes` quando efetivamente mudarem;
-- `INSERT`, `UPDATE` ou `DELETE` de `billing_lines` da cobrança;
-- mudanças em campos de contrato, cliente ou obra usados por `RentalInvoiceSnapshot`, quando o fluxo de edição permitir que atinjam uma cobrança já enviada;
-- substituição dos bytes do boleto.
+- em `billing_cycles`: `contract_id`, `sequence_number`, `period_start`, `period_end`, `issue_date`, `due_date`, `base_amount`, `discount_amount`, `surcharge_amount`, `exemption_amount`, `total_amount`, `document_number` e `notes` quando efetivamente mudarem;
+- em `billing_lines`: `INSERT`/`DELETE` de linha cujo `kind` é `recurring`/`damage`; `UPDATE` quando o kind entra/sai desse conjunto ou mudam `billing_cycle_id`, `description`, `quantity`, `kind`, `unit_amount` ou `total_amount` de uma linha renderizada;
+- em `contracts`: `internal_number`, `contract_company`, `customer_id`, `site_id`, `legacy_order_number`, `notes`, `has_remittance_invoice`, `remittance_invoice_number` e `remittance_invoice_issue_date`;
+- em `customers`: `legal_name`, `trade_name`, `tax_id` e `state_registration`;
+- em `customer_sites`: `name`, `address_line`, `number`, `complement`, `district`, `city`, `state` e `postal_code`;
+- conclusão confirmada de primeiro upload ou substituição de boleto.
+
+As listas foram derivadas de `buildRentalInvoiceSnapshot` e `RentalInvoiceDocument`. `document_type`, `status`, `transport_notes`, contatos, `remittance_invoice_issuer`, `remittance_invoice_amount`, campos de pausa e `rental_items` não alteram os bytes atuais da Fatura e ficam fora enquanto o render não mudar.
 
 Embora `RentalInvoiceSnapshot` hoje carregue `financialStatus` calculado com `payments`, `RentalInvoiceDocument` não renderiza pago, saldo, status de pagamento nem status interno. Portanto, alterações em `payments` **não** marcam `needs_resend` e **não** entram na guarda de concorrência desta versão. A regra é sempre o conteúdo efetivamente renderizado, não a presença de um campo intermediário no snapshot.
 
@@ -300,23 +351,49 @@ Não marcam `needs_resend`:
 - simples abertura/download;
 - mudança de contatos/destinatários, pois destinatários são recalculados em cada envio e não alteram a Fatura.
 
-### 7.2 Invariantes de banco e propagação controlada
+### 7.2 Invariantes atômicas de banco
 
-Para `billing_cycles`, usar trigger específico que compare apenas as colunas relevantes com `IS DISTINCT FROM`. Para `billing_lines`, usar trigger específico por operação que marque somente o ciclo pai e apenas se ele já possui envio. Não usar trigger genérico baseado em qualquer `UPDATE`, pois a própria finalização atualiza `sent_at`.
+Para `billing_cycles`, um trigger `BEFORE UPDATE` focal compara somente as colunas acima com `IS DISTINCT FROM`, incrementa `NEW.content_revision` e força `NEW.needs_resend=true` quando `OLD.sent_at IS NOT NULL`. O mesmo trigger conserva o latch que rejeita `true → false` quando `current_user` é uma role de API. A única exceção é a atualização executada sob o owner confiável da RPC focal de finalização; não usar GUC, parâmetro ou flag controlável pelo caller para abrir essa exceção.
 
-Para entidades compartilhadas como cliente/obra/contrato, evitar trigger global que atualize indiscriminadamente todas as cobranças. Os mutators atuais que alterarem campos efetivamente renderizados devem propagar `needs_resend` para cobranças enviadas afetadas, com testes focais.
+Para `billing_lines`, `contracts`, `customers` e `customer_sites`, triggers focais reagem somente às colunas/operações renderizadas, localizam exclusivamente os ciclos afetados e executam `source change + revision bump + needs_resend` na mesma transação PostgreSQL. Antes do update, os ciclos afetados são bloqueados em `billing_cycle.id` crescente; múltiplos ciclos e triggers usam a mesma ordem para evitar deadlock. Não existe mais protocolo TypeScript marca-antes/grava-depois para essas fontes.
 
-Durante uma tentativa de envio, calcular uma guarda efêmera a partir dos bytes da Fatura efetivamente renderizada e dos bytes do boleto preparados. Recalcular imediatamente antes da finalização. Essa guarda existe exclusivamente para detectar alteração entre preparação e finalização.
+Todas as trigger functions/helpers internos ficam no schema não exposto `private`, que não entra em `api.schemas`. O repositório de referência não possui outro schema interno equivalente, portanto a migration focal cria/reutiliza `private` e revoga `USAGE`/`EXECUTE` de `PUBLIC`, `anon`, `authenticated` e `service_role`. O trigger do próprio ciclo chama `private.guard_and_bump_billing_cycle_content_revision()` e permanece `SECURITY INVOKER`; os quatro triggers cross-table chamam helpers `private.*` estreitos `SECURITY DEFINER`, pois `content_revision` não pode ser concedida ao frontend. Esses helpers derivam tenant/IDs de `OLD`/`NEW`, conferem membership do caller quando há JWT, qualificam todas as relações, usam `search_path=''` e não possuem execução direta por roles de API. Somente as RPCs chamadas pelo cliente — `public.begin_boleto_change`, `public.finish_boleto_change` e, no Lote B, `public.finalize_billing_delivery` — permanecem em `public` com a assinatura exata concedida a `authenticated` após todos os revokes.
+
+As `billing_lines` renderizadas têm uma única ordem total obrigatória em todo o fluxo: `created_at ASC, id ASC`. `billing_lines.id` é a chave primária UUID e funciona como desempate estável quando linhas do mesmo batch compartilham `created_at`; nenhum campo de negócio adicional participa da ordenação. A consulta da preparação e a reconsulta imediatamente anterior ao Resend devem aplicar explicitamente os dois critérios nessa ordem. `RentalInvoiceSnapshot`, `RentalInvoiceDocumentContent`, `tableRows`, o PDF e a representação canônica apenas preservam essa sequência, sem reordená-la em qualquer camada.
+
+Durante uma tentativa de envio, a Fatura é renderizada **uma única vez**. Antes desse render, construir `RentalInvoiceSnapshot`, derivar `RentalInvoiceDocumentContent` com o mesmo builder do documento e calcular uma guarda semântica canônica efêmera. A canonicalização usa uma tupla de propriedades explicitamente selecionadas e em ordem fixa: `title`, `number`, `issuerName`, `issuerLines`, `recipientLines`, pares ordenados de `invoiceDataRows`, `description`, `tableHeaders`, `tableRows` sem o `id` usado apenas como React key, pares ordenados de `adjustmentRows`, `totalLabel`, `totalInWords`, `notes` e `fiscalNotice`. Arrays conservam exatamente a ordem semântica total já definida para o PDF; datas, quantidades e valores já entram como as strings finais normalizadas pelo builder; ausência é sempre `null`; a serialização é de arrays/primitivos em ordem fixa, nunca `JSON.stringify` ingênuo de objeto de ordem variável. Um SHA-256 dessa representação pode ser mantido somente em memória. Não ordenar apenas a representação canônica: PDF e guarda devem representar a mesma sequência de linhas recebida da consulta determinística.
+
+Imediatamente antes do Resend, recarregar as fontes PostgreSQL usando novamente `billing_lines ORDER BY created_at ASC, id ASC`, exigir a mesma `content_revision` e pending false, reconstruir snapshot/conteúdo canônico preservando essa ordem e comparar a guarda semântica. **Não renderizar um segundo PDF.** Se a guarda coincidir, o buffer produzido pelo único render inicial é exatamente o buffer anexado ao e-mail. A guarda canônica complementa a revision ao detectar snapshot/reconsulta inconsistente ou mudança real de ordenação/transformação dos campos efetivamente renderizados; empates em `created_at` resolvidos pelo mesmo `id` não produzem conflito. `content_revision` continua sendo a guarda durável e atômica de todas as fontes PostgreSQL.
+
+Para o boleto persistido, baixar bytes e calcular SHA-256 efêmero; na revalidação pré-provider, baixar novamente o objeto atual e comparar o hash de bytes. Com hash igual, anexar o buffer da segunda leitura, que é o objeto efetivamente revalidado. Pending/revision e o CAS cobrem a janela posterior à leitura.
 
 Ela não é fonte de verdade, versão da Fatura, snapshot histórico, versão do boleto nem substituto de `needs_resend`. Não persisti-la em evento, documento ou nova tabela.
 
-Após um envio aceito:
+Após um envio aceito, a finalização recebe `expected_content_revision` e separa dois caminhos dentro do banco:
 
-- atualizar `sent_at` para o instante do novo evento;
-- limpar `needs_resend` somente se a guarda efêmera confirmar que Fatura e boleto continuam iguais aos preparados;
-- se houve edição concorrente durante o envio, não associar o sucesso ao conteúdo novo: registrar/reconciliar o sucesso externo com segurança, atualizar `sent_at` quando confirmado e manter `needs_resend=true`; a UI solicita revisão e nova tentativa deliberada.
+- **evento novo nesta execução:** insere o evento; se revision ainda é a esperada e não existe pending, atualiza `sent_at` e limpa `needs_resend`; se revision divergiu ou existe pending, preserva o evento confirmado, atualiza `sent_at`, força `needs_resend=true` e retorna revisão obrigatória;
+- **evento já existente/replay:** valida tenant, ciclo, destinatários, mensagem e provider ID compatíveis, não insere nem envia novamente, recalcula `sent_at` como o maior evento do ciclo e preserva exatamente o `needs_resend` corrente. Esse caminho nunca executa `true → false`, independentemente da revision fornecida pelo retry.
 
 UI: `Alterada após o último envio — reenviar cobrança.`
+
+### 7.3 Prova das intercalações
+
+| Caso | Intercalação | Condição que impede falso negativo |
+|---|---|---|
+| A | mutação termina antes da preparação | preparação captura a revisão nova e envia o conteúdo novo |
+| B | mutação PostgreSQL durante preparação | trigger incrementa revisão atomicamente; revalidação aborta ou CAS diverge |
+| C | mutação após a última revalidação e antes do Resend | CAS lê no banco revisão diferente da esperada e mantém `needs_resend=true` |
+| D | mutação enquanto o Resend responde | CAS detecta a revisão incrementada |
+| E | mutação entre Resend e RPC | CAS detecta a revisão incrementada |
+| F | RPC finaliza primeiro, mutação depois | lock serializa; o trigger posterior incrementa revisão e marca true |
+| G | boleto começa overwrite durante preparação/envio | `begin` grava pending antes da Storage API; revalidação ou CAS bloqueia |
+| H | upload termina e `finish` falha | pending permanece durável e nenhum envio pode preparar/finalizar |
+| I | primeiro envio concorrente com alteração | revisão muda mesmo com `sent_at` nulo; CAS não depende de `needs_resend` prévio |
+| J | reenvio concorrente com alteração | revisão/CAS detecta a mudança; latch permanece true até sucesso estável posterior |
+| K | resposta se perde após finalização; evento existe e conteúdo não mudou | replay compatível não chama provider, reconcilia `sent_at` monotonicamente e preserva o latch corrente false |
+| L | conteúdo muda após finalização e antes do retry antigo | replay do mesmo ID não chama provider e preserva `needs_resend=true`; conteúdo atual não é associado ao evento antigo |
+| M | CAS divergente já registrou evento e retry repete o ID | replay não duplica evento nem limpa o latch já true |
+| N | reenvio intencional usa novo ID | somente o evento novo pode limpar o latch, e apenas se finalizar estável contra sua própria revision/pending |
 
 ## 8. Geração da Fatura
 
@@ -324,10 +401,12 @@ A Fatura continua gerada sob demanda. Não salvar PDF no Storage nem criar segun
 
 No Route Handler:
 
-1. carregar os mesmos dados atualmente usados por `getBillingRentalInvoice` no contexto RLS do usuário;
-2. montar o mesmo `RentalInvoiceSnapshot` com `buildRentalInvoiceSnapshot`/`getBillingRentalInvoice`;
-3. renderizar o mesmo `RentalInvoiceDocument` no servidor com a API server-side de `@react-pdf/renderer`, produzindo `Buffer` em memória;
-4. anexar com `filename = snapshot.fileName` e conteúdo em memória.
+1. carregar os mesmos dados atualmente usados por `getBillingRentalInvoice` no contexto RLS do usuário, consultando as `billing_lines` renderizadas em `created_at ASC, id ASC`;
+2. montar o mesmo `RentalInvoiceSnapshot` com `buildRentalInvoiceSnapshot`/`getBillingRentalInvoice`, preservando a ordem total recebida;
+3. derivar o conteúdo canônico efetivamente renderizado e sua guarda efêmera;
+4. renderizar o mesmo `RentalInvoiceDocument` no servidor **uma única vez por tentativa** com a API server-side de `@react-pdf/renderer`, produzindo `Buffer` em memória;
+5. na revalidação, repetir a consulta com `created_at ASC, id ASC` e reconstruir somente snapshot/conteúdo canônico na mesma sequência, sem segundo render;
+6. anexar exatamente o buffer do render único com `filename = snapshot.fileName`.
 
 O código compartilhado não deve importar módulos browser-only para o Route Handler. Se necessário, extrair um adaptador de leitura reutilizável, sem duplicar regra ou layout.
 
@@ -455,16 +534,17 @@ O Route Handler deve executar nesta ordem:
 2. autorizar `admin OR can_manage_billing` no tenant real do recurso;
 3. validar e recarregar cobrança, contrato e cliente;
 4. validar e normalizar destinatários, inclusive allowlist;
-5. validar a linha e o objeto privado do boleto;
-6. obter o snapshot atual da Fatura;
-7. gerar o PDF da Fatura em memória;
-8. baixar os bytes do boleto privado;
-9. calcular a guarda efêmera dos dois anexos preparados;
-10. enviar um único e-mail pelo Resend para todos os destinatários em `To`;
-11. exigir e capturar `provider_message_id`;
-12. recalcular a guarda com o conteúdo autoritativo imediatamente antes de finalizar;
-13. persistir/reconciliar o `billing_delivery_event` e atualizar `billing_cycles.sent_at`; limpar `needs_resend` somente se não houve mudança concorrente;
-14. retornar sucesso atual ou aviso de conteúdo alterado que exige revisão/nova tentativa.
+5. exigir `boleto_change_pending=false` e capturar `content_revision=R`;
+6. validar a linha e o objeto privado do boleto;
+7. obter o snapshot atual da Fatura;
+8. construir a representação canônica do conteúdo renderizado e sua guarda efêmera;
+9. gerar o PDF da Fatura em memória uma única vez e conservar esse buffer para o provider;
+10. baixar os bytes do boleto privado e calcular seu SHA-256 efêmero;
+11. imediatamente antes do provider, recarregar fontes/ciclo, exigir pending false/revisão `R`, reconstruir apenas a representação canônica da Fatura e baixar novamente o boleto; divergência da guarda semântica ou do hash de bytes aborta sem chamar Resend;
+12. enviar um único e-mail pelo Resend para todos os destinatários em `To`, anexando o buffer único da Fatura e o buffer de boleto da segunda leitura revalidada;
+13. exigir e capturar `provider_message_id`;
+14. chamar a finalização com `expected_content_revision=R`; o banco revalida revisão e pending na mesma transação do evento/resumo e distingue evento novo de replay existente;
+15. retornar sucesso atual ou aviso de conteúdo alterado que exige revisão/nova tentativa.
 
 Qualquer falha interrompe as etapas seguintes, exceto a reconciliação idempotente descrita na seção 11. Nunca avançar para um estado local que indique sucesso sem confirmação do provedor e finalização consistente.
 
@@ -501,29 +581,35 @@ Todas as respostas do endpoint devem usar `Cache-Control: private, no-store` e n
 - retry técnico da mesma intenção usa o mesmo ID e o mesmo payload efetivo;
 - reenvio deliberado = novo ID;
 - `billing_delivery_events.send_request_id` é único;
-- mesmo ID com cobrança, destinatários, mensagem ou anexos diferentes é conflito e não é reenviado;
+- quando já existe evento, mesmo ID com cobrança, destinatários ou mensagem diferentes é conflito local e não é reenviado;
+- anexos/revision não são persistidos no evento: sem evento, o retry conserva a mesma intenção e a Idempotency-Key; se o payload efetivo divergir, o conflito do Resend é falha e nunca autoriza finalização ou novo ID automático;
 - `sent_at` é calculado a partir do evento de sucesso mais recente, nunca do clique.
-- a guarda efêmera de concorrência existe apenas dentro da tentativa em curso e nunca é usada para comparar ou versionar eventos históricos.
+- a guarda efêmera de concorrência existe apenas dentro da tentativa em curso e nunca é usada para comparar ou versionar eventos históricos;
+- `expected_content_revision` pertence à tentativa/RPC e não é persistida no evento; `content_revision` do ciclo conserva apenas a geração corrente.
+- evento novo e evento existente são caminhos disjuntos; somente o evento inserido pela execução atual pode aplicar a transição CAS que limpa o latch.
 
 Antes de chamar o Resend, o handler procura evento pelo `send_request_id` dentro do contexto autorizado:
 
 - se não existe, continua o envio;
-- se existe e pertence ao mesmo ciclo/tenant, não chama o Resend e executa somente reconciliação do resumo;
-- se existe com conteúdo incompatível, responde `409`.
+- se existe e pertence ao mesmo ciclo/tenant, não chama o Resend e executa somente reconciliação monotônica do resumo, preservando o `needs_resend` corrente;
+- se existe com cobrança/destinatários/mensagem incompatíveis, responde `409`; o evento não permite comparar anexos históricos.
 
 ### 11.2 Finalização atômica
 
-Preferir uma função SQL `SECURITY INVOKER`, transacional e idempotente para:
+Usar uma função SQL focal `SECURITY DEFINER`, transacional e idempotente para:
 
 1. bloquear/carregar o ciclo do tenant;
-2. inserir o evento com `ON CONFLICT (send_request_id)` controlado;
-3. verificar que um conflito existente representa a mesma cobrança e o mesmo sucesso;
-4. calcular o evento mais recente do ciclo;
-5. atualizar `billing_cycles.sent_at` para esse instante;
-6. aplicar a decisão de concorrência produzida no fluxo atual: limpar `needs_resend` somente quando o conteúdo permaneceu estável; caso contrário, mantê-lo `true`;
-7. retornar o estado reconciliado.
+2. validar explicitamente `auth.uid()`, membership `admin OR can_manage_billing`, tenant e ciclo;
+3. tentar inserir com `INSERT ... ON CONFLICT (send_request_id) DO NOTHING RETURNING id`; somente uma linha realmente retornada define `new_event` nesta execução, inclusive sob duas finalizações concorrentes;
+4. em `new_event`, comparar `content_revision` com `p_expected_content_revision` e pending sob o mesmo lock;
+5. em `new_event` estável, atualizar `sent_at` sem regressão e limpar `needs_resend`; em divergência, atualizar `sent_at`, forçar `needs_resend=true` e retornar `review_required=true`;
+6. sem linha retornada, carregar o evento vencedor e entrar em `existing_event`; validar tenant/ciclo/recipients/mensagem/provider ID compatíveis, não inserir evento e não considerar a revision do retry como prova do conteúdo histórico;
+7. em `existing_event`, recalcular o evento mais recente, reparar `sent_at` somente de forma monotônica e preservar o valor atual de `needs_resend`, inclusive quando true;
+8. retornar o estado reconciliado e se o evento foi inserido nesta execução.
 
-A função continua sujeita aos grants e às policies RLS do caller; `SECURITY INVOKER` não contorna autorização. Revogar explicitamente o `EXECUTE` padrão de `PUBLIC`/`anon` e conceder somente a `authenticated`, mantendo nomes qualificados e `search_path` fixo por defesa em profundidade. Dentro da função, todas as linhas continuam tenant-scoped e exigem `admin OR can_manage_billing`; a função não pode permitir cross-tenant nem escalada de privilégio.
+O parâmetro anterior `p_content_stable` deixa de existir e é substituído por `p_expected_content_revision bigint`. A função não confia em boolean de estabilidade calculado antes: a condição durável é reavaliada pelo banco sob lock.
+
+`SECURITY DEFINER` é necessário somente porque `sent_at`, limpeza de `needs_resend`, revisão e pending não têm grant direto. A função usa `SET search_path=''`, nomes qualificados e owner de migrations; revoga `EXECUTE` de `PUBLIC`, `anon`, `authenticated` e `service_role`, depois concede somente a assinatura exata a `authenticated`. O bypass de RLS é compensado por autorização/tenant explícitos e por testes negativos; não existe `service_role` no Route Handler.
 
 `billing_delivery_events` é histórico operacional de envios aceitos, não prova criptográfica fornecida pelo Resend. Sem `service_role` ou segredo server-only no banco, ele não consegue provar que um `provider_message_id` informado por um usuário financeiro autorizado veio realmente do provedor. Esse risco residual não justifica introduzir `service_role`: o Route Handler permanece o único fluxo suportado da aplicação, e grants/RLS continuam obrigatórios.
 
@@ -550,10 +636,12 @@ Estado B:
 2. não chama o Resend;
 3. recalcula o evento mais recente do ciclo;
 4. repara `sent_at`;
-5. preserva `needs_resend` em modo fail-closed; evento histórico não contém fingerprint nem autoriza concluir que o conteúdo atual é o enviado;
+5. preserva `needs_resend` em modo fail-closed; evento histórico não contém fingerprint/revisão nem autoriza concluir que o conteúdo atual é o enviado;
 6. retorna sucesso idempotente quando o resumo estiver consistente, ou solicita revisão se a atualidade do conteúdo não puder ser provada dentro da tentativa original.
 
 Essa lógica também impede que retry de evento antigo faça `sent_at` regredir depois de um reenvio mais recente.
+
+Cenário obrigatório: envio X finaliza, depois o conteúdo muda e arma `needs_resend=true`; um retry técnico antigo com `send_request_id=X` encontra o evento, não chama Resend, não cria evento, não associa o conteúdo corrente ao evento X, repara apenas `sent_at` monotonicamente e mantém o latch true.
 
 ### 11.5 Janela de 24 horas do Resend
 
@@ -656,7 +744,11 @@ Falha preserva escolhas e ID para retry técnico. Sucesso fecha o modal, atualiz
 
 ### 13.3 Página geral
 
-Manter `src/app/contratos-locacoes/cobrancas/page.tsx`. `BillingTable` pode mostrar discretamente:
+Manter `src/app/contratos-locacoes/cobrancas/page.tsx`. O ramo comum consulta `billing_cycles` com projeção explícita apenas de `id`, `contract_id`, `document_number`, `document_type`, `due_date`, `issue_date`, `period_start`, `period_end`, `total_amount` e `status`; não usa `select('*')` e não recebe `sent_at`, `needs_resend`, `content_revision` nem coordenação de boleto.
+
+Somente depois de carregar a membership própria por `user_id + organization_id`, o ramo admin/financeiro executa consultas separadas dos indicadores `sent_at`, `needs_resend` e `has_boleto`. `BillingListItem` agrupa esses três valores em `delivery_indicators`, que é um objeto para caller autorizado e `null` para member comum. `null` significa “não autorizado/não carregado”, nunca “não enviado” ou “boleto ausente”; a tabela oculta todo o grupo.
+
+Para o ramo autorizado, `BillingTable` pode mostrar discretamente:
 
 - boleto presente/ausente;
 - enviado/não enviado;
@@ -697,7 +789,9 @@ Esses campos ficam disponíveis apenas para diagnóstico técnico autorizado. O 
 | remetente forjado | derivado de `contracts.contract_company` carregado do banco |
 | e-mail duplicado por retry | `send_request_id`, Idempotency-Key, unicidade local e retry do mesmo payload |
 | falso sucesso | evento/`sent_at` somente após `data.id` confirmado e finalização concluída |
-| edição concorrente durante envio | guarda efêmera dos bytes renderizados + boleto; não associar sucesso ao conteúdo novo e manter `needs_resend=true` se houver mudança |
+| edição concorrente durante envio | revision atômica nas fontes + pending do Storage + CAS no banco; guarda efêmera continua sem persistência |
+| processo morre durante boleto | pending durável bloqueia envio; reparo exige reupload conhecido com o mesmo UUID antes de `finish` |
+| retry antigo libera operação nova | `finish` exige UUID corrente sob lock; UUID divergente é conflito |
 | exposição por URL | bucket privado e signed URL curta, sem URL pública permanente |
 | HTML injection na mensagem | escapar conteúdo livre; gerar também versão texto |
 | vazamento em logs | não registrar token, anexos, corpo ou destinatários completos; usar IDs técnicos sem PII |
@@ -709,7 +803,7 @@ O envio conjunto em `To` expõe os endereços entre os destinatários. Isso é u
 
 Escopo implementável e aprovável isoladamente:
 
-1. migration com `can_manage_billing` e `needs_resend`;
+1. migration com `can_manage_billing`, `needs_resend`, `content_revision` e coordenação pending/token do boleto;
 2. `kind='boleto'`, checks, invariante documento/ciclo/contrato/organização pelo mecanismo mais simples confirmado no schema e índice único parcial;
 3. `billing_delivery_events` pode ser criada estruturalmente aqui, ainda sem envio;
 4. RLS/grants mínimos e refinamento das policies gerais de `contract_documents`;
@@ -717,7 +811,7 @@ Escopo implementável e aprovável isoladamente:
 6. tipos e queries do boleto/permissão;
 7. upload, abrir e substituir no detalhe;
 8. estados visuais ligados ao boleto;
-9. invariantes estruturais de `needs_resend` para ciclos/linhas e substituição;
+9. invariantes atômicas de revisão/`needs_resend` para ciclos, linhas, contrato, cliente e obra, mais begin/finish do boleto;
 10. testes focais de migration, RLS, Storage e UI.
 
 Critério de separação: Lote A não instala Resend, não cria endpoint de envio, não envia e-mail e pode ser validado integralmente sem DNS/chave.
@@ -737,8 +831,8 @@ Escopo:
 7. download privado do boleto e anexos em memória;
 8. remetente, assunto e corpo automáticos;
 9. modal e destinatários/extras;
-10. idempotência, finalização e reconciliação;
-11. `sent_at`/`needs_resend`;
+10. idempotência, finalização CAS por `expected_content_revision` e reconciliação;
+11. `sent_at`/`needs_resend` sob revision/pending;
 12. histórico no card;
 13. indicadores discretos na página mensal;
 14. testes focais e QA real apenas no IURQ/allowlist.
@@ -751,6 +845,8 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 
 - `can_manage_billing` é `NOT NULL DEFAULT false`;
 - `needs_resend` é `NOT NULL DEFAULT false`;
+- `content_revision` é `bigint NOT NULL DEFAULT 0`, monotônica e não histórica;
+- pending/operação/início obedecem à constraint de estado e não possuem grant direto;
 - member comum não atualiza a própria flag;
 - admin permitido em boleto/eventos;
 - member com flag permitido;
@@ -766,7 +862,10 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 - boleto incompatível com organização, contrato ou ciclo é rejeitado pelo banco/fluxo protegido mesmo que frontend, path ou membership sejam forjados;
 - policies existentes de NF de remessa/comprovantes não ganham acesso;
 - hardening de `organization_members` não é revertido;
-- função de finalização, se criada, é invoker, ACL mínima e não executável por `PUBLIC`/`anon`.
+- ACL de `INSERT`/`UPDATE` de `billing_cycles` é exatamente por coluna e bloqueia campos internos;
+- o schema `private` não está em `api.schemas`; helpers de trigger estão em `private`, com `search_path=''`, owner confiável, relações qualificadas e sem `USAGE`/`EXECUTE` direto por `PUBLIC`/`anon`/`authenticated`/`service_role`;
+- as RPCs `public.begin_boleto_change`, `public.finish_boleto_change` e `public.finalize_billing_delivery` revogam defaults e concedem somente a assinatura exata a `authenticated`, com `auth.uid()`, membership, capability, tenant, contrato/ciclo e argumentos validados internamente;
+- o índice para o fan-out de obra é verificado no catálogo; como o schema de referência não possui índice aproveitável com prefixo `(organization_id, site_id)`, a migration planeja `contracts_org_site_idx` nessas duas colunas.
 
 ### 18.2 Storage
 
@@ -777,6 +876,11 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 - MIME não PDF bloqueado mesmo com extensão `.pdf`;
 - primeiro upload permitido a admin/financeiro;
 - upsert permitido a admin/financeiro;
+- insert/update sem pending iniciado é bloqueado;
+- begin com mesmo UUID é idempotente, UUID concorrente conflita e finish atrasado não libera operação nova;
+- upload confirmado com finish falho mantém pending; reload/reparo reusa UUID e exige reupload antes de liberar;
+- recovery real pela Storage API cobre `begin → primeiro upload → falha antes/do finish → reload → upsert com o mesmo UUID/path → finish`; o ramo pending autoriza `SELECT/UPDATE`, cria/reconcilia um único documento, incrementa revision uma vez e não cria versão física;
+- no recovery, UUID diferente, member comum, tenant B e outro kind/path permanecem bloqueados;
 - member comum não lê, envia ou substitui;
 - delete de boleto indisponível;
 - policies de `remittance_nf` e `payment_proof` preservadas.
@@ -796,21 +900,29 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 - `send_request_id` v4 sem PII;
 - mesmo ID + mesmo payload é retry; payload diferente é conflito;
 - novo reenvio gera novo ID;
-- guarda efêmera muda com bytes renderizados da Fatura ou boleto e não é persistida;
-- alteração em `payments` não muda a guarda enquanto `RentalInvoiceDocument` não renderizar pago, saldo ou status.
+- a guarda semântica da Fatura é construída da projeção ordenada de `RentalInvoiceDocumentContent`, muda quando conteúdo efetivamente renderizado muda e ignora `financialStatus`/payments não renderizados;
+- duas ou mais `billing_lines` com o mesmo `created_at` são sempre desempatadas por `id ASC`; preparação, PDF, guarda canônica e revalidação conservam a mesma sequência e não geram falso conflito;
+- o teste de empate também confirma que mudança real de conteúdo ou da sequência semanticamente renderizada continua alterando a guarda quando aplicável;
+- arrays, `null`, datas, quantidades e valores têm representação canônica explícita; não há `JSON.stringify` ingênuo de objeto de ordem variável;
+- a Fatura é renderizada uma vez, e o mesmo `Buffer` chega ao provider; nenhum teste compara bytes de dois renders;
+- o hash efêmero do boleto muda quando os bytes do objeto mudam e é comparado após segunda leitura pré-provider;
+- nenhuma guarda/hash é persistida.
 
 ### 18.4 `needs_resend`
 
 - cobrança nunca enviada continua false em criação/edição normal;
+- cada mudança PostgreSQL relevante incrementa revision na mesma transação, inclusive antes do primeiro envio;
 - cada coluna relevante do ciclo marca true depois de envio;
 - update apenas de `sent_at`/flag não marca true;
-- insert/update/delete de linha marca true;
+- insert/update/delete de linha renderizada marca true;
+- contrato/cliente/obra usam triggers focais e locks de ciclos em ordem determinística;
 - alteração em `payments` não marca true nesta versão;
 - mudança irrelevante não marca;
 - boleto substituído marca true;
 - `sent_at` não é apagado;
 - envio bem-sucedido atual limpa false;
 - edição concorrente durante envio mantém true.
+- casos A–N da seção 7.3 não deixam falso negativo.
 
 ### 18.5 Endpoint
 
@@ -824,14 +936,19 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 - remetente derivado do contrato;
 - mesmos destinatários enviados juntos em um e-mail;
 - Fatura e boleto anexados;
+- pending bloqueia preparação e CAS;
+- revisão divergente antes do Resend aborta sem provider;
 - falha do Resend não cria evento nem altera ciclo;
 - sucesso cria evento, atualiza `sent_at` e trata `needs_resend`;
 - mudança concorrente após preparação não é associada ao sucesso antigo, mantém `needs_resend` e solicita revisão;
 - retry técnico não duplica;
 - evento existente repara ciclo sem chamar Resend;
+- retry antigo do envio X depois de mudança de conteúdo preserva `needs_resend=true`, não associa conteúdo corrente ao evento X e não cria novo evento;
 - reenvio intencional cria segundo evento e atualiza `sent_at`;
 - resposta sem `data.id` é falha, não sucesso;
 - conflito de payload com mesma chave retorna `409`.
+- finalização não recebe `contentStable`; compara `expected_content_revision` no banco.
+- casos K–N da seção 7.3 distinguem reconciliação de replay e novo envio; somente evento novo e estável pode limpar o latch.
 
 ### 18.6 UI
 
@@ -842,7 +959,7 @@ Critério de separação: nenhuma mudança ou configuração no MISFY; nenhum me
 - resumo do último evento;
 - histórico mais recente primeiro;
 - IDs técnicos ocultos;
-- página mensal mantém navegação e apenas indicadores discretos.
+- página mensal comum usa projeção explícita e não recebe indicadores; admin/financeiro recebe o grupo discreto autorizado.
 
 Não fazer mega-auditoria fora do módulo. Em cada lote, rodar testes focais profundos do escopo, TypeScript e consistência de migration; QA real somente quando explicitamente autorizado.
 
@@ -883,13 +1000,15 @@ Antes do QA real do Lote B:
 
 As caixas existentes `thomas@radialenergia.com.br` e `radial@radialenergia.com.br` permanecem no Titan. O remetente usado pela aplicação será `radial@radialenergia.com.br`.
 
-Referências oficiais verificadas em 19/08/2026:
+Referências oficiais verificadas/revalidadas em 20/08/2026:
 
 - Resend — Send Email: <https://resend.com/docs/api-reference/emails/send-email>
 - Resend — Idempotency Keys: <https://resend.com/docs/dashboard/emails/idempotency-keys>
 - Resend — Attachments: <https://resend.com/docs/dashboard/emails/attachments>
 - Resend — Create API key: <https://resend.com/docs/api-reference/api-keys/create-api-key>
 - Supabase — Storage Access Control: <https://supabase.com/docs/guides/storage/security/access-control>
+- Supabase — Database Functions e segurança `invoker`/`definer`: <https://supabase.com/docs/guides/database/functions>
+- Supabase — restrições atuais dos schemas Auth/Storage/Realtime: <https://supabase.com/changelog/34270-restricting-access-on-auth-storage-and-realtime-schemas-on-april-21-2025>
 - Supabase — Standard Uploads: <https://supabase.com/docs/guides/storage/uploads/standard-uploads>
 - Supabase — `auth.getUser`: <https://supabase.com/docs/reference/javascript/auth-getuser>
 - Supabase — JWT/access token: <https://supabase.com/docs/guides/auth/jwts>
@@ -915,12 +1034,15 @@ A implementação futura estará aceita quando:
 15. `sent_at` representar o último sucesso e nunca ser apagado por edição;
 16. mudanças realmente renderizadas marcarem `needs_resend`, enquanto alterações em `payments` não marcarem nesta versão;
 17. a guarda de concorrência ser efêmera, não persistida e incapaz de substituir `needs_resend` ou criar versionamento;
-18. a invariante documento/ciclo/contrato/organização ser garantida pelo mecanismo mais simples confirmado no schema;
-19. RLS, Storage e integridade do banco/fluxo protegido bloquearem anon, member comum e cross-tenant;
-20. NF de remessa, comprovantes e demais documentos não receberem novos privilégios;
-21. nenhum segredo Resend chegar ao browser ou Git;
-22. Lote A e Lote B puderem ser testados/aprovados separadamente;
-23. nenhum acesso/configuração/migration ocorrer no MISFY sem etapa futura explícita.
+18. toda mudança PostgreSQL renderizada incrementar `content_revision` atomicamente com a fonte e o CAS impedir falso negativo no primeiro envio/reenvio;
+19. begin/pending/finish do boleto permanecer fail-closed sob concorrência, timeout, reload e retry;
+20. a invariante documento/ciclo/contrato/organização ser garantida pelo mecanismo mais simples confirmado no schema;
+21. RLS, Storage e integridade do banco/fluxo protegido bloquearem anon, member comum e cross-tenant;
+22. NF de remessa, comprovantes e demais documentos não receberem novos privilégios;
+23. página mensal comum não consultar nem receber `sent_at`/`needs_resend`/`has_boleto`;
+24. nenhum segredo Resend chegar ao browser ou Git;
+25. Lote A e Lote B puderem ser testados/aprovados separadamente;
+26. nenhum acesso/configuração/migration ocorrer no MISFY sem etapa futura explícita.
 
 ## 22. Itens explicitamente adiados
 
@@ -943,9 +1065,9 @@ Arquivos atuais a modificar no futuro:
 
 - `package.json` e lockfile — dependência Resend no Lote B;
 - `src/lib/supabase.ts` ou novo helper server-only — manter cliente browser e adicionar cliente bearer do servidor sem expor segredo;
-- `src/lib/contratos-locacoes/types.ts` — `can_manage_billing`, `needs_resend`, `boleto` e `BillingDeliveryEvent`;
+- `src/lib/contratos-locacoes/types.ts` — `can_manage_billing`, `needs_resend`, revision/coordenação de boleto, `boleto` e `BillingDeliveryEvent`;
 - `src/lib/contratos-locacoes/queries.ts` — boleto, contatos, permissão, eventos e indicadores da lista;
-- `src/lib/contratos-locacoes/mutations.ts` — remover `markBillingCycleSent` manual e propagar `needs_resend` nos mutators relevantes;
+- `src/lib/contratos-locacoes/mutations.ts` — remover `markBillingCycleSent` manual e o protocolo não atômico de propagação; triggers focais passam a coordenar fontes PostgreSQL;
 - `src/lib/contratos-locacoes/company.ts` — perfil de empresa já usado pela Fatura e fonte coerente para assinatura/remetente;
 - `src/lib/contratos-locacoes/remittance-documents.ts` e `payment-proofs.ts` — padrões reais de Storage privado a preservar, sem misturar policies/kinds;
 - `src/lib/contratos-locacoes/rental-invoice.ts` — reutilização do snapshot; a guarda considera somente o conteúdo efetivamente renderizado, sem alterar o PDF;
@@ -974,8 +1096,10 @@ Não fixar agora nome/timestamp de migration inexistente.
 
 1. **Idempotência do Resend expira em 24 horas.** A recuperação automática completa após resultado perdido por mais de 24 horas exigiria um ledger durável de tentativa pendente. Como isso não foi aprovado e se aproxima de infraestrutura de fila, esta spec adota bloqueio/reconciliação manual depois da janela.
 2. **Evento de sucesso é inserido com credencial do próprio usuário.** RLS garante tenant e permissão, mas um operador financeiro autorizado poderia chamar diretamente o Data API/RPC e fornecer um ID fictício. Sem `service_role` ou segredo server-only, o banco não prova criptograficamente a origem do ID. Não introduzir `service_role`; o Route Handler é o único fluxo suportado, e essa limitação nunca pode permitir cross-tenant ou escalada.
-3. **O snapshot possui campos não renderizados.** `RentalInvoiceSnapshot` hoje inclui `financialStatus` derivado de `payments`, mas `RentalInvoiceDocument` não o usa. `needs_resend` e a guarda efêmera consideram somente o conteúdo renderizado e o boleto; pagamentos ficam explicitamente fora.
-4. **Mudanças em entidades compartilhadas podem alterar a Fatura.** Apenas campos de cliente, obra e contrato efetivamente renderizados devem marcar reenvio. A guarda efêmera protege a janela da tentativa, sem virar fonte de verdade ou versão histórica.
-5. **Overwrite de Storage não participa da mesma transação do Postgres.** A substituição deve ser idempotente, só confirmar sucesso após marcar `needs_resend` e reparar explicitamente falhas parciais; uma tentativa em curso detecta a mudança antes de finalizar.
+3. **O snapshot possui campos não renderizados e o PDF não é byte-determinístico entre renders.** `RentalInvoiceSnapshot` hoje inclui `financialStatus` derivado de `payments`, mas `RentalInvoiceDocument` não o usa. A guarda canônica deriva apenas de `RentalInvoiceDocumentContent`; a tentativa renderiza uma vez e envia esse mesmo buffer. Nunca comparar bytes de duas renderizações independentes. O boleto, por ser objeto persistido, continua com comparação de bytes.
+4. **Mudanças em entidades compartilhadas podem alterar a Fatura.** Apenas os campos exatos de cliente, obra e contrato efetivamente renderizados acionam triggers focais. Cada trigger incrementa a geração dos ciclos afetados na mesma transação e bloqueia ciclos por ID crescente.
+5. **Overwrite de Storage não participa da mesma transação do Postgres.** `begin_boleto_change` cria estado pending durável antes do write externo; `finish_boleto_change` valida o objeto, registra/reconcilia o documento, incrementa revision e libera pending. Falha mantém o envio bloqueado até reupload/reparo explícito com o mesmo UUID.
+6. **`content_revision` não é versionamento de documento.** Existe somente um contador corrente por ciclo, sem conteúdo associado, consulta de revisão anterior ou coluna correspondente no evento. Fingerprint continua exclusivamente em memória.
+7. **As transições internas exigem privilégio estreito.** Trigger functions ficam em `private`; RPCs de boleto/finalização chamadas pelo app ficam em `public`. `SECURITY DEFINER` existe apenas onde grants diretos de revision/pending/`sent_at` romperiam a ACL. Todas fixam `search_path`, qualificam relações e restringem `EXECUTE`; as RPCs ainda validam `auth.uid()`, membership, capability, tenant e recurso.
 
 Esses pontos não mudam as decisões funcionais aprovadas e devem ser avaliados na revisão desta spec antes do plano do Lote A.

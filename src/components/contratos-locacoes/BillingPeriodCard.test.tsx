@@ -1,7 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BillingPeriodCard } from './BillingPeriodCard';
-import type { BillingCycle, ContractDocument } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, BillingDeliveryEvent, ContractDocument } from '@/lib/contratos-locacoes/types';
 
 afterEach(cleanup);
 
@@ -82,7 +82,34 @@ describe('BillingPeriodCard', () => {
     rerender(<BillingPeriodCard {...props} canManageBilling />);
     expect(screen.getByText(/enviado em/i)).toBeInTheDocument();
   });
+
+  it('blocks sending without a boleto and offers send when it is ready', () => {
+    const onSendBilling = vi.fn();
+    const props = { billing: makeBilling(), canManageBilling: true, onAttachBoleto: vi.fn(), onAttachProof: vi.fn(), onEdit: vi.fn(), onOpenBoleto: vi.fn(), onOpenProof: vi.fn(), onRegisterPayment: vi.fn(), onRepairPendingBoleto: vi.fn(), onReplaceBoleto: vi.fn(), onSendBilling, payments: [], proofDocuments: [], deliveryEvents: [] };
+    const { rerender } = render(<BillingPeriodCard {...props} boletoDocument={null} />);
+    expect(screen.getByRole('button', { name: /anexe o boleto antes de enviar/i })).toBeDisabled();
+
+    rerender(<BillingPeriodCard {...props} boletoDocument={makeBoleto()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^enviar cobrança$/i }));
+    expect(onSendBilling).toHaveBeenCalledWith(props.billing);
+  });
+
+  it('shows the last recipients and deliberate resend for a current delivery', () => {
+    const event = makeDeliveryEvent();
+    render(<BillingPeriodCard billing={makeBilling({ sent_at: event.sent_at })} boletoDocument={makeBoleto()} canManageBilling deliveryEvents={[event]} onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} onSendBilling={vi.fn()} payments={[]} proofDocuments={[]} />);
+    expect(screen.getAllByText(/financeiro@cliente.com/)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: /reenviar cobrança/i })).toBeInTheDocument();
+  });
 });
+
+function makeDeliveryEvent(): BillingDeliveryEvent {
+  return {
+    id: 'event-1', organization_id: 'org-1', billing_cycle_id: 'billing-1',
+    sent_at: '2026-08-10T12:00:00.000Z', recipients: ['financeiro@cliente.com'],
+    provider_message_id: 'provider-1', send_request_id: '11111111-1111-4111-8111-111111111111',
+    additional_message: null, created_by: 'user-1', created_at: '2026-08-10T12:00:01.000Z',
+  };
+}
 
 function makeBoleto(): ContractDocument {
   return {

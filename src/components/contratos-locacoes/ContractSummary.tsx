@@ -1,7 +1,7 @@
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
-import type { BillingCycle, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
+import type { BillingCycle, BillingSendResult, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
 import { useState, type ReactNode } from 'react';
 import { ContractBillingSection } from './ContractBillingSection';
 import type { BillingPaymentFormValues } from './BillingPaymentForm';
@@ -12,6 +12,7 @@ type ContractSummaryProps = {
   openNewBillingForm?: boolean;
   onAttachPaymentProof?: (billing: BillingCycle, payment: Payment, file: File) => Promise<void>;
   onAttachBoleto?: (billing: BillingCycle, file: File) => Promise<void>;
+  onBillingSent?: (result: BillingSendResult) => Promise<void>;
   onCreateBillingPeriod?: (values: BillingPeriodFormValues & { sequence_number: number }) => Promise<void>;
   onOpenBoleto?: (document: ContractDocument) => Promise<void>;
   onOpenPaymentProof?: (document: ContractDocument) => Promise<void>;
@@ -83,6 +84,7 @@ export function ContractSummary({
   detail,
   onAttachBoleto,
   onAttachPaymentProof,
+  onBillingSent,
   onCloseContract,
   onCreateBillingPeriod,
   onOpenBoleto,
@@ -259,6 +261,7 @@ export function ContractSummary({
             onCreateBillingPeriod={onCreateBillingPeriod}
             onOpenBoleto={onOpenBoleto}
             onOpenPaymentProof={onOpenPaymentProof}
+            onBillingSent={onBillingSent}
             onRecordBillingPayment={onRecordBillingPayment}
             onRepairPendingBoleto={onRepairPendingBoleto}
             onReplaceBoleto={onReplaceBoleto}

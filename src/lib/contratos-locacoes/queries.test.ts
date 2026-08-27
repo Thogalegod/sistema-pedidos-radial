@@ -6,7 +6,7 @@ import {
   listContracts,
   type ContractsLocacoesReadClient,
 } from './queries';
-import type { BillingCycle, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalItem } from './types';
+import type { BillingCycle, BillingDeliveryEvent, Contract, ContractDocument, Customer, CustomerContact, CustomerSite, OrganizationMember, Payment, RentalItem } from './types';
 
 function makeBillingCycle(overrides: Partial<BillingCycle> = {}): BillingCycle {
   return {
@@ -538,6 +538,27 @@ describe('contracts rental queries', () => {
     }
   });
 
+  it('orders billing lines totally by created_at and id before building invoices', async () => {
+    const orderCalls: Array<[string, { ascending: boolean }]> = [];
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      in: vi.fn(() => query),
+      order: vi.fn((column: string, options: { ascending: boolean }) => {
+        orderCalls.push([column, options]);
+        return column === 'id' ? Promise.resolve({ data: [], error: null }) : query;
+      }),
+    };
+    const client = createSupabaseContractsLocacoesReadClient({ from: vi.fn(() => query) } as never);
+
+    await client.listBillingLinesByBillingCycleIds?.('org-1', ['billing-1']);
+
+    expect(orderCalls).toEqual([
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+    ]);
+  });
+
   it('removes restricted billing state from a common member contract detail', async () => {
     class MemberDetailReadClient extends FakeReadClient {
       async getCurrentOrganizationMembership(): Promise<OrganizationMember> {
@@ -565,6 +586,7 @@ describe('contracts rental queries', () => {
       expect(billing).not.toHaveProperty(restricted);
     }
     expect(detail.boletoDocuments).toEqual([]);
+    expect(detail.billingDeliveryEvents).toEqual([]);
   });
 
   it('loads restricted billing state separately for an authorized contract detail', async () => {
@@ -579,13 +601,24 @@ describe('contracts rental queries', () => {
       boleto_change_operation_id: 'operation-1',
       boleto_change_started_at: '2026-08-10T18:00:00.000Z',
     }]);
+    const listBillingDeliveryEvents = vi.fn<
+      NonNullable<ContractsLocacoesReadClient['listBillingDeliveryEvents']>
+    >(async () => [{
+      id: 'event-1', organization_id: 'org-1', billing_cycle_id: 'billing-1',
+      sent_at: '2026-08-10T17:30:00.000Z', recipients: ['financeiro@cliente.com'],
+      provider_message_id: 'provider-1', send_request_id: '11111111-1111-4111-8111-111111111111',
+      additional_message: null, created_by: 'user-1', created_at: '2026-08-10T17:30:01.000Z',
+    } satisfies BillingDeliveryEvent]);
     const client: ContractsLocacoesReadClient = Object.assign(new FakeReadClient(), {
       listBillingDetailIndicatorsByContractId,
+      listBillingDeliveryEvents,
     });
 
     const detail = await getContract(client, 'contract-1');
 
     expect(listBillingDetailIndicatorsByContractId).toHaveBeenCalledWith('org-1', 'contract-1');
+    expect(listBillingDeliveryEvents).toHaveBeenCalledWith('org-1', ['billing-1']);
+    expect(detail.billingDeliveryEvents.map((event) => event.id)).toEqual(['event-1']);
     expect(detail.billingCycles[0]).toMatchObject({
       sent_at: '2026-08-10T17:30:00.000Z',
       needs_resend: true,
