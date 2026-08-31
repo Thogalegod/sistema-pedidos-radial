@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { buildBillingListReference, buildRentalListReference } from './contract-reference';
 
 describe('buildRentalListReference', () => {
-  it('shows the raw order as the rental title and keeps the internal number secondary', () => {
+  it('shows only the order number for rentals with a legacy order', () => {
     expect(buildRentalListReference({
       legacyOrderNumber: '20260807',
       internalNumber: '8',
     })).toEqual({
       primary: '20260807',
-      secondary: 'Locação interna #8',
+      secondary: null,
     });
   });
 

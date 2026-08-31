@@ -1,5 +1,6 @@
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
+import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
 import type { BillingCycle, BillingSendResult, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
 import { useState, type ReactNode } from 'react';
@@ -101,6 +102,12 @@ export function ContractSummary({
   remittanceEditorSlot,
 }: ContractSummaryProps) {
   const monthlyTotal = calculateMonthlyTotal(detail.items);
+  const reference = detail.contract.kind === 'rental'
+    ? buildRentalListReference({
+        legacyOrderNumber: detail.contract.legacy_order_number,
+        internalNumber: detail.contract.internal_number,
+      })
+    : null;
   const hasNotes = Boolean(detail.contract.notes?.trim());
   const [closureEndDate, setClosureEndDate] = useState(detail.contract.end_date ?? '');
   const [returnDates, setReturnDates] = useState<Record<string, string>>({});
@@ -113,7 +120,14 @@ export function ContractSummary({
     <div className="space-y-4">
       <Section title="Dados da locação">
         <dl className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="Nº do Pedido" value={detail.contract.legacy_order_number ?? 'Não informado'} />
+          <Field
+            label="Nº do Pedido"
+            value={
+              reference
+                ? reference.primary
+                : detail.contract.legacy_order_number ?? 'Não informado'
+            }
+          />
           <Field label="Cliente" value={detail.customer?.legal_name ?? 'Cliente indisponível'} />
           <Field label="Obra/local" value={detail.site?.name ?? 'Local indisponível'} />
           <Field label="Empresa" value={getContractCompanyLabel(detail.contract.contract_company)} />

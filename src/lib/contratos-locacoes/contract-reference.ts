@@ -20,7 +20,7 @@ export function buildRentalListReference({
   if (legacyOrderNumber) {
     return {
       primary: legacyOrderNumber,
-      secondary: `Locação interna #${internalNumber}`,
+      secondary: null,
     };
   }
 

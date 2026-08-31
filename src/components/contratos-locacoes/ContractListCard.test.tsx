@@ -6,7 +6,7 @@ import { ContractListCard } from './ContractListCard';
 afterEach(cleanup);
 
 describe('ContractListCard', () => {
-  it('prioritizes customer, raw order and site without exposing the internal number', () => {
+  it('prioritizes the order as the main reference and hides the internal rental number', () => {
     render(<ContractListCard contract={makeContract()} />);
 
     const card = screen.getByRole('article');
@@ -16,20 +16,20 @@ describe('ContractListCard', () => {
     expect(within(card).getByText('Obra QA')).toBeInTheDocument();
     expect(within(card).queryByText('Locação')).not.toBeInTheDocument();
     expect(within(card).queryByText('Ativa')).not.toBeInTheDocument();
-    expect(within(card).queryByText(/Locação interna|#26/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/Locação interna/i)).not.toBeInTheDocument();
     expect(within(card).getByRole('link', { name: /abrir locação/i })).toHaveAttribute(
       'href',
       '/contratos-locacoes/contratos/contract-1'
     );
   });
 
-  it('does not resurrect the internal number when a historical rental has no order', () => {
+  it('falls back to the internal rental reference when a historical rental has no order', () => {
     render(<ContractListCard contract={makeContract({ legacy_order_number: null, internal_number: '27' })} />);
 
     const card = screen.getByRole('article');
     expect(within(card).getByRole('heading', { level: 2, name: 'Cliente QA' })).toBeInTheDocument();
     expect(within(card).getByText('Obra QA')).toBeInTheDocument();
-    expect(within(card).queryByText(/Locação interna|Locação #27|#27/i)).not.toBeInTheDocument();
+    expect(within(card).getByText('Locação #27')).toBeInTheDocument();
   });
 
   it('shows current monthly amount and requests a new period based on period_end, not due_date', () => {

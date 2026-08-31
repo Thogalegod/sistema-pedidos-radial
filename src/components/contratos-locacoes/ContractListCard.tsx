@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ContractListItem } from '@/lib/contratos-locacoes/queries';
 import { getContractKindLabel, getContractStatusLabel } from '@/lib/contratos-locacoes/contract-presentation';
+import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 
 interface ContractListCardProps {
@@ -15,6 +16,12 @@ function formatDateLabel(value: string) {
 export function ContractListCard({ contract }: ContractListCardProps) {
   const isRental = contract.kind === 'rental';
   const isNormalActiveRental = isRental && contract.status === 'active';
+  const reference = isRental
+    ? buildRentalListReference({
+        legacyOrderNumber: contract.legacy_order_number,
+        internalNumber: contract.internal_number,
+      })
+    : null;
   const needsBillingPeriod = contract.billing_coverage_status === 'first_period_required'
     || contract.billing_coverage_status === 'new_period_required';
 
@@ -40,7 +47,9 @@ export function ContractListCard({ contract }: ContractListCardProps) {
                 </span>
               ) : null}
             </div>
-            {contract.legacy_order_number ? (
+            {reference ? (
+              <p className="mt-1 text-sm font-semibold text-gray-700">{reference.primary}</p>
+            ) : contract.legacy_order_number ? (
               <p className="mt-1 text-sm font-semibold text-gray-700">{contract.legacy_order_number}</p>
             ) : null}
             <p className="text-sm text-gray-500">{contract.site_name}</p>

@@ -142,9 +142,9 @@ describe('ContractSummary', () => {
     const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
     expect(within(rentalData).getByText('Nº do Pedido')).toBeInTheDocument();
     expect(within(rentalData).getByText('OS-1')).toBeInTheDocument();
+    expect(within(rentalData).queryByText(/Locação interna/i)).not.toBeInTheDocument();
     expect(within(rentalData).queryByText(/Referência principal/i)).not.toBeInTheDocument();
     expect(within(rentalData).queryByText(/Referência técnica/i)).not.toBeInTheDocument();
-    expect(within(rentalData).queryByText(/Locação interna|#123/i)).not.toBeInTheDocument();
     expect(within(rentalData).getByText('Radial Energia')).toBeInTheDocument();
     expect(within(rentalData).getByText('Matriz')).toBeInTheDocument();
     expect(within(rentalData).getAllByText('Radial')).toHaveLength(1);
@@ -159,6 +159,18 @@ describe('ContractSummary', () => {
     expect(screen.queryByText(/recorrência/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/modelo de preço/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Fim$/i)).not.toBeInTheDocument();
+  });
+
+  it('uses the internal rental reference when there is no order number', () => {
+    const detail = buildDetail({
+      contract: { ...buildDetail().contract, legacy_order_number: null },
+    });
+
+    render(<ContractSummary detail={detail} />);
+
+    const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
+    expect(within(rentalData).getByText('Locação #123')).toBeInTheDocument();
+    expect(within(rentalData).queryByText(/Locação interna/i)).not.toBeInTheDocument();
   });
 
   it('shows item quantity, unit amount and subtotal without old technical fields', () => {
