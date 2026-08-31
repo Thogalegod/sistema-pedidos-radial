@@ -2,9 +2,18 @@
 
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import { FileCheck, Search, X, Eye } from 'lucide-react';
+import { Ban, FileCheck, Search, X, Eye, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Toaster, toast } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
+import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
+import { cancelarRelatorioCabine, deletarRelatorioCabine } from './actions';
+import {
+  cancelCabineReportFromUi,
+  deleteCabineReportFromUi,
+  getCancelCabineReportConfirmation,
+  getDeleteCabineReportConfirmation,
+} from '@/lib/cabine/report-actions';
 
 type CabineRelatorioRow = {
   id: string;
@@ -15,20 +24,41 @@ type CabineRelatorioRow = {
   criado_em: string;
 };
 
+type CabineConfirmation = {
+  action: 'cancel' | 'delete';
+  report: CabineRelatorioRow;
+};
+
 export default function CabineListPage() {
   const [relatorios, setRelatorios] = useState<CabineRelatorioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'cancelados' | 'todos'>('ativos');
   const [busca, setBusca] = useState('');
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<CabineConfirmation | null>(null);
 
   useEffect(() => {
-    supabase.from('relatorios_cabine')
-      .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em')
-      .order('criado_em', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) setRelatorios(data);
-        setLoading(false);
-      });
+    let active = true;
+
+    async function loadReports() {
+      try {
+        const organizationId = await getCurrentOrganizationId(supabase);
+        const { data, error } = await supabase
+          .from('relatorios_cabine')
+          .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em')
+          .eq('organization_id', organizationId)
+          .order('criado_em', { ascending: false });
+
+        if (active && !error && data) setRelatorios(data);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadReports();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filtrados = relatorios
@@ -50,8 +80,126 @@ export default function CabineListPage() {
   const canceladosCount = relatorios.filter(r => r.status === 'cancelado').length;
   const todosCount = relatorios.length;
 
+  async function getSessionTokens() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return {
+      accessToken: session?.access_token,
+      refreshToken: session?.refresh_token,
+    };
+  }
+
+  async function handleCancel(relatorio: CabineRelatorioRow) {
+    const actionKey = `cancel:${relatorio.id}`;
+    setPendingAction(actionKey);
+    try {
+      await cancelCabineReportFromUi({
+        id: relatorio.id,
+        number: relatorio.numero_relatorio,
+        confirmAction: () => true,
+        cancelReport: async () => {
+          const tokens = await getSessionTokens();
+          await cancelarRelatorioCabine(
+            relatorio.id,
+            tokens.accessToken,
+            tokens.refreshToken
+          );
+        },
+        onCanceled: () =>
+          setRelatorios(current =>
+            current.map(item =>
+              item.id === relatorio.id ? { ...item, status: 'cancelado' } : item
+            )
+          ),
+        showSuccess: toast.success,
+        showError: toast.error,
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDelete(relatorio: CabineRelatorioRow) {
+    const actionKey = `delete:${relatorio.id}`;
+    setPendingAction(actionKey);
+    try {
+      await deleteCabineReportFromUi({
+        id: relatorio.id,
+        number: relatorio.numero_relatorio,
+        confirmAction: () => true,
+        deleteReport: async () => {
+          const tokens = await getSessionTokens();
+          return deletarRelatorioCabine(
+            relatorio.id,
+            tokens.accessToken,
+            tokens.refreshToken
+          );
+        },
+        onDeleted: () =>
+          setRelatorios(current => current.filter(item => item.id !== relatorio.id)),
+        showSuccess: toast.success,
+        showError: (message) => toast.error(message, { duration: 12000 }),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
+      <Toaster position="top-right" />
+      {confirmation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cabine-confirmation-title"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h2 id="cabine-confirmation-title" className="text-lg font-bold text-gray-900">
+              {confirmation.action === 'cancel'
+                ? 'Confirmar cancelamento'
+                : 'Confirmar exclusão'}
+            </h2>
+            <p className="mt-3 text-sm text-gray-600">
+              {confirmation.action === 'cancel'
+                ? getCancelCabineReportConfirmation(confirmation.report.numero_relatorio)
+                : getDeleteCabineReportConfirmation(confirmation.report.numero_relatorio)}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmation(null)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const selected = confirmation;
+                  setConfirmation(null);
+                  if (selected.action === 'cancel') {
+                    void handleCancel(selected.report);
+                  } else {
+                    void handleDelete(selected.report);
+                  }
+                }}
+                className={`rounded-md px-4 py-2 text-sm font-medium text-white ${
+                  confirmation.action === 'cancel'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {confirmation.action === 'cancel'
+                  ? 'Confirmar cancelamento'
+                  : 'Confirmar exclusão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -177,10 +325,34 @@ export default function CabineListPage() {
                         {rel.status.toUpperCase()}
                       </span>
                     </td>
-                    <td className="p-4 whitespace-nowrap text-center">
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
                       <Link href={`/cabine/${rel.id}`} className="inline-block p-1 text-gray-400 hover:text-blue-600 transition-colors" title="Visualizar">
                         <Eye size={20} />
                       </Link>
+                      {rel.status !== 'cancelado' && (
+                        <button
+                          type="button"
+                          aria-label={`Cancelar relatório ${rel.numero_relatorio}`}
+                          title="Cancelar relatório"
+                          disabled={pendingAction !== null}
+                          onClick={() => setConfirmation({ action: 'cancel', report: rel })}
+                          className="p-1 text-gray-400 hover:text-amber-600 transition-colors disabled:opacity-40"
+                        >
+                          <Ban size={20} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`Excluir relatório ${rel.numero_relatorio}`}
+                        title="Excluir relatório"
+                        disabled={pendingAction !== null}
+                        onClick={() => setConfirmation({ action: 'delete', report: rel })}
+                        className="p-1 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                      </div>
                     </td>
                   </tr>
                 ))
