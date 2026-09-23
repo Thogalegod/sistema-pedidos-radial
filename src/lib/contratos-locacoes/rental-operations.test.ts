@@ -6,6 +6,7 @@ import {
   normalizeRentalQuickFilter,
   selectOperationalBilling,
 } from './rental-operations';
+import type { ContractStatus } from './types';
 
 const active = {
   id: 'active', kind: 'rental', status: 'active', billing_coverage_status: 'new_period_required',
@@ -18,6 +19,13 @@ const overdue = {
 const today = {
   id: 'today', contract_id: 'active', status: 'issued', alert: 'due_today', balance_amount: '100000', due_date: '2026-09-23',
 } as BillingListItem;
+
+const withStatus = (status: ContractStatus) => ({
+  ...active,
+  id: status,
+  status,
+  billing_coverage_status: null,
+}) as ContractListItem;
 
 describe('rental operational presentation', () => {
   it('uses rental coverage for periods to issue, not draft billing cycles', () => {
@@ -37,6 +45,40 @@ describe('rental operational presentation', () => {
   it('filters real contract statuses and discards unsupported URL values', () => {
     expect(filterContractsByQuickFilter([active, paused, returning], [], 'paused')).toEqual([paused]);
     expect(filterContractsByQuickFilter([active, paused, returning], [], 'awaiting_return')).toEqual([returning]);
-    expect(normalizeRentalQuickFilter('unexpected')).toBe('all');
+    expect(normalizeRentalQuickFilter('unexpected')).toBe('active');
+  });
+
+  it('defaults to operationally active rentals and excludes drafts and final states', () => {
+    const contracts = [
+      withStatus('draft'),
+      withStatus('active'),
+      withStatus('paused'),
+      withStatus('closing_requested'),
+      withStatus('awaiting_return'),
+      withStatus('inspection'),
+      withStatus('closed'),
+      withStatus('cancelled'),
+    ];
+
+    expect(normalizeRentalQuickFilter(null)).toBe('active');
+    expect(filterContractsByQuickFilter(contracts, [], 'active').map((contract) => contract.status)).toEqual([
+      'active',
+      'paused',
+      'closing_requested',
+      'awaiting_return',
+      'inspection',
+    ]);
+  });
+
+  it('keeps completed and all views semantically distinct', () => {
+    const contracts = [withStatus('active'), withStatus('closed'), withStatus('cancelled'), withStatus('draft')];
+
+    expect(filterContractsByQuickFilter(contracts, [], 'completed').map((contract) => contract.status)).toEqual(['closed']);
+    expect(filterContractsByQuickFilter(contracts, [], 'all').map((contract) => contract.status)).toEqual([
+      'active',
+      'closed',
+      'cancelled',
+      'draft',
+    ]);
   });
 });

@@ -59,10 +59,10 @@ beforeEach(() => {
 });
 
 describe('ContratosPage', () => {
-  it('loads customer options and lists every customer contract by default', async () => {
+  it('loads customer options and shows only operationally active rentals by default', async () => {
     mocks.listContracts.mockResolvedValue([
-      { id: 'contract-1', customer_name: 'Alpha Engenharia' },
-      { id: 'contract-2', customer_name: 'Beta Construções' },
+      { id: 'contract-1', customer_name: 'Alpha Engenharia', kind: 'rental', status: 'active' },
+      { id: 'contract-2', customer_name: 'Beta Construções', kind: 'rental', status: 'closed' },
     ]);
 
     render(<ContratosPage />);
@@ -83,7 +83,35 @@ describe('ContratosPage', () => {
       );
     });
     expect(await screen.findByTestId('contract-card-contract-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('contract-card-contract-2')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ativas' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Todas' })).toHaveAttribute('href', '/contratos-locacoes/contratos?quick=all');
+    expect(screen.getByRole('link', { name: 'Concluídas' })).toHaveAttribute('href', '/contratos-locacoes/contratos?quick=completed');
+  });
+
+  it('restores completed and all views from the explicit URL filter', async () => {
+    mocks.listContracts.mockResolvedValue([
+      { id: 'contract-1', customer_name: 'Alpha Engenharia', kind: 'rental', status: 'active' },
+      { id: 'contract-2', customer_name: 'Beta Construções', kind: 'rental', status: 'closed' },
+      { id: 'contract-3', customer_name: 'Gamma Engenharia', kind: 'rental', status: 'cancelled' },
+    ]);
+    navigation.params = new URLSearchParams('quick=completed');
+
+    const { unmount } = render(<ContratosPage />);
+
+    expect(await screen.findByTestId('contract-card-contract-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('contract-card-contract-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('contract-card-contract-3')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Concluídas' })).toHaveAttribute('aria-current', 'page');
+
+    unmount();
+    navigation.params = new URLSearchParams('quick=all');
+    render(<ContratosPage />);
+
+    expect(await screen.findByTestId('contract-card-contract-1')).toBeInTheDocument();
     expect(screen.getByTestId('contract-card-contract-2')).toBeInTheDocument();
+    expect(screen.getByTestId('contract-card-contract-3')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Todas' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('refetches contracts with the selected customer id', async () => {
@@ -157,7 +185,7 @@ describe('ContratosPage', () => {
   it('keeps rendering contracts when loading customer options fails', async () => {
     mocks.listCustomers.mockRejectedValue(new Error('Falha ao carregar clientes'));
     mocks.listContracts.mockResolvedValue([
-      { id: 'contract-1', customer_name: 'Alpha Engenharia' },
+      { id: 'contract-1', customer_name: 'Alpha Engenharia', kind: 'rental', status: 'active' },
     ]);
 
     render(<ContratosPage />);

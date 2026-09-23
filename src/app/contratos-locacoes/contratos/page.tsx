@@ -13,7 +13,9 @@ import { toLocalDateKey } from '@/lib/contratos-locacoes/dates';
 import { filterContractsByQuickFilter, normalizeRentalQuickFilter, selectOperationalBilling, type RentalQuickFilter } from '@/lib/contratos-locacoes/rental-operations';
 
 const quickFilters: Array<{ value: RentalQuickFilter; label: string }> = [
+  { value: 'active', label: 'Ativas' },
   { value: 'all', label: 'Todas' },
+  { value: 'completed', label: 'Concluídas' },
   { value: 'periods_to_issue', label: 'Períodos a emitir' },
   { value: 'overdue', label: 'Vencidas' },
   { value: 'due_today', label: 'Vencem hoje' },
@@ -35,7 +37,7 @@ export default function ContratosPage() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [customerId, setCustomerId] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const hasActiveFilters = search.trim() !== '' || customerId !== '' || kind !== 'all' || status !== 'all' || quickFilter !== 'all';
+  const hasActiveFilters = search.trim() !== '' || customerId !== '' || kind !== 'all' || status !== 'all' || quickFilter !== 'active';
   const visibleContracts = filterContractsByQuickFilter(contracts, billings, quickFilter);
 
   const clearFilters = () => {
@@ -43,7 +45,7 @@ export default function ContratosPage() {
     setCustomerId('');
     setKind('all');
     setStatus('all');
-    if (quickFilter !== 'all') router.push(pathname);
+    if (quickFilter !== 'active') router.push(pathname);
   };
 
   useEffect(() => {
@@ -167,7 +169,7 @@ export default function ContratosPage() {
           <Link
             aria-current={quickFilter === filter.value ? 'page' : undefined}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${quickFilter === filter.value ? 'border-radial-primary bg-emerald-50 text-emerald-900' : 'border-radial-border bg-white text-slate-600 hover:bg-slate-50'}`}
-            href={filter.value === 'all' ? pathname : `${pathname}?quick=${filter.value}`}
+            href={filter.value === 'active' ? pathname : `${pathname}?quick=${filter.value}`}
             key={filter.value}
           >{filter.label}</Link>
         ))}

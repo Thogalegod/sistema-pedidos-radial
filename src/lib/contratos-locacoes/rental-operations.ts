@@ -1,11 +1,19 @@
 import type { BillingListItem, ContractListItem } from './queries';
+import type { ContractStatus } from './types';
 
-export type RentalQuickFilter = 'all' | 'periods_to_issue' | 'overdue' | 'due_today' | 'awaiting_return' | 'paused';
+export type RentalQuickFilter = 'active' | 'all' | 'completed' | 'periods_to_issue' | 'overdue' | 'due_today' | 'awaiting_return' | 'paused';
 
-const quickFilters: RentalQuickFilter[] = ['all', 'periods_to_issue', 'overdue', 'due_today', 'awaiting_return', 'paused'];
+const quickFilters: RentalQuickFilter[] = ['active', 'all', 'completed', 'periods_to_issue', 'overdue', 'due_today', 'awaiting_return', 'paused'];
+const operationalStatuses = new Set<ContractStatus>([
+  'active',
+  'paused',
+  'closing_requested',
+  'awaiting_return',
+  'inspection',
+]);
 
 export function normalizeRentalQuickFilter(value: string | null): RentalQuickFilter {
-  return quickFilters.find((filter) => filter === value) ?? 'all';
+  return quickFilters.find((filter) => filter === value) ?? 'active';
 }
 
 export function isPeriodToIssue(contract: ContractListItem) {
@@ -31,6 +39,8 @@ export function filterContractsByQuickFilter(
 ) {
   if (filter === 'all') return contracts;
   return contracts.filter((contract) => {
+    if (filter === 'active') return operationalStatuses.has(contract.status);
+    if (filter === 'completed') return contract.status === 'closed';
     if (filter === 'periods_to_issue') return isPeriodToIssue(contract);
     if (filter === 'awaiting_return' || filter === 'paused') return contract.status === filter;
     return billings.some((billing) => billing.contract_id === contract.id
