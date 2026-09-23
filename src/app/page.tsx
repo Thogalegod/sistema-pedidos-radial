@@ -1,23 +1,24 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Order, Priority, Task, Atividade, TeamMember } from '../types';
 import { sortOrders } from '../lib/sorting';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
 import { NewOrderDrawer } from '../components/NewOrderDrawer';
-import { memberColor } from '../components/StatusBadge';
-import { LayoutDashboard, CheckSquare, Search, Plus, LogOut, AlertCircle, Clock, CheckCircle2, Flame } from 'lucide-react';
+import { CheckSquare, Search, Plus, AlertCircle, Clock, CheckCircle2, Flame } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
-import Link from 'next/link';
+import { ContentContainer, PageHeader } from '../components/app-shell/PageHeader';
 import { getCurrentOrganizationId } from '../lib/pedidos-tarefas/organization';
 import {
   ATTACHMENT_ORPHAN_WARNING,
   deleteOrderWithAttachments,
 } from '../lib/pedidos-tarefas/attachment-deletion';
+import { resolveOrdersPageIntent } from '../lib/pedidos-tarefas/navigation';
+import { getCurrentTaskDateKey, getTaskDueStatus } from '../lib/pedidos-tarefas/task-due';
 
 export default function Home() {
   const router = useRouter();
@@ -29,13 +30,13 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const handledIntentRef = useRef<string | null>(null);
 
   // User logic
   const [currentUser, setCurrentUser] = useState<TeamMember>('Thomás');
-  const [userInitials, setUserInitials] = useState('TH');
 
-  const today = useMemo(() => new Date('2026-04-29'), []);
-  const todayISO = today.toISOString().split('T')[0];
+  const todayISO = getCurrentTaskDateKey();
+  const today = useMemo(() => new Date(`${todayISO}T12:00:00`), [todayISO]);
 
   useEffect(() => {
     if (session?.user?.email) {
@@ -45,7 +46,6 @@ export default function Home() {
       if (email.includes('katlyn')) name = 'Katlyn';
       
       setCurrentUser(name);
-      setUserInitials(name.substring(0, 2).toUpperCase());
     }
   }, [session]);
 
@@ -156,9 +156,25 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
+  useEffect(() => {
+    if (isLoading || typeof window === 'undefined') return;
+    const search = window.location.search;
+    if (!search || handledIntentRef.current === search) return;
+
+    const intent = resolveOrdersPageIntent(new URLSearchParams(search));
+    handledIntentRef.current = search;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (intent.orderId && orders.some((order) => order.id === intent.orderId)) {
+        setSelectedOrderId(intent.orderId);
+      }
+      if (intent.openNewOrder) {
+        setIsNewOrderOpen(true);
+      }
+    });
+    return () => { active = false; };
+  }, [isLoading, orders]);
 
   const processedOrders = useMemo(() => {
     let filtered = orders;
@@ -189,11 +205,11 @@ export default function Home() {
   const todasTarefas = useMemo(() => orders.flatMap(o => o.tasks.map(t => ({...t, orderId: o.id, orderTitle: o.title, orderNumber: o.orderNumber}))), [orders]);
   
   const tarefasVencidas = useMemo(() => {
-    return todasTarefas.filter(t => !t.completed && t.dueDate && t.dueDate < todayISO);
+    return todasTarefas.filter(t => getTaskDueStatus(t, todayISO) === 'overdue');
   }, [todasTarefas, todayISO]);
 
   const tarefasVencemHoje = useMemo(() => {
-    return todasTarefas.filter(t => !t.completed && t.dueDate === todayISO);
+    return todasTarefas.filter(t => getTaskDueStatus(t, todayISO) === 'today');
   }, [todasTarefas, todayISO]);
 
   const tarefasConcluidasTotal = useMemo(() => todasTarefas.filter(t => t.completed).length, [todasTarefas]);
@@ -747,59 +763,33 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 pb-20">
+    <div className="min-h-screen bg-slate-50 pb-20">
       <Toaster position="bottom-center" />
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <Link href="/hub" className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-inner hover:bg-blue-700 transition" title="Ir para o Hub">
-                <LayoutDashboard className="w-5 h-5 text-white" />
-              </Link>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 leading-tight">Radial</h1>
-                <p className="text-xs text-gray-500 font-medium">Controle de Pedidos</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-               <div className="relative hidden sm:block">
-                 <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                 <input 
-                   type="text" 
-                   value={searchQuery}
-                   onChange={(e) => setSearchQuery(e.target.value)}
-                   placeholder="Buscar pedido..." 
-                   className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-64"
-                 />
-               </div>
-               <button 
-                 onClick={() => setIsNewOrderOpen(true)}
-                 className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
-               >
-                 <Plus className="w-4 h-4" />
-                 Novo Pedido
-               </button>
-               <div className="flex items-center gap-3 border-l border-gray-200 pl-4 ml-2">
-                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${memberColor(currentUser).avatar}`} title={currentUser}>
-                   {userInitials}
-                 </div>
-                 <button 
-                   onClick={handleLogout}
-                   className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                   title="Sair"
-                 >
-                   <LogOut className="w-5 h-5" />
-                 </button>
-               </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+      <main>
+      <ContentContainer>
+        <PageHeader
+          breadcrumbs={[{ label: 'Central', href: '/hub' }, { label: 'Controle de Pedidos' }]}
+          title="Controle de Pedidos"
+          description="Acompanhe tarefas, prazos e andamento dos pedidos."
+          actions={<button
+            type="button"
+            onClick={() => setIsNewOrderOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+          >
+            <Plus className="size-4" />
+            Novo Pedido
+          </button>}
+          secondary={<div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Buscar por ID, cliente ou projeto..."
+              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>}
+        />
         
         {/* Indicators Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -852,7 +842,7 @@ export default function Home() {
             </h3>
             <div className="bg-white border-2 border-red-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-100">
               {atencaoImediata.map((tarefa) => {
-                const isOverdue = tarefa.dueDate && tarefa.dueDate < todayISO;
+                const isOverdue = getTaskDueStatus(tarefa, todayISO) === 'overdue';
                 return (
                   <div 
                     key={tarefa.id} 
@@ -878,29 +868,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* Mobile Search */}
-        <div className="relative sm:hidden mb-6">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input 
-            type="text" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por ID, Cliente ou Projeto..." 
-            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
-          />
-        </div>
-
         <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Lista Inteligente</h2>
-              <button 
-                 onClick={() => setIsNewOrderOpen(true)}
-                 className="sm:hidden flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
-               >
-                 <Plus className="w-4 h-4" />
-                 Novo
-               </button>
             </div>
             <p className="text-gray-500 mt-1">
               Foco no que importa. Pedidos ordenados por urgência e prioridade.
@@ -952,6 +923,7 @@ export default function Home() {
             </div>
           )}
         </div>
+      </ContentContainer>
       </main>
 
       {/* Drawers */}

@@ -148,7 +148,7 @@ describe('ContractSummary', () => {
     expect(within(rentalData).getByText('Radial Energia')).toBeInTheDocument();
     expect(within(rentalData).getByText('Matriz')).toBeInTheDocument();
     expect(within(rentalData).getAllByText('Radial')).toHaveLength(1);
-    expect(within(rentalData).getByText('2026-07-06')).toBeInTheDocument();
+    expect(within(rentalData).getByText('06/07/2026')).toBeInTheDocument();
     expect(within(rentalData).getByText('active')).toBeInTheDocument();
     expect(within(rentalData).getByText('Locação com acesso pela portaria principal.')).toBeInTheDocument();
     expect(within(rentalData).getByText('Radial entrega com caminhão próprio')).toBeInTheDocument();
@@ -209,7 +209,7 @@ describe('ContractSummary', () => {
     expect(within(documents).getByText('NF-1000')).toBeInTheDocument();
     expect(within(documents).getByText('Radial')).toBeInTheDocument();
     expect(within(documents).getByText('R$ 3.500,00')).toBeInTheDocument();
-    expect(within(documents).getByText('2026-07-08')).toBeInTheDocument();
+    expect(within(documents).getByText('08/07/2026')).toBeInTheDocument();
     expect(within(documents).getByRole('button', { name: /abrir\/baixar/i })).toBeInTheDocument();
   });
 
@@ -291,7 +291,7 @@ describe('ContractSummary', () => {
 
     render(<ContractSummary detail={detail} onCloseContract={handleClose} />);
 
-    expect(screen.getByText(/devolvido em 2026-08-21/i)).toBeInTheDocument();
+    expect(screen.getByText(/devolvido em 21\/08\/2026/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /finalizar locacao/i }));
     expect(handleClose).toHaveBeenCalledOnce();
   });

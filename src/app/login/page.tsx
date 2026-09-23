@@ -11,6 +11,29 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const handleRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      });
+      if (error) {
+        setError('Não foi possível enviar o link. Aguarde alguns minutos e tente novamente.');
+      } else {
+        setNotice('Se houver uma conta com esse e-mail, você receberá um link para redefinir sua senha. Confira também o spam.');
+      }
+    } catch {
+      setError('Não foi possível conectar. Verifique sua conexão e tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +49,7 @@ export default function Login() {
       setError('Credenciais inválidas. Verifique seu e-mail e senha.');
       setIsLoading(false);
     } else {
-      router.push('/');
+      router.push('/hub');
     }
   };
 
@@ -45,19 +68,23 @@ export default function Login() {
             <p className="text-sm text-gray-400 font-medium">Controle de Pedidos</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {recovery && <h2 className="text-lg font-semibold text-white mb-4">Recuperar senha</h2>}
+          <form onSubmit={recovery ? handleRecovery : handleLogin} className="space-y-4">
+            {notice && <p role="status" className="text-sm text-green-300">{notice}</p>}
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 text-center font-medium">
+              <div role="alert" className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 text-center font-medium">
                 {error}
               </div>
             )}
             
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">E-mail</label>
+              <label htmlFor="email" className="text-xs font-semibold text-gray-400 uppercase tracking-wide">E-mail</label>
               <div className="relative">
                 <Mail className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input 
                   type="email" 
+                  id="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Seu e-mail de acesso"
@@ -67,12 +94,14 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Senha</label>
+            {!recovery && <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Senha</label>
               <div className="relative">
                 <Lock className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input 
                   type="password" 
+                  id="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Sua senha"
@@ -80,7 +109,7 @@ export default function Login() {
                   required
                 />
               </div>
-            </div>
+            </div>}
 
             <button 
               type="submit" 
@@ -90,10 +119,14 @@ export default function Login() {
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                'Entrar no Sistema'
+                recovery ? 'Enviar link de recuperação' : 'Entrar no Sistema'
               )}
             </button>
           </form>
+          <button type="button" disabled={isLoading} className="mt-5 text-sm text-blue-300 hover:underline disabled:opacity-50"
+            onClick={() => { setRecovery(!recovery); setError(null); setNotice(null); setPassword(''); }}>
+            {recovery ? 'Voltar ao login' : 'Esqueci minha senha'}
+          </button>
           
         </div>
         

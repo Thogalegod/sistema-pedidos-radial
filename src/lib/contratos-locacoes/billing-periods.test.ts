@@ -109,6 +109,18 @@ describe('monthly billing period helpers', () => {
       existingBillingCycles: [],
       issueDate: '2028-01-31',
     })).period_end).toBe('2028-02-28');
+
+    expect(requireBillingPeriod(buildNextMonthlyBillingPeriod({
+      contractStartDate: '2026-03-31',
+      existingBillingCycles: [],
+      issueDate: '2026-03-31',
+    })).period_end).toBe('2026-04-29');
+
+    expect(requireBillingPeriod(buildNextMonthlyBillingPeriod({
+      contractStartDate: '2026-07-31',
+      existingBillingCycles: [],
+      issueDate: '2026-07-31',
+    })).period_end).toBe('2026-08-30');
   });
 
   it('detects duplicate and overlapping periods for creation and editing', () => {

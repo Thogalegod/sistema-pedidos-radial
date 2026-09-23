@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   alertLevel,
   buildBillingMonthHref,
+  formatDateLabel,
   formatBillingMonthLabel,
   isDateInBillingMonth,
   nextPeriod,
@@ -11,6 +12,17 @@ import {
 } from './dates';
 
 describe('dates utility', () => {
+  describe('formatDateLabel', () => {
+    it('formats date-only values for Brazilian display without timezone conversion', () => {
+      expect(formatDateLabel('2026-09-06')).toBe('06/09/2026');
+      expect(formatDateLabel('2026-08-07')).toBe('07/08/2026');
+    });
+
+    it('keeps unexpected values readable instead of rendering Invalid Date', () => {
+      expect(formatDateLabel('not-a-date')).toBe('not-a-date');
+    });
+  });
+
   describe('nextPeriod', () => {
     it('calculates 30 days cycle correctly including start, end and due date', () => {
       expect(nextPeriod('2026-01-21', 30)).toEqual({

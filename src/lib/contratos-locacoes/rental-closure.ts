@@ -1,10 +1,12 @@
 import type { Contract, RentalItem } from './types';
 
-export function getPendingPhysicalReturnItems(items: RentalItem[]) {
+type PhysicalReturnItem = Pick<RentalItem, 'asset_id' | 'returned_at'>;
+
+export function getPendingPhysicalReturnItems<T extends PhysicalReturnItem>(items: T[]) {
   return items.filter((item) => item.asset_id && !item.returned_at);
 }
 
-export function hasPendingPhysicalReturns(items: RentalItem[]) {
+export function hasPendingPhysicalReturns<T extends PhysicalReturnItem>(items: T[]) {
   return getPendingPhysicalReturnItems(items).length > 0;
 }
 

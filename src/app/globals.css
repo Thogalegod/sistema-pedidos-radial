@@ -19,3 +19,17 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Keep the mobile menu above module toolbars without stacking sticky bars. */
+@media (width < 1024px) {
+  .radial-shell-content > div > header.sticky.top-0 {
+    position: relative;
+    top: auto;
+    z-index: auto;
+  }
+}
+
+@media print {
+  .radial-shell-body { padding-left: 0 !important; }
+  .radial-shell { background: white; }
+}

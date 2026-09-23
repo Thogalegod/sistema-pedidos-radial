@@ -16,7 +16,7 @@ describe('ModulePageContext', () => {
 
     expect(screen.getByRole('link', { name: 'Cobranças' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('heading', { name: 'Cobranças', level: 1 })).toBeInTheDocument();
-    expect(screen.getByLabelText('Navegação estrutural')).toHaveTextContent('Contratos e LocaçõesCobranças');
+    expect(screen.getByLabelText('Breadcrumb')).toHaveTextContent('CentralControle de LocaçõesCobranças');
     expect(screen.getByText('Acompanhe documentos emitidos, vencimentos, recebimentos e saldos.')).toBeInTheDocument();
     expect(screen.queryByText('Cadastro central, locações, cobranças e visão resumida para operação móvel.')).not.toBeInTheDocument();
   });

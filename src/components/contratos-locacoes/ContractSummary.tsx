@@ -1,6 +1,7 @@
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
 import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
+import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
 import type { BillingCycle, BillingSendResult, ContractDocument, Payment, RentalItem } from '@/lib/contratos-locacoes/types';
 import { useState, type ReactNode } from 'react';
@@ -131,7 +132,7 @@ export function ContractSummary({
           <Field label="Cliente" value={detail.customer?.legal_name ?? 'Cliente indisponível'} />
           <Field label="Obra/local" value={detail.site?.name ?? 'Local indisponível'} />
           <Field label="Empresa" value={getContractCompanyLabel(detail.contract.contract_company)} />
-          <Field label="Início" value={detail.contract.start_date} />
+          <Field label="Início" value={formatDateLabel(detail.contract.start_date)} />
           <Field label="Status atual" value={detail.contract.status} />
           <Field label="Valor mensal total" value={formatBRL(monthlyTotal)} />
         </dl>
@@ -170,7 +171,7 @@ export function ContractSummary({
                   {item.equipment_type ? <p className="text-xs text-gray-500">{item.equipment_type}</p> : null}
                   {item.asset_id ? (
                     item.returned_at ? (
-                      <p className="mt-1 text-xs font-semibold text-emerald-700">Devolvido em {item.returned_at}</p>
+                      <p className="mt-1 text-xs font-semibold text-emerald-700">Devolvido em {formatDateLabel(item.returned_at)}</p>
                     ) : (
                       <p className="mt-1 text-xs font-semibold text-amber-700">Aguardando devolucao</p>
                     )
@@ -304,7 +305,12 @@ export function ContractSummary({
                 value={detail.contract.remittance_invoice_issuer ?? getContractCompanyLabel(detail.contract.contract_company)}
               />
               <Field label="Valor da NF" value={formatBRL(detail.contract.remittance_invoice_amount)} />
-              <Field label="Data de emissão da NF" value={detail.contract.remittance_invoice_issue_date ?? 'Não informada'} />
+              <Field
+                label="Data de emissão da NF"
+                value={detail.contract.remittance_invoice_issue_date
+                  ? formatDateLabel(detail.contract.remittance_invoice_issue_date)
+                  : 'Não informada'}
+              />
             </dl>
             {remittanceAttachmentSlot}
           </div>

@@ -111,7 +111,7 @@ export function buildMonthlyPeriodEnd(periodStart: string) {
 export function buildNextMonthlyBillingPeriod(params: {
   contractStartDate: string;
   contractEndDate?: string | null;
-  existingBillingCycles: BillingCycle[];
+  existingBillingCycles: Array<Pick<BillingCycle, 'sequence_number' | 'period_end'>>;
   issueDate: string;
 }): BillingPeriodDraft | null {
   const sorted = [...params.existingBillingCycles].sort((left, right) => {
@@ -194,10 +194,12 @@ export function suggestBillingAmountFromItems(items: RentalItem[]) {
   return String(total);
 }
 
-export function selectLatestBillingCoveragePeriod(billingCycles: BillingCycle[]) {
+export function selectLatestBillingCoveragePeriod<
+  T extends Pick<BillingCycle, 'status' | 'period_end'>
+>(billingCycles: T[]) {
   return billingCycles
     .filter((billing) => billing.status !== 'draft' && billing.status !== 'cancelled')
-    .reduce<BillingCycle | null>((latest, billing) => (
+    .reduce<T | null>((latest, billing) => (
       !latest || billing.period_end > latest.period_end ? billing : latest
     ), null);
 }

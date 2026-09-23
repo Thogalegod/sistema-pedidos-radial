@@ -2,15 +2,11 @@ import Link from 'next/link';
 import type { ContractListItem } from '@/lib/contratos-locacoes/queries';
 import { getContractKindLabel, getContractStatusLabel } from '@/lib/contratos-locacoes/contract-presentation';
 import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
+import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 
 interface ContractListCardProps {
   contract: ContractListItem;
-}
-
-function formatDateLabel(value: string) {
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
 }
 
 export function ContractListCard({ contract }: ContractListCardProps) {
@@ -79,7 +75,7 @@ export function ContractListCard({ contract }: ContractListCardProps) {
             </div>
           ) : (
             <div className="grid gap-1 text-sm text-gray-500 md:text-right">
-              <span>Início: {contract.start_date}</span>
+              <span>Início: {formatDateLabel(contract.start_date)}</span>
               <span>Recorrência: {contract.recurrence_days} dias</span>
               <span>Itens: {contract.item_count}</span>
             </div>

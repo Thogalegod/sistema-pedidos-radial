@@ -14,6 +14,7 @@ describe('ContractListCard', () => {
     expect(within(card).getByText('1111fsd')).toBeInTheDocument();
     expect(within(card).queryByText(/Pedido 1111fsd/i)).not.toBeInTheDocument();
     expect(within(card).getByText('Obra QA')).toBeInTheDocument();
+    expect(within(card).getByText(/Início: 07\/08\/2026/)).toBeInTheDocument();
     expect(within(card).queryByText('Locação')).not.toBeInTheDocument();
     expect(within(card).queryByText('Ativa')).not.toBeInTheDocument();
     expect(within(card).queryByText(/Locação interna/i)).not.toBeInTheDocument();
@@ -21,6 +22,12 @@ describe('ContractListCard', () => {
       'href',
       '/contratos-locacoes/contratos/contract-1'
     );
+  });
+
+  it('formats the start date for non-rental contracts too', () => {
+    render(<ContractListCard contract={makeContract({ kind: 'other' })} />);
+
+    expect(screen.getByText('Início: 07/08/2026')).toBeInTheDocument();
   });
 
   it('falls back to the internal rental reference when a historical rental has no order', () => {

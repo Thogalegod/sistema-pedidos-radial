@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
+import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 import type { BillingAlertItem } from '@/lib/contratos-locacoes/dashboard';
 
 interface AlertListProps {
@@ -40,7 +41,7 @@ export function AlertList({ alerts }: AlertListProps) {
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-gray-900">{formatBRL(Number.parseInt(alert.balance_amount, 10))}</p>
-              <p className="text-xs text-gray-500">Vence em {alert.due_date}</p>
+              <p className="text-xs text-gray-500">Vence em {formatDateLabel(alert.due_date)}</p>
             </div>
           </div>
         </Link>
