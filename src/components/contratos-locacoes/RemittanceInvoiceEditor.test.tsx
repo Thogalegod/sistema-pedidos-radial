@@ -55,7 +55,7 @@ describe('RemittanceInvoiceEditor', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: /editar dados da nf de remessa/i }));
+    await user.click(screen.getByRole('button', { name: /adicionar dados da nf de remessa/i }));
     await user.selectOptions(screen.getByLabelText(/possui nf de remessa/i), 'yes');
 
     expect(screen.getByLabelText(/empresa emissora/i)).toHaveValue('Fontes');

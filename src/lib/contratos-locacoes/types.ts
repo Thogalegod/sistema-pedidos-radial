@@ -174,6 +174,7 @@ export interface BillingCycle {
   boleto_change_operation_id: string | null;
   boleto_change_started_at: string | null;
   notes: string | null;
+  show_note_on_invoice?: boolean;
   created_at: string;
   updated_at: string;
 }

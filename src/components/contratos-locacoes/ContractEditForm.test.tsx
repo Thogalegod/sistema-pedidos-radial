@@ -117,7 +117,7 @@ describe('ContractEditForm', () => {
     expect(screen.getAllByLabelText('Descrição do item')).toHaveLength(2);
   });
 
-  it('locks historical structure but keeps transport, notes and prices editable after billing', () => {
+  it('shows billed structure as static context while keeping transport, notes and prices editable', () => {
     render(
       <ContractEditForm
         customers={customers}
@@ -129,13 +129,14 @@ describe('ContractEditForm', () => {
       />
     );
 
-    expect(screen.getByLabelText('Empresa')).toBeDisabled();
-    expect(screen.getByLabelText('Cliente')).toBeDisabled();
-    expect(screen.getByLabelText('Obra/local')).toBeDisabled();
-    expect(screen.getByLabelText('Início')).toBeDisabled();
-    expect(screen.getByLabelText('Nº do pedido')).toBeDisabled();
-    expect(screen.getByLabelText('Descrição do item')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Adicionar item' })).toBeDisabled();
+    expect(screen.queryByLabelText('Empresa')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Cliente')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Obra/local')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Início')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nº do pedido')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Descrição do item')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar item' })).not.toBeInTheDocument();
+    expect(screen.getByText('Cliente 1')).toBeInTheDocument();
     expect(screen.getByLabelText('Transporte')).toBeEnabled();
     expect(screen.getByLabelText('Observações')).toBeEnabled();
     expect(screen.getByLabelText('Valor unitário')).toBeEnabled();
@@ -165,5 +166,32 @@ describe('ContractEditForm', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       legacy_order_number: 'PED-LEGADO', transport_notes: 'Novo transporte',
     })));
+  });
+
+  it('keeps billed item structure and submits only a new unit price', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ContractEditForm customers={customers} customerSites={sites} hasBilling initialValue={initialValue()} onCancel={vi.fn()} onSubmit={onSubmit} />);
+
+    const price = screen.getByLabelText('Valor unitário');
+    fireEvent.focus(price);
+    fireEvent.change(price, { target: { value: 'R$ 3.500,00' } });
+    fireEvent.blur(price);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      items: [expect.objectContaining({ id: 'item-1', quantity: 1, unit_amount: '350000' })],
+    })));
+  });
+
+  it('shows a loading state while saving', async () => {
+    let finish: (() => void) | undefined;
+    const onSubmit = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<ContractEditForm customers={customers} customerSites={sites} hasBilling initialValue={initialValue()} onCancel={vi.fn()} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    expect(screen.getByRole('button', { name: 'Salvando...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+    finish?.();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar alterações' })).toBeEnabled());
   });
 });

@@ -20,6 +20,7 @@ const baseBilling: BillingDraftInput = {
   document_type: 'receipt',
   document_number: 'R260701001',
   notes: '',
+  show_note_on_invoice: false,
   sequence_number: 1,
   discount_amount: '0',
   surcharge_amount: '0',

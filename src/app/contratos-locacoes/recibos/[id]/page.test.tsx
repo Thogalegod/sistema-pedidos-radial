@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RentalInvoiceSnapshot } from '@/lib/contratos-locacoes/rental-invoice';
 
 const { getBillingRentalInvoiceMock } = vi.hoisted(() => ({
@@ -36,6 +36,8 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import BillingReceiptPage from './page';
 
 describe('BillingReceiptPage', () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     getBillingRentalInvoiceMock.mockReset();
     getBillingRentalInvoiceMock.mockResolvedValue(makeSnapshot());
@@ -53,6 +55,19 @@ describe('BillingReceiptPage', () => {
     expect(screen.getByRole('heading', { name: 'Situação financeira' })).toBeInTheDocument();
     expect(screen.getByText('Recebido')).toBeInTheDocument();
     expect(screen.queryByText(/recibo/i)).not.toBeInTheDocument();
+  });
+
+  it('returns to the loaded contract while retaining the billings route', async () => {
+    render(<BillingReceiptPage />);
+
+    expect(await screen.findByRole('link', { name: 'Voltar para locação' })).toHaveAttribute(
+      'href',
+      '/contratos-locacoes/contratos/contract-1'
+    );
+    expect(screen.getByRole('link', { name: 'Voltar para cobranças' })).toHaveAttribute(
+      'href',
+      '/contratos-locacoes/cobrancas'
+    );
   });
 });
 

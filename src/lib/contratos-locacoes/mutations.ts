@@ -32,7 +32,7 @@ import {
   hasPendingPhysicalReturns,
 } from './rental-closure';
 
-const BILLING_CYCLE_COMMON_SELECT = 'id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, created_at, updated_at';
+const BILLING_CYCLE_COMMON_SELECT = 'id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, show_note_on_invoice, created_at, updated_at';
 
 export interface CustomerMutationResult {
   customer: Customer;
@@ -57,18 +57,19 @@ export interface BillingCycleEditInput {
   due_date: string;
   amount: string;
   notes: string | null;
+  show_note_on_invoice: boolean;
 }
 
 export type BillingCycleInsertRecord = Pick<
   BillingCycle,
   'organization_id' | 'contract_id' | 'sequence_number' | 'period_start' | 'period_end' |
   'issue_date' | 'due_date' | 'base_amount' | 'discount_amount' | 'surcharge_amount' |
-  'exemption_amount' | 'total_amount' | 'document_type' | 'document_number' | 'status' | 'notes'
+  'exemption_amount' | 'total_amount' | 'document_type' | 'document_number' | 'status' | 'notes' | 'show_note_on_invoice'
 >;
 
 export type BillingCycleMutablePatch = Pick<
   Partial<BillingCycle>,
-  'period_start' | 'period_end' | 'issue_date' | 'due_date' | 'notes' | 'status' | 'needs_resend'
+  'period_start' | 'period_end' | 'issue_date' | 'due_date' | 'notes' | 'show_note_on_invoice' | 'status' | 'needs_resend'
 >;
 
 export interface PaymentMutationResult {
@@ -1090,6 +1091,7 @@ function buildBillingCycleRecord(
     document_number: documentNumber,
     status: 'issued',
     notes: payload.notes,
+    show_note_on_invoice: Boolean(payload.show_note_on_invoice && payload.notes?.trim()),
   };
 }
 
@@ -1241,6 +1243,7 @@ export async function updateBillingCycleDetails(
     issue_date: rawPayload.issue_date,
     due_date: rawPayload.due_date,
     notes: normalizeNotes(rawPayload.notes),
+    show_note_on_invoice: Boolean(rawPayload.show_note_on_invoice && rawPayload.notes?.trim()),
   };
 
   const billing = await updateBillingCycle(organizationId, billingCycleId, patch);

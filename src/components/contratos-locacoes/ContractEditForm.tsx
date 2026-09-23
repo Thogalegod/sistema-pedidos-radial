@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { CONTRACT_COMPANY_OPTIONS } from '@/lib/contratos-locacoes/company';
+import { CONTRACT_COMPANY_OPTIONS, getContractCompanyLabel } from '@/lib/contratos-locacoes/company';
+import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
+import { formatBRL } from '@/lib/contratos-locacoes/money';
 import {
   CONTRACT_EDIT_LOCKED_MESSAGE,
   getContractEditErrorMessage,
@@ -12,6 +14,7 @@ import {
 import type { CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import type { CustomerSite, RentalAsset } from '@/lib/contratos-locacoes/types';
 import { RentalItemsEditor } from './RentalItemsEditor';
+import { CurrencyInput } from './CurrencyInput';
 
 interface ContractEditFormProps {
   customers: CustomerListItem[];
@@ -24,7 +27,7 @@ interface ContractEditFormProps {
   onSubmit: (value: ContractEditInput) => Promise<void> | void;
 }
 
-const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500';
+const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100';
 const EMPTY_ASSETS: RentalAsset[] = [];
 
 export function ContractEditForm({
@@ -48,8 +51,8 @@ export function ContractEditForm({
     () => customerSites.filter((site) => site.customer_id === draft.customer_id),
     [customerSites, draft.customer_id]
   );
-
-  useEffect(() => setAssets(availableAssets), [availableAssets]);
+  const customerName = customers.find((customer) => customer.id === draft.customer_id)?.legal_name ?? 'Cliente atual';
+  const siteName = customerSites.find((site) => site.id === draft.site_id)?.name ?? 'Obra/local atual';
 
   useEffect(() => {
     if (!loadAvailableAssets || !draft.start_date || structuralLocked) return;
@@ -96,46 +99,71 @@ export function ContractEditForm({
   }
 
   return (
-    <form className="space-y-5 rounded-2xl border border-blue-200 bg-blue-50/40 p-4" onSubmit={handleSubmit}>
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">Editar locação</h2>
-        {structuralLocked ? (
-          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {CONTRACT_EDIT_LOCKED_MESSAGE}
-          </p>
-        ) : null}
+    <form className="flex h-full min-h-0 flex-col bg-white" onSubmit={handleSubmit}>
+      <div className="shrink-0 border-b border-slate-200 px-5 py-4 sm:px-6">
+        <h2 id="contract-edit-title" className="text-xl font-semibold tracking-tight text-slate-950">Editar locação</h2>
+        <p className="mt-1 text-sm text-slate-600">Altere os dados disponíveis e salve ao terminar.</p>
       </div>
-
-      <section className="grid gap-4 rounded-xl bg-white p-4 md:grid-cols-2">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+      {structuralLocked ? (
+        <section className="space-y-4" aria-label="Informações bloqueadas">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Dados da locação</h3>
+            <p className="mt-1 text-xs text-slate-600">{CONTRACT_EDIT_LOCKED_MESSAGE}</p>
+          </div>
+          <dl className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+            {[
+              ['Empresa', getContractCompanyLabel(draft.contract_company)],
+              ['Cliente', customerName],
+              ['Obra/local', siteName],
+              ['Início', formatDateLabel(draft.start_date)],
+              ...(orderLocked ? [['Nº do pedido', draft.legacy_order_number ?? 'Não informado']] : []),
+            ].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-0.5 text-sm font-medium text-slate-800">{value}</dd></div>)}
+          </dl>
+          {!orderLocked ? <label className="grid gap-1.5 text-sm font-medium text-slate-700">Nº do pedido
+            <input aria-label="Nº do pedido" className={inputClass} value={draft.legacy_order_number ?? ''} onChange={(event) => update({ legacy_order_number: event.target.value || null })} />
+          </label> : null}
+        </section>
+      ) : <section className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-2" aria-label="Dados editáveis da locação">
+        <h3 className="sm:col-span-2 text-sm font-semibold text-slate-900">Dados da locação</h3>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Empresa
-          <select aria-label="Empresa" className={inputClass} disabled={structuralLocked} value={draft.contract_company} onChange={(event) => update({ contract_company: event.target.value as ContractEditInput['contract_company'] })}>
+          <select aria-label="Empresa" className={inputClass} value={draft.contract_company} onChange={(event) => update({ contract_company: event.target.value as ContractEditInput['contract_company'] })}>
             {CONTRACT_COMPANY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Cliente
-          <select aria-label="Cliente" className={inputClass} disabled={structuralLocked} value={draft.customer_id} onChange={(event) => update({ customer_id: event.target.value, site_id: '' })}>
+          <select aria-label="Cliente" className={inputClass} value={draft.customer_id} onChange={(event) => update({ customer_id: event.target.value, site_id: '' })}>
             {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.legal_name}</option>)}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Obra/local
-          <select aria-label="Obra/local" className={inputClass} disabled={structuralLocked} value={draft.site_id} onChange={(event) => update({ site_id: event.target.value })}>
+          <select aria-label="Obra/local" className={inputClass} value={draft.site_id} onChange={(event) => update({ site_id: event.target.value })}>
             {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Início
-          <input aria-label="Início" className={inputClass} disabled={structuralLocked} type="date" value={draft.start_date} onChange={(event) => update({ start_date: event.target.value })} />
+          <input aria-label="Início" className={inputClass} type="date" value={draft.start_date} onChange={(event) => update({ start_date: event.target.value })} />
         </label>
         <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2">
           Nº do pedido
-          <input aria-label="Nº do pedido" className={inputClass} disabled={orderLocked} value={draft.legacy_order_number ?? ''} onChange={(event) => update({ legacy_order_number: event.target.value || null })} />
+          <input aria-label="Nº do pedido" className={inputClass} value={draft.legacy_order_number ?? ''} onChange={(event) => update({ legacy_order_number: event.target.value || null })} />
         </label>
-      </section>
+      </section>}
 
-      <section className="rounded-xl bg-white p-4">
+      <section className="rounded-xl border border-slate-200 p-4" aria-label="Valores e itens">
+        {structuralLocked ? <div className="space-y-3">
+          <div><h3 className="text-sm font-semibold text-slate-900">Valores dos itens</h3><p className="mt-1 text-xs text-slate-600">Alterações de valor afetam somente os próximos períodos.</p></div>
+          {draft.items.map((item) => <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between" key={item.id}>
+            <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{item.description}</p><p className="text-xs text-slate-500">Quantidade {item.quantity} · Valor atual {formatBRL(initialValue.items.find((entry) => entry.id === item.id)?.unit_amount)}</p></div>
+            <label className="grid gap-1 text-sm font-medium text-slate-700 sm:w-44">Valor unitário
+              <CurrencyInput aria-label="Valor unitário" className={inputClass} value={item.unit_amount} onValueChange={(value) => update({ items: draft.items.map((entry) => entry.id === item.id ? { ...entry, unit_amount: value } : entry) })} />
+            </label>
+          </div>)}
+        </div> :
         <RentalItemsEditor
           availableAssets={assets}
           createItem={createItem}
@@ -145,9 +173,11 @@ export function ContractEditForm({
           showExtendedIdentityFields
           structureLocked={structuralLocked}
         />
+        }
       </section>
 
-      <section className="grid gap-4 rounded-xl bg-white p-4">
+      <section className="grid gap-4 rounded-xl border border-slate-200 p-4" aria-label="Informações complementares">
+        <h3 className="text-sm font-semibold text-slate-900">Informações complementares</h3>
         <label className="grid gap-1 text-sm font-medium text-gray-700">
           Transporte
           <textarea aria-label="Transporte" className={inputClass} rows={2} value={draft.transport_notes ?? ''} onChange={(event) => update({ transport_notes: event.target.value || null })} />
@@ -158,13 +188,14 @@ export function ContractEditForm({
         </label>
       </section>
 
-      {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      </div>
 
-      <div className="flex justify-end gap-2">
-        <button className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700" onClick={onCancel} type="button">Cancelar</button>
-        <button className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={submitting} type="submit">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
+        <button className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60" disabled={submitting} onClick={onCancel} type="button">Cancelar</button>
+        <button className="inline-flex items-center gap-2 rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900 disabled:opacity-60" disabled={submitting} type="submit">
           {submitting ? <Loader2 className="animate-spin" size={16} /> : null}
-          Salvar alterações
+          {submitting ? 'Salvando...' : 'Salvar alterações'}
         </button>
       </div>
     </form>

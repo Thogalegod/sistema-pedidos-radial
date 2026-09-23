@@ -40,8 +40,8 @@ export function PageHeader({ title, description, breadcrumbs, actions, secondary
     </nav>}
     <div className={`${breadcrumbs.length > 0 ? (compact ? 'mt-2' : 'mt-3') : ''} flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between`}>
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>
-        {description && <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">{description}</p>}
+        <h1 className="text-2xl font-semibold tracking-tight text-radial-ink sm:text-3xl">{title}</h1>
+        {description && <p className="mt-1 max-w-3xl text-sm leading-6 text-radial-muted">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">{actions}</div>}
     </div>
@@ -49,7 +49,7 @@ export function PageHeader({ title, description, breadcrumbs, actions, secondary
     {tabs && tabs.length > 0 && <nav aria-label="Seções da página" className="mt-5 overflow-x-auto border-b border-slate-200">
       <div className="flex min-w-max gap-1">
         {tabs.map((tab) => <Link key={tab.href} href={tab.href} aria-current={tab.active ? 'page' : undefined}
-          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${tab.active ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}>
+          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${tab.active ? 'border-radial-primary text-radial-primary' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}>
           {tab.label}
         </Link>)}
       </div>
@@ -58,5 +58,5 @@ export function PageHeader({ title, description, breadcrumbs, actions, secondary
 }
 
 export function ContentContainer({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8 xl:px-10 ${className}`}>{children}</div>;
+  return <div className={`mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 xl:px-10 ${className}`}>{children}</div>;
 }

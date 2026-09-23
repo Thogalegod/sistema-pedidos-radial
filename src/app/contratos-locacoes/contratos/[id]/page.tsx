@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Pencil, Play, Pause } from 'lucide-react';
+import { ArrowLeft, CircleStop, Pause, Pencil, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ContractEditForm } from '@/components/contratos-locacoes/ContractEditForm';
 import { ContractSummary } from '@/components/contratos-locacoes/ContractSummary';
@@ -81,8 +81,32 @@ export default function ContractDetailPage() {
   const [loading, setLoading] = useState(true);
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [closureOpen, setClosureOpen] = useState(false);
   const boletoChangesInFlight = useRef(new Set<string>());
-  const isFinalContractStatus = detail?.contract.status === 'closed' || detail?.contract.status === 'cancelled';
+  const closureTriggerRef = useRef<HTMLButtonElement>(null);
+  const editTriggerRef = useRef<HTMLButtonElement>(null);
+  const editDialogRef = useRef<HTMLDialogElement>(null);
+  const contractStatus = detail?.contract.status;
+  const canPause = contractStatus === 'active';
+  const canReactivate = contractStatus === 'paused';
+  const canStartClosure = contractStatus === 'active' || contractStatus === 'paused';
+  const isClosing = contractStatus === 'closing_requested'
+    || contractStatus === 'awaiting_return'
+    || contractStatus === 'inspection';
+  const showClosureAction = canStartClosure || isClosing;
+
+  useEffect(() => {
+    const dialog = editDialogRef.current;
+    if (!editing || !dialog) return;
+    dialog.showModal();
+    dialog.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')?.focus();
+    return () => { if (dialog.open) dialog.close(); };
+  }, [editing]);
+
+  const closeEditor = () => {
+    setEditing(false);
+    queueMicrotask(() => editTriggerRef.current?.focus());
+  };
 
   const load = async () => {
     setLoading(true);
@@ -228,6 +252,7 @@ export default function ContractDetailPage() {
       surcharge_amount: '0',
       exemption_amount: '0',
       notes: values.notes,
+      show_note_on_invoice: values.show_note_on_invoice,
       items: buildRentalItemBillingLines(detail.items, () => crypto.randomUUID()),
     });
     toast.success('Período de cobrança salvo.');
@@ -242,6 +267,7 @@ export default function ContractDetailPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível iniciar o encerramento.');
+      throw error;
     }
   };
 
@@ -264,6 +290,7 @@ export default function ContractDetailPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível finalizar a locação.');
+      throw error;
     }
   };
 
@@ -446,13 +473,32 @@ export default function ContractDetailPage() {
     };
     const result = await updateContractSafely(editClient, detail.contract.id, value);
     setDetail((current) => current ? { ...current, contract: result.contract, items: result.items } : current);
-    setEditing(false);
+    closeEditor();
     toast.success('Locação atualizada com sucesso.');
+  };
+
+  const handleSaveNotes = async (notes: string | null) => {
+    if (!detail) return;
+    const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
+    const organizationId = await mutationClient.getCurrentOrganizationId();
+    const contract = await mutationClient.updateContract(detail.contract.id, {
+      organization_id: organizationId,
+      notes,
+    });
+    setDetail((current) => current ? { ...current, contract } : current);
+    toast.success('Observações atualizadas.');
+  };
+
+  const handleClosureOpenChange = (open: boolean) => {
+    setClosureOpen(open);
+    if (!open) {
+      closureTriggerRef.current?.focus();
+    }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Link
           className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
           href="/contratos-locacoes/contratos"
@@ -461,10 +507,11 @@ export default function ContractDetailPage() {
           Voltar para contratos
         </Link>
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div aria-label="Ações da locação" className="flex flex-wrap gap-2 sm:justify-end" role="group">
           {detail ? (
             <button
-              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+              ref={editTriggerRef}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-60"
               disabled={loadingEditor}
               onClick={() => void handleOpenEditor()}
               type="button"
@@ -473,25 +520,37 @@ export default function ContractDetailPage() {
               {loadingEditor ? 'Preparando edição...' : 'Editar locação'}
             </button>
           ) : null}
-        {detail?.contract.status === 'paused' && !isFinalContractStatus ? (
-          <button
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            onClick={() => void handleReactivate()}
-            type="button"
-          >
-            <Play size={16} />
-            Reativar
-          </button>
-        ) : detail && !isFinalContractStatus ? (
-          <button
-            className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
-            onClick={() => void handlePause()}
-            type="button"
-          >
-            <Pause size={16} />
-            Pausar
-          </button>
-        ) : null}
+          {canPause ? (
+            <button
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition-colors hover:border-amber-300 hover:bg-amber-100"
+              onClick={() => void handlePause()}
+              type="button"
+            >
+              <Pause size={16} />
+              Pausar locação
+            </button>
+          ) : null}
+          {canReactivate ? (
+            <button
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+              onClick={() => void handleReactivate()}
+              type="button"
+            >
+              <Play size={16} />
+              Reativar locação
+            </button>
+          ) : null}
+          {showClosureAction ? (
+            <button
+              ref={closureTriggerRef}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100"
+              onClick={() => setClosureOpen(true)}
+              type="button"
+            >
+              <CircleStop size={16} />
+              {canStartClosure ? 'Encerrar locação' : 'Acompanhar encerramento'}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -500,18 +559,26 @@ export default function ContractDetailPage() {
       ) : detail ? (
         <>
           {editing ? (
-            <ContractEditForm
-              availableAssets={editAssets}
-              customers={editCustomers}
-              customerSites={editSites}
-              hasBilling={detail.billingCycles.length > 0}
-              initialValue={buildContractEditInput(detail.contract, detail.items)}
-              loadAvailableAssets={loadEditAssets}
-              onCancel={() => setEditing(false)}
-              onSubmit={handleSaveEdit}
-            />
+            <dialog
+              ref={editDialogRef}
+              aria-labelledby="contract-edit-title"
+              onCancel={(event) => { event.preventDefault(); closeEditor(); }}
+              className={`fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-full border-0 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-950/40 ${detail.billingCycles.length > 0 ? 'max-w-[620px]' : 'max-w-[920px]'}`}
+            >
+              <ContractEditForm
+                availableAssets={editAssets}
+                customers={editCustomers}
+                customerSites={editSites}
+                hasBilling={detail.billingCycles.length > 0}
+                initialValue={buildContractEditInput(detail.contract, detail.items)}
+                loadAvailableAssets={loadEditAssets}
+                onCancel={closeEditor}
+                onSubmit={handleSaveEdit}
+              />
+            </dialog>
           ) : null}
           <ContractSummary
+            closureOpen={closureOpen}
             detail={detail}
             openNewBillingForm={searchParams.get('action') === 'new-billing'}
             paymentProofDocuments={paymentProofDocuments}
@@ -522,10 +589,12 @@ export default function ContractDetailPage() {
             onOpenBoleto={handleOpenBoleto}
             onOpenPaymentProof={handleOpenPaymentProof}
             onBillingSent={handleBillingSent}
+            onClosureOpenChange={handleClosureOpenChange}
             onRegisterItemReturn={handleRegisterItemReturn}
             onRecordBillingPayment={handleRecordBillingPayment}
             onRepairPendingBoleto={handleRepairPendingBoleto}
             onReplaceBoleto={handleReplaceBoleto}
+            onSaveNotes={handleSaveNotes}
             onStartClosure={handleStartClosure}
             onUpdateBillingPeriod={handleUpdateBillingPeriod}
             remittanceAttachmentSlot={

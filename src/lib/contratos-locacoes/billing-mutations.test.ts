@@ -322,6 +322,7 @@ describe('billing mutations', () => {
       document_number: 'R260701001',
       sequence_number: 1,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '1000',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -339,6 +340,7 @@ describe('billing mutations', () => {
 
     expect(result.billing.id).toBe('billing-1');
     expect(result.billing.total_amount).toBe('149000');
+    expect(client.insertedBilling?.show_note_on_invoice).toBe(false);
     expect(client.upsertedBillingLines).toHaveLength(1);
   });
 
@@ -355,6 +357,7 @@ describe('billing mutations', () => {
       document_number: 'R260701001',
       sequence_number: 1,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -397,6 +400,7 @@ describe('billing mutations', () => {
       document_number: '',
       sequence_number: 1,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -481,6 +485,7 @@ describe('billing mutations', () => {
       document_number: '',
       sequence_number: 2,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -514,6 +519,7 @@ describe('billing mutations', () => {
       document_number: '',
       sequence_number: 3,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -547,6 +553,7 @@ describe('billing mutations', () => {
       document_number: '',
       sequence_number: 2,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -578,6 +585,7 @@ describe('billing mutations', () => {
       document_number: '',
       sequence_number: 3,
       notes: '',
+      show_note_on_invoice: false,
       discount_amount: '0',
       surcharge_amount: '0',
       exemption_amount: '0',
@@ -622,6 +630,7 @@ describe('billing mutations', () => {
       due_date: '2026-07-31',
       amount: '150000',
       notes: 'Ajuste aprovado',
+      show_note_on_invoice: true,
     });
 
     expect(result.billing.total_amount).toBe('150000');
@@ -629,6 +638,7 @@ describe('billing mutations', () => {
       period_start: '2026-07-02',
       period_end: '2026-07-30',
       notes: 'Ajuste aprovado',
+      show_note_on_invoice: true,
     });
     expect(client.updatedBillingStatus?.patch).not.toHaveProperty('total_amount');
     expect(client.upsertedBillingLines).toHaveLength(0);
@@ -653,6 +663,7 @@ describe('billing mutations', () => {
       due_date: '2026-07-31',
       amount: '160000',
       notes: 'Tentativa',
+      show_note_on_invoice: false,
     })).rejects.toThrow(
       'Para alterar o valor da locação, edite os valores dos equipamentos. A alteração será aplicada aos próximos períodos.'
     );
@@ -667,6 +678,7 @@ describe('billing mutations', () => {
       due_date: '2026-07-31',
       amount: '150000',
       notes: 'Datas ajustadas',
+      show_note_on_invoice: false,
     });
 
     expect(result.billing.notes).toBe('Datas ajustadas');
@@ -705,6 +717,7 @@ describe('billing mutations', () => {
       due_date: '2026-08-31',
       amount: '150000',
       notes: 'Tentativa posterior',
+      show_note_on_invoice: false,
     })).rejects.toThrow('não pode ultrapassar');
 
     expect(client.updatedBillingStatus).toBeNull();

@@ -21,6 +21,7 @@ describe('billing money fields', () => {
           due_date: '2026-08-10',
           amount: '100',
           notes: null,
+          show_note_on_invoice: false,
         }}
         onCancel={vi.fn()}
         onSubmit={vi.fn()}

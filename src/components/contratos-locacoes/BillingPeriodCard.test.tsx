@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BillingPeriodCard } from './BillingPeriodCard';
 import type { BillingCycle, BillingDeliveryEvent, ContractDocument } from '@/lib/contratos-locacoes/types';
@@ -6,6 +7,24 @@ import type { BillingCycle, BillingDeliveryEvent, ContractDocument } from '@/lib
 afterEach(cleanup);
 
 describe('BillingPeriodCard', () => {
+  it('starts collapsed and reveals every billing action through an accessible disclosure', async () => {
+    const user = userEvent.setup();
+    render(<BillingPeriodCard billing={makeBilling()} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} onSendBilling={vi.fn()} payments={[]} proofDocuments={[]} />);
+    const toggle = screen.getByRole('button', { name: /detalhes da cobrança/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('link', { name: /abrir fatura/i })).not.toBeInTheDocument();
+    expect(toggle).toHaveTextContent('R$ 3.000,00');
+    toggle.focus();
+    await user.keyboard('{Enter}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: /abrir fatura/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar recebimento' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir boleto' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar cobrança' })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('opens the single rental invoice for a billing period', () => {
     render(
       <BillingPeriodCard
@@ -25,14 +44,38 @@ describe('BillingPeriodCard', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.getByRole('link', { name: /abrir fatura/i })).toHaveAttribute(
       'href',
       '/contratos-locacoes/recibos/billing-1'
     );
   });
 
+  it('keeps the note visible internally and shows invoice visibility only in expanded details', () => {
+    const props = {
+      billing: makeBilling({ notes: 'Orientação da equipe', show_note_on_invoice: true }),
+      boletoDocument: null, canManageBilling: false,
+      onAttachBoleto: vi.fn(), onAttachProof: vi.fn(), onEdit: vi.fn(),
+      onOpenBoleto: vi.fn(), onOpenProof: vi.fn(), onRegisterPayment: vi.fn(),
+      onRepairPendingBoleto: vi.fn(), onReplaceBoleto: vi.fn(),
+      payments: [], proofDocuments: [],
+    };
+    const { rerender } = render(<BillingPeriodCard {...props} />);
+    expect(screen.getByText('Orientação da equipe')).not.toBeVisible();
+    expect(screen.getByText('Visível na fatura')).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
+    expect(screen.getByText('Orientação da equipe')).toBeInTheDocument();
+    expect(screen.getByText('Visível na fatura')).toBeInTheDocument();
+
+    rerender(<BillingPeriodCard {...props} billing={{ ...props.billing, show_note_on_invoice: false }} />);
+    expect(screen.getByText('Orientação da equipe')).toBeInTheDocument();
+    expect(screen.queryByText('Visível na fatura')).not.toBeInTheDocument();
+  });
+
   it('shows boleto controls only to an authorized billing manager', () => {
     const { rerender } = render(<BillingPeriodCard billing={makeBilling()} boletoDocument={null} canManageBilling={false} onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.queryByText('Anexar boleto')).not.toBeInTheDocument();
     rerender(<BillingPeriodCard billing={makeBilling()} boletoDocument={null} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
     expect(screen.getByText('Anexar boleto')).toBeInTheDocument();
@@ -41,12 +84,14 @@ describe('BillingPeriodCard', () => {
 
   it('blocks normal replacement while pending and offers only repair', () => {
     render(<BillingPeriodCard billing={makeBilling({ boleto_change_pending: true, boleto_change_operation_id: 'op-1' })} boletoDocument={null} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.getByText('Concluir alteração pendente')).toBeInTheDocument();
     expect(screen.queryByText('Anexar boleto')).not.toBeInTheDocument();
   });
 
   it('opens or replaces the single ready boleto without exposing delete or release actions', () => {
     render(<BillingPeriodCard billing={makeBilling()} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.getByText('Abrir boleto')).toBeInTheDocument();
     expect(screen.getByText('Substituir boleto')).toBeInTheDocument();
     expect(screen.queryByText(/excluir|liberar/i)).not.toBeInTheDocument();
@@ -54,6 +99,7 @@ describe('BillingPeriodCard', () => {
 
   it('distinguishes a current send from content changed after send', () => {
     const { rerender } = render(<BillingPeriodCard billing={makeBilling({ sent_at: '2026-08-10T12:00:00.000Z' })} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.queryByText(/alterada após o último envio/i)).not.toBeInTheDocument();
     rerender(<BillingPeriodCard billing={makeBilling({ sent_at: '2026-08-10T12:00:00.000Z', needs_resend: true })} boletoDocument={makeBoleto()} canManageBilling onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} payments={[]} proofDocuments={[]} />);
     expect(screen.getByText(/alterada após o último envio/i)).toBeInTheDocument();
@@ -76,6 +122,7 @@ describe('BillingPeriodCard', () => {
       proofDocuments: [],
     };
     const { rerender } = render(<BillingPeriodCard {...props} canManageBilling={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
 
     expect(screen.queryByText(/enviado em/i)).not.toBeInTheDocument();
 
@@ -87,6 +134,7 @@ describe('BillingPeriodCard', () => {
     const onSendBilling = vi.fn();
     const props = { billing: makeBilling(), canManageBilling: true, onAttachBoleto: vi.fn(), onAttachProof: vi.fn(), onEdit: vi.fn(), onOpenBoleto: vi.fn(), onOpenProof: vi.fn(), onRegisterPayment: vi.fn(), onRepairPendingBoleto: vi.fn(), onReplaceBoleto: vi.fn(), onSendBilling, payments: [], proofDocuments: [], deliveryEvents: [] };
     const { rerender } = render(<BillingPeriodCard {...props} boletoDocument={null} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.getByRole('button', { name: /anexe o boleto antes de enviar/i })).toBeDisabled();
 
     rerender(<BillingPeriodCard {...props} boletoDocument={makeBoleto()} />);
@@ -97,6 +145,7 @@ describe('BillingPeriodCard', () => {
   it('shows the last recipients and deliberate resend for a current delivery', () => {
     const event = makeDeliveryEvent();
     render(<BillingPeriodCard billing={makeBilling({ sent_at: event.sent_at })} boletoDocument={makeBoleto()} canManageBilling deliveryEvents={[event]} onAttachBoleto={vi.fn()} onAttachProof={vi.fn()} onEdit={vi.fn()} onOpenBoleto={vi.fn()} onOpenProof={vi.fn()} onRegisterPayment={vi.fn()} onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()} onSendBilling={vi.fn()} payments={[]} proofDocuments={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     expect(screen.getAllByText(/financeiro@cliente.com/)).toHaveLength(2);
     expect(screen.getByRole('button', { name: /reenviar cobrança/i })).toBeInTheDocument();
   });

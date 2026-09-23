@@ -1,6 +1,6 @@
 'use client';
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   repairPendingBoletoChange: vi.fn(),
   replaceBoletoDocument: vi.fn(),
   saveBoletoDocument: vi.fn(),
+  startContractClosure: vi.fn(),
   updateContract: vi.fn(),
   updateContractSafely: vi.fn(),
 }));
@@ -68,7 +69,7 @@ vi.mock('@/lib/contratos-locacoes/mutations', () => ({
   reactivateContract: vi.fn(),
   registerRentalItemReturn: vi.fn(),
   recordBillingPayment: vi.fn(),
-  startContractClosure: vi.fn(),
+  startContractClosure: mocks.startContractClosure,
   updateBillingCycleDetails: vi.fn(),
 }));
 
@@ -149,6 +150,8 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
   const detail = buildDetail();
   mocks.getContract.mockResolvedValue(detail);
   mocks.getCurrentOrganizationId.mockResolvedValue('org-1');
@@ -178,9 +181,83 @@ beforeEach(() => {
     ...detail.contract,
     ...patch,
   }));
+  mocks.startContractClosure.mockResolvedValue({ ...detail.contract, status: 'awaiting_return' });
 });
 
 describe('ContractDetailPage remittance editing', () => {
+  it('groups active-contract actions in the header without duplicating a summary or final action section', async () => {
+    render(<ContractDetailPage />);
+
+    const actions = await screen.findByRole('group', { name: 'Ações da locação' });
+    expect(within(actions).getByRole('button', { name: 'Editar locação' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Pausar locação' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Encerrar locação' })).toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Reativar locação' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Resumo operacional' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Ações da locação' })).not.toBeInTheDocument();
+
+    expect(within(actions).getByRole('button', { name: 'Editar locação' }).querySelector('.lucide-pencil')).not.toBeNull();
+    expect(within(actions).getByRole('button', { name: 'Pausar locação' }).querySelector('.lucide-pause')).not.toBeNull();
+    expect(within(actions).getByRole('button', { name: 'Encerrar locação' }).querySelector('.lucide-circle-stop')).not.toBeNull();
+  });
+
+  it('shows Reactivate instead of Pause for a paused contract', async () => {
+    const detail = buildDetail();
+    detail.contract.status = 'paused';
+    mocks.getContract.mockResolvedValue(detail);
+    render(<ContractDetailPage />);
+
+    const actions = await screen.findByRole('group', { name: 'Ações da locação' });
+    expect(within(actions).getByRole('button', { name: 'Reativar locação' })).toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Pausar locação' })).not.toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Reativar locação' }).querySelector('.lucide-play')).not.toBeNull();
+  });
+
+  it('hides lifecycle actions for a closed contract', async () => {
+    const detail = buildDetail();
+    detail.contract.status = 'closed';
+    detail.contract.end_date = '2026-08-20';
+    mocks.getContract.mockResolvedValue(detail);
+    render(<ContractDetailPage />);
+
+    const actions = await screen.findByRole('group', { name: 'Ações da locação' });
+    expect(within(actions).getByRole('button', { name: 'Editar locação' })).toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Pausar locação' })).not.toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Reativar locação' })).not.toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Encerrar locação' })).not.toBeInTheDocument();
+  });
+
+  it('saves general observations in the existing contract notes field', async () => {
+    const user = userEvent.setup();
+    render(<ContractDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Editar observações' }));
+    await user.type(screen.getByRole('textbox', { name: 'Anotações gerais' }), 'Retirada prevista para sexta.');
+    await user.click(screen.getByRole('button', { name: 'Salvar observações' }));
+
+    await waitFor(() => expect(mocks.updateContract).toHaveBeenCalledWith('contract-1', {
+      organization_id: 'org-1',
+      notes: 'Retirada prevista para sexta.',
+    }));
+    expect(await screen.findByText('Retirada prevista para sexta.')).toBeInTheDocument();
+  });
+
+  it('starts closure through the existing mutation with the selected effective date', async () => {
+    const user = userEvent.setup();
+    render(<ContractDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Encerrar locação' }));
+    const drawer = screen.getByRole('dialog', { name: 'Encerrar locação' });
+    fireEvent.change(within(drawer).getByLabelText('Data efetiva de término'), { target: { value: '2026-08-20' } });
+    await user.click(within(drawer).getByRole('button', { name: 'Iniciar encerramento' }));
+
+    await waitFor(() => expect(mocks.startContractClosure).toHaveBeenCalledWith(
+      expect.objectContaining({ getCurrentOrganizationId: mocks.getCurrentOrganizationId }),
+      'contract-1',
+      { end_date: '2026-08-20' }
+    ));
+  });
+
   it('finishes a boleto attachment before showing success and reloading the detail', async () => {
     const user = userEvent.setup();
     const detail = buildDetail();
@@ -189,6 +266,7 @@ describe('ContractDetailPage remittance editing', () => {
     mocks.getContract.mockResolvedValue(detail);
 
     render(<ContractDetailPage />);
+    await user.click(await screen.findByRole('button', { name: /detalhes da cobrança/i }));
     await user.upload(await screen.findByLabelText('Anexar boleto'), new File(['%PDF'], 'boleto.pdf', { type: 'application/pdf' }));
 
     await waitFor(() => expect(mocks.saveBoletoDocument).toHaveBeenCalledOnce());
@@ -205,6 +283,7 @@ describe('ContractDetailPage remittance editing', () => {
     mocks.saveBoletoDocument.mockRejectedValue(new Error('alteração permaneceu pendente'));
 
     render(<ContractDetailPage />);
+    await user.click(await screen.findByRole('button', { name: /detalhes da cobrança/i }));
     await user.upload(await screen.findByLabelText('Anexar boleto'), new File(['%PDF'], 'boleto.pdf', { type: 'application/pdf' }));
 
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('alteração permaneceu pendente'));
@@ -223,6 +302,7 @@ describe('ContractDetailPage remittance editing', () => {
     mocks.getContract.mockResolvedValue(detail);
 
     render(<ContractDetailPage />);
+    await user.click(await screen.findByRole('button', { name: /detalhes da cobrança/i }));
     const file = new File(['%PDF repaired'], 'boleto.pdf', { type: 'application/pdf' });
     await user.upload(await screen.findByLabelText('Concluir alteração pendente'), file);
 
@@ -237,6 +317,9 @@ describe('ContractDetailPage remittance editing', () => {
     render(<ContractDetailPage />);
 
     await user.click(await screen.findByRole('button', { name: 'Editar locação' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Editar locação' });
+    expect(drawer).toHaveClass('max-w-[920px]');
+    expect(within(drawer).getByLabelText('Empresa')).toBeEnabled();
     await user.type(screen.getByLabelText('Transporte'), 'Retirada pelo cliente');
     await user.click(screen.getByRole('button', { name: 'Salvar alterações' }));
 
@@ -245,11 +328,28 @@ describe('ContractDetailPage remittance editing', () => {
     expect(screen.queryByRole('heading', { name: 'Editar locação' })).not.toBeInTheDocument();
   });
 
+  it('uses a compact edit drawer after billing and returns focus on cancellation', async () => {
+    const user = userEvent.setup();
+    const detail = buildDetail();
+    detail.billingCycles = [buildBilling()];
+    mocks.getContract.mockResolvedValue(detail);
+    render(<ContractDetailPage />);
+
+    const trigger = await screen.findByRole('button', { name: 'Editar locação' });
+    await user.click(trigger);
+    const drawer = await screen.findByRole('dialog', { name: 'Editar locação' });
+    expect(drawer).toHaveClass('max-w-[620px]');
+    expect(within(drawer).queryByLabelText('Empresa')).not.toBeInTheDocument();
+    await user.click(within(drawer).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole('dialog', { name: 'Editar locação' })).not.toBeInTheDocument();
+  });
+
   it('updates the NF data and reflects it immediately in the detail', async () => {
     const user = userEvent.setup();
     render(<ContractDetailPage />);
 
-    await user.click(await screen.findByRole('button', { name: /editar dados da nf de remessa/i }));
+    await user.click(await screen.findByRole('button', { name: /(editar|adicionar) dados da nf de remessa/i }));
     await user.selectOptions(screen.getByLabelText(/possui nf de remessa/i), 'yes');
     await user.type(screen.getByLabelText(/número da nf/i), 'NF-900');
     await user.clear(screen.getByLabelText(/valor da nf/i));
@@ -374,6 +474,7 @@ describe('ContractDetailPage remittance editing', () => {
     });
 
     render(<ContractDetailPage />);
+    await user.click(await screen.findByRole('button', { name: /detalhes da cobrança/i }));
     await user.click(await screen.findByRole('button', { name: /abrir comprovante/i }));
 
     await waitFor(() => {

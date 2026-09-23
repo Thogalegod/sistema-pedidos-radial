@@ -526,6 +526,7 @@ describe('contracts rental queries', () => {
     await client.listBillingCyclesByContractId?.('org-1', 'contract-1');
 
     expect(selectedColumns).not.toBe('*');
+    expect(selectedColumns.split(',').map((column) => column.trim())).toContain('show_note_on_invoice');
     for (const restricted of [
       'sent_at',
       'needs_resend',

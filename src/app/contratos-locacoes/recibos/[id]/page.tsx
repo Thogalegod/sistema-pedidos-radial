@@ -49,13 +49,23 @@ export default function BillingRentalInvoicePage() {
 
   return (
     <div className="space-y-4">
-      <Link
-        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
-        href="/contratos-locacoes/cobrancas"
-      >
-        <ArrowLeft size={16} />
-        Voltar para cobranças
-      </Link>
+      <nav aria-label="Navegação da fatura" className="flex flex-wrap items-center gap-2">
+        {snapshot && (
+          <Link
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            href={`/contratos-locacoes/contratos/${snapshot.contract.id}`}
+          >
+            <ArrowLeft size={16} />
+            Voltar para locação
+          </Link>
+        )}
+        <Link
+          className="inline-flex min-h-10 items-center px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+          href="/contratos-locacoes/cobrancas"
+        >
+          Voltar para cobranças
+        </Link>
+      </nav>
 
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">

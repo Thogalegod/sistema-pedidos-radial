@@ -408,7 +408,7 @@ export function createSupabaseContractsLocacoesReadClient(
     async listBillingCyclesByContractId(organizationId, contractId) {
       const { data, error } = await client
         .from('billing_cycles')
-        .select('id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, created_at, updated_at')
+        .select('id, organization_id, contract_id, sequence_number, period_start, period_end, issue_date, due_date, base_amount, discount_amount, surcharge_amount, exemption_amount, total_amount, document_type, document_number, status, notes, show_note_on_invoice, created_at, updated_at')
         .eq('organization_id', organizationId)
         .eq('contract_id', contractId)
         .order('due_date', { ascending: true });

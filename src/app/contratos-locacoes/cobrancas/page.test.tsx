@@ -11,10 +11,15 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
+const navigation = vi.hoisted(() => ({
+  params: new URLSearchParams('month=2026-08'),
+  push: vi.fn(),
+}));
+
 vi.mock('next/navigation', () => ({
   usePathname: () => '/contratos-locacoes/cobrancas',
-  useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams('month=2026-08'),
+  useRouter: () => ({ push: navigation.push }),
+  useSearchParams: () => navigation.params,
 }));
 
 vi.mock('react-hot-toast', () => ({
@@ -35,6 +40,7 @@ vi.mock('@/lib/contratos-locacoes/queries', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  navigation.params = new URLSearchParams('month=2026-08');
   mocks.getCurrentOrganizationId.mockResolvedValue('org-1');
   mocks.listBillings.mockResolvedValue([makeBilling()]);
 });
@@ -42,6 +48,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('CobrancasPage billing delivery visibility', () => {
+  it('keeps the monthly view by default and supports all months without a month filter', async () => {
+    mocks.getCurrentOrganizationMembership.mockResolvedValue({ role: 'admin', can_manage_billing: true });
+    const { unmount } = render(<CobrancasPage />);
+    await waitFor(() => expect(mocks.listBillings).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: '2026-08' })));
+    unmount();
+    navigation.params = new URLSearchParams('month=all&status=overdue');
+    render(<CobrancasPage />);
+    await waitFor(() => expect(mocks.listBillings).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: undefined, status: 'overdue' })));
+    expect(screen.getByText('Todos os meses')).toBeInTheDocument();
+  });
+
   it('shows delivery indicators to an authorized billing manager', async () => {
     mocks.getCurrentOrganizationMembership.mockResolvedValue({
       organization_id: 'org-1',

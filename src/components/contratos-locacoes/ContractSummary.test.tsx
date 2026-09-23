@@ -1,12 +1,17 @@
 'use client';
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContractSummary } from './ContractSummary';
 import type { ContractDetail } from '@/lib/contratos-locacoes/queries';
 
 afterEach(() => {
   cleanup();
+});
+
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 
 function buildDetail(overrides: Partial<ContractDetail> = {}): ContractDetail {
@@ -131,13 +136,16 @@ describe('ContractSummary', () => {
       />
     );
 
-    const sections = screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent);
+    const sections = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
     expect(sections).toEqual([
       'Dados da locação',
       'Equipamentos locados',
       'Financeiro da locação',
-      'NF de remessa',
+      'Documentos da locação',
+      'Observações da locação',
     ]);
+    expect(screen.queryByRole('region', { name: 'Resumo operacional' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Ações da locação' })).not.toBeInTheDocument();
 
     const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
     expect(within(rentalData).getByText('Nº do Pedido')).toBeInTheDocument();
@@ -148,11 +156,13 @@ describe('ContractSummary', () => {
     expect(within(rentalData).getByText('Radial Energia')).toBeInTheDocument();
     expect(within(rentalData).getByText('Matriz')).toBeInTheDocument();
     expect(within(rentalData).getAllByText('Radial')).toHaveLength(1);
+    expect(within(rentalData).getByText('Status atual')).toBeInTheDocument();
+    expect(within(rentalData).getByText('Ativa')).toBeInTheDocument();
+    expect(within(rentalData).getByText('Início')).toBeInTheDocument();
     expect(within(rentalData).getByText('06/07/2026')).toBeInTheDocument();
-    expect(within(rentalData).getByText('active')).toBeInTheDocument();
-    expect(within(rentalData).getByText('Locação com acesso pela portaria principal.')).toBeInTheDocument();
+    const notes = screen.getByRole('region', { name: 'Observações da locação' });
+    expect(within(notes).getByText('Locação com acesso pela portaria principal.')).toBeInTheDocument();
     expect(within(rentalData).getByText('Radial entrega com caminhão próprio')).toBeInTheDocument();
-    expect(within(rentalData).getByText('R$ 3.250,00')).toBeInTheDocument();
 
     expect(screen.queryByText(/^Tipo$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^rental$/i)).not.toBeInTheDocument();
@@ -171,6 +181,19 @@ describe('ContractSummary', () => {
     const rentalData = screen.getByRole('region', { name: 'Dados da locação' });
     expect(within(rentalData).getByText('Locação #123')).toBeInTheDocument();
     expect(within(rentalData).queryByText(/Locação interna/i)).not.toBeInTheDocument();
+  });
+
+  it('persists general notes through the provided action without a summary layer', async () => {
+    const onSaveNotes = vi.fn().mockResolvedValue(undefined);
+    render(<ContractSummary detail={buildDetail()} onSaveNotes={onSaveNotes} />);
+
+    expect(screen.queryByRole('region', { name: 'Resumo operacional' })).not.toBeInTheDocument();
+
+    const notes = screen.getByRole('region', { name: 'Observações da locação' });
+    fireEvent.click(within(notes).getByRole('button', { name: 'Editar observações' }));
+    fireEvent.change(within(notes).getByLabelText('Anotações gerais'), { target: { value: 'Retirada prevista para sexta.' } });
+    fireEvent.click(within(notes).getByRole('button', { name: 'Salvar observações' }));
+    await waitFor(() => expect(onSaveNotes).toHaveBeenCalledWith('Retirada prevista para sexta.'));
   });
 
   it('shows item quantity, unit amount and subtotal without old technical fields', () => {
@@ -204,7 +227,8 @@ describe('ContractSummary', () => {
       />
     );
 
-    const documents = screen.getByRole('region', { name: 'NF de remessa' });
+    const documents = screen.getByRole('region', { name: 'Documentos da locação' });
+    expect(within(documents).getByRole('heading', { name: 'NF de remessa' })).toBeInTheDocument();
     expect(within(documents).getByText('Número')).toBeInTheDocument();
     expect(within(documents).getByText('NF-1000')).toBeInTheDocument();
     expect(within(documents).getByText('Radial')).toBeInTheDocument();
@@ -233,30 +257,36 @@ describe('ContractSummary', () => {
       />
     );
 
-    const documents = screen.getByRole('region', { name: 'NF de remessa' });
-    expect(within(documents).getByText('Esta locação não possui NF de remessa.')).toBeInTheDocument();
+    const documents = screen.getByRole('region', { name: 'Documentos da locação' });
+    expect(within(documents).getByRole('heading', { name: 'NF de remessa' })).toBeInTheDocument();
+    expect(within(documents).getByText('Nenhum documento cadastrado.')).toBeInTheDocument();
     expect(within(documents).getByRole('button', { name: /editar dados da nf de remessa/i })).toBeInTheDocument();
     expect(within(documents).queryByText('Anexo')).not.toBeInTheDocument();
   });
 
-  it('shows closure controls and registers physical item return', () => {
+  it('opens the closure drawer, preserves the date rule and registers physical item return', () => {
     const handleStartClosure = vi.fn();
     const handleClose = vi.fn();
     const handleRegisterReturn = vi.fn();
     render(
       <ContractSummary
+        closureOpen
         detail={buildDetail()}
+        onClosureOpenChange={vi.fn()}
         onCloseContract={handleClose}
         onRegisterItemReturn={handleRegisterReturn}
         onStartClosure={handleStartClosure}
       />
     );
 
-    const closure = screen.getByRole('region', { name: 'Encerramento' });
-    fireEvent.change(within(closure).getByLabelText(/data efetiva de termino/i), {
+    expect(screen.queryByRole('region', { name: 'Encerramento' })).not.toBeInTheDocument();
+    const closure = screen.getByRole('dialog', { name: 'Encerrar locação' });
+    expect(within(closure).getByText('1 equipamento físico pendente de devolução.')).toBeInTheDocument();
+    expect(within(closure).getByLabelText('Data efetiva de término')).toHaveAttribute('min', '2026-07-06');
+    fireEvent.change(within(closure).getByLabelText('Data efetiva de término'), {
       target: { value: '2026-08-20' },
     });
-    fireEvent.click(within(closure).getByRole('button', { name: /iniciar encerramento/i }));
+    fireEvent.click(within(closure).getByRole('button', { name: 'Iniciar encerramento' }));
 
     expect(handleStartClosure).toHaveBeenCalledWith('2026-08-20');
 
@@ -270,6 +300,21 @@ describe('ContractSummary', () => {
       expect.objectContaining({ id: 'item-1' }),
       '2026-08-21'
     );
+  });
+
+  it('requests closing the controlled drawer with Cancelar', () => {
+    const onClosureOpenChange = vi.fn();
+    render(
+      <ContractSummary
+        closureOpen
+        detail={buildDetail()}
+        onClosureOpenChange={onClosureOpenChange}
+        onStartClosure={vi.fn()}
+      />
+    );
+
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Encerrar locação' })).getByRole('button', { name: 'Cancelar' }));
+    expect(onClosureOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('shows returned_at and enables final closure when physical assets are returned', () => {
@@ -289,10 +334,19 @@ describe('ContractSummary', () => {
       ],
     });
 
-    render(<ContractSummary detail={detail} onCloseContract={handleClose} />);
+    render(
+      <ContractSummary
+        closureOpen
+        detail={detail}
+        onClosureOpenChange={vi.fn()}
+        onCloseContract={handleClose}
+      />
+    );
 
     expect(screen.getByText(/devolvido em 21\/08\/2026/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /finalizar locacao/i }));
+    const closure = screen.getByRole('dialog', { name: 'Encerrar locação' });
+    expect(within(closure).getByText('Sem equipamentos físicos pendentes de devolução.')).toBeInTheDocument();
+    fireEvent.click(within(closure).getByRole('button', { name: 'Finalizar locação' }));
     expect(handleClose).toHaveBeenCalledOnce();
   });
 
@@ -306,9 +360,17 @@ describe('ContractSummary', () => {
       ],
     });
 
-    render(<ContractSummary detail={detail} onCloseContract={vi.fn()} onStartClosure={vi.fn()} />);
+    render(
+      <ContractSummary
+        closureOpen
+        detail={detail}
+        onClosureOpenChange={vi.fn()}
+        onCloseContract={vi.fn()}
+        onStartClosure={vi.fn()}
+      />
+    );
 
-    expect(screen.getByRole('button', { name: /finalizar locacao/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Finalizar locação' })).not.toBeInTheDocument();
   });
 
   it('hides closure actions for contracts already in a final status', () => {
@@ -322,14 +384,16 @@ describe('ContractSummary', () => {
 
     render(
       <ContractSummary
+        closureOpen
         detail={detail}
+        onClosureOpenChange={vi.fn()}
         onCloseContract={vi.fn()}
         onRegisterItemReturn={vi.fn()}
         onStartClosure={vi.fn()}
       />
     );
 
-    expect(screen.queryByRole('region', { name: 'Encerramento' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Encerrar locação' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /registrar devolucao/i })).not.toBeInTheDocument();
   });
 });

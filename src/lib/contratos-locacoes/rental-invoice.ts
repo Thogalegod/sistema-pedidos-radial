@@ -153,7 +153,7 @@ export function buildRentalInvoiceSnapshot({
       paidAmountLabel: formatBRL(balance.paid_amount),
       balanceAmountLabel: formatBRL(balance.balance_amount),
     },
-    notes: billing.notes?.trim() || contract.notes?.trim() || null,
+    notes: billing.show_note_on_invoice === true ? billing.notes?.trim() || null : null,
   };
 }
 

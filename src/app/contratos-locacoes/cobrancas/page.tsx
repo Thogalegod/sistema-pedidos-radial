@@ -19,6 +19,7 @@ export default function CobrancasPage() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const allMonths = searchParams.get('month') === 'all';
   const selectedMonth = resolveBillingMonth(searchParams.get('month'));
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,7 @@ export default function CobrancasPage() {
         const organizationId = await readClient.getCurrentOrganizationId();
         const membership = await readClient.getCurrentOrganizationMembership(organizationId);
         const data = await listBillings(readClient, toLocalDateKey(), {
-          month: selectedMonth,
+          month: allMonths ? undefined : selectedMonth,
           search: debouncedSearch,
           status,
         });
@@ -64,7 +65,7 @@ export default function CobrancasPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, selectedMonth, status]);
+  }, [allMonths, debouncedSearch, selectedMonth, status]);
 
   function navigateMonth(offset: number) {
     router.push(buildBillingMonthHref(
@@ -74,9 +75,15 @@ export default function CobrancasPage() {
     ));
   }
 
+  function toggleAllMonths() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('month', allMonths ? selectedMonth : 'all');
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
   return (
     <div className="space-y-4">
-      <nav aria-label="Mês das cobranças" className="flex items-center justify-center gap-3">
+      <nav aria-label="Mês das cobranças" className="flex flex-wrap items-center justify-center gap-3">
         <button
           aria-label="Mês anterior"
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
@@ -85,7 +92,7 @@ export default function CobrancasPage() {
         >
           ‹
         </button>
-        <strong className="min-w-28 text-center text-sm text-gray-900">{formatBillingMonthLabel(selectedMonth)}</strong>
+        <strong className="min-w-28 text-center text-sm text-gray-900">{allMonths ? 'Todos os meses' : formatBillingMonthLabel(selectedMonth)}</strong>
         <button
           aria-label="Próximo mês"
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
@@ -94,6 +101,12 @@ export default function CobrancasPage() {
         >
           ›
         </button>
+        <button
+          aria-pressed={allMonths}
+          className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${allMonths ? 'border-radial-primary bg-emerald-50 text-emerald-900' : 'border-gray-300 bg-white text-gray-700'}`}
+          onClick={toggleAllMonths}
+          type="button"
+        >{allMonths ? 'Voltar à visão mensal' : 'Todos os meses'}</button>
       </nav>
       <div className="grid gap-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_220px]">
         <input

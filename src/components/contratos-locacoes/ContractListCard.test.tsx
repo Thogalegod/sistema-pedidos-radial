@@ -11,12 +11,11 @@ describe('ContractListCard', () => {
 
     const card = screen.getByRole('article');
     expect(within(card).getByRole('heading', { level: 2, name: 'Cliente QA' })).toBeInTheDocument();
-    expect(within(card).getByText('1111fsd')).toBeInTheDocument();
+    expect(within(card).getByText('1111fsd · Obra QA')).toBeInTheDocument();
     expect(within(card).queryByText(/Pedido 1111fsd/i)).not.toBeInTheDocument();
-    expect(within(card).getByText('Obra QA')).toBeInTheDocument();
     expect(within(card).getByText(/Início: 07\/08\/2026/)).toBeInTheDocument();
     expect(within(card).queryByText('Locação')).not.toBeInTheDocument();
-    expect(within(card).queryByText('Ativa')).not.toBeInTheDocument();
+    expect(within(card).getByText('Ativa')).toBeInTheDocument();
     expect(within(card).queryByText(/Locação interna/i)).not.toBeInTheDocument();
     expect(within(card).getByRole('link', { name: /abrir locação/i })).toHaveAttribute(
       'href',
@@ -27,7 +26,7 @@ describe('ContractListCard', () => {
   it('formats the start date for non-rental contracts too', () => {
     render(<ContractListCard contract={makeContract({ kind: 'other' })} />);
 
-    expect(screen.getByText('Início: 07/08/2026')).toBeInTheDocument();
+    expect(screen.getByText(/Início: 07\/08\/2026/)).toBeInTheDocument();
   });
 
   it('falls back to the internal rental reference when a historical rental has no order', () => {
@@ -35,8 +34,7 @@ describe('ContractListCard', () => {
 
     const card = screen.getByRole('article');
     expect(within(card).getByRole('heading', { level: 2, name: 'Cliente QA' })).toBeInTheDocument();
-    expect(within(card).getByText('Obra QA')).toBeInTheDocument();
-    expect(within(card).getByText('Locação #27')).toBeInTheDocument();
+    expect(within(card).getByText('Locação #27 · Obra QA')).toBeInTheDocument();
   });
 
   it('shows current monthly amount and requests a new period based on period_end, not due_date', () => {
@@ -50,7 +48,8 @@ describe('ContractListCard', () => {
     const card = screen.getByRole('article');
     expect(within(card).getByText('R$ 3.000,00/mês')).toBeInTheDocument();
     expect(within(card).getByText('Faturado até: 31/08/2026')).toBeInTheDocument();
-    expect(within(card).getByText('Vencimento da fatura: 10/09/2026')).toBeInTheDocument();
+    expect(within(card).getByText('Vencimento: 10/09/2026')).toBeInTheDocument();
+    expect(within(card).getByText('Período a emitir')).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: 'Emitir período' })).toHaveAttribute(
       'href',
       '/contratos-locacoes/contratos/contract-1?action=new-billing'
@@ -72,7 +71,7 @@ describe('ContractListCard', () => {
       'href',
       '/contratos-locacoes/contratos/contract-1?action=new-billing'
     );
-    expect(within(card).queryByText(/Vencimento da fatura:/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/Vencimento:/i)).not.toBeInTheDocument();
   });
 
   it('shows a green current-period badge and no emission prompt for inactive rentals', () => {
@@ -91,7 +90,7 @@ describe('ContractListCard', () => {
     expect(within(card).queryByText(/Emitir (novo|1º) período/i)).not.toBeInTheDocument();
   });
 
-  it('shows notes discreetly and preserves only exceptional status badges', () => {
+  it('shows notes discreetly and preserves the rental status badge', () => {
     render(<ContractListCard contract={makeContract({
       status: 'paused',
       billing_coverage_status: null,
@@ -100,7 +99,21 @@ describe('ContractListCard', () => {
 
     const card = screen.getByRole('article');
     expect(within(card).getByText('Pausada')).toBeInTheDocument();
-    expect(within(card).getByText('Obs.: Cliente pede aviso antes da emissão mensal.')).toBeInTheDocument();
+    expect(within(card).getByLabelText('Possui observação interna')).toBeInTheDocument();
+    expect(within(card).queryByText(/Cliente pede aviso/)).not.toBeInTheDocument();
+  });
+
+  it('shows billing urgency and open balance separately from period coverage', () => {
+    render(<ContractListCard contract={makeContract()} billing={{
+      id: 'billing-1', contract_id: 'contract-1', status: 'overdue', alert: 'overdue',
+      balance_amount: '125000', paid_amount: '0', due_date: '2026-09-06',
+    } as NonNullable<Parameters<typeof ContractListCard>[0]['billing']>} />);
+
+    const card = screen.getByRole('article');
+    expect(within(card).getByText('Vencida')).toBeInTheDocument();
+    expect(within(card).getByText('Vencimento: 06/09/2026')).toBeInTheDocument();
+    expect(within(card).getByText('Saldo: R$ 1.250,00')).toBeInTheDocument();
+    expect(within(card).queryByText('Período a emitir')).not.toBeInTheDocument();
   });
 });
 

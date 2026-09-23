@@ -49,6 +49,7 @@ function toPeriodFormValues(billing: BillingCycle): BillingPeriodFormValues {
     due_date: billing.due_date,
     amount: billing.total_amount,
     notes: billing.notes,
+    show_note_on_invoice: billing.show_note_on_invoice === true,
   };
 }
 
@@ -87,6 +88,7 @@ export function ContractBillingSection({
     due_date: nextPeriodSuggestion.period_end,
     amount: monthlyTotal,
     notes: '',
+    show_note_on_invoice: false,
   } : null, [monthlyTotal, nextPeriodSuggestion]);
 
   useEffect(() => {
@@ -110,23 +112,19 @@ export function ContractBillingSection({
   }
 
   return (
-    <div className="mt-4 space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-medium">Valor mensal atual da locação</p>
-          <p className="text-xs text-blue-800">Derivado dos valores atuais dos equipamentos para os novos períodos.</p>
+    <div className="mt-2 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-slate-600">
+          <p>Valor mensal atual: <strong className="font-semibold text-slate-900">{formatBRL(monthlyTotal)}</strong></p>
+          <p className="text-xs text-slate-500">Derivado dos equipamentos para os próximos períodos.</p>
         </div>
-        <span className="font-semibold">{formatBRL(monthlyTotal)}</span>
-      </div>
-
-      {nextPeriodSuggestion ? (
-        <div className="flex justify-end">
-          <button className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" onClick={openCreateForm} type="button">
+        {nextPeriodSuggestion ? (
+          <button className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 sm:self-auto" onClick={openCreateForm} type="button">
             <Plus size={16} />
             {billingCycles.length === 0 ? 'Gerar primeiro período' : 'Gerar próximo período'}
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {activeForm?.type === 'create' ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">

@@ -1,17 +1,33 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import { listContracts, listCustomers, createSupabaseContractsLocacoesReadClient, type ContractListItem, type CustomerListItem } from '@/lib/contratos-locacoes/queries';
+import { listBillings, listContracts, listCustomers, createSupabaseContractsLocacoesReadClient, type BillingListItem, type ContractListItem, type CustomerListItem } from '@/lib/contratos-locacoes/queries';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 import { ContractListCard } from '@/components/contratos-locacoes/ContractListCard';
 import { toLocalDateKey } from '@/lib/contratos-locacoes/dates';
+import { filterContractsByQuickFilter, normalizeRentalQuickFilter, selectOperationalBilling, type RentalQuickFilter } from '@/lib/contratos-locacoes/rental-operations';
+
+const quickFilters: Array<{ value: RentalQuickFilter; label: string }> = [
+  { value: 'all', label: 'Todas' },
+  { value: 'periods_to_issue', label: 'Períodos a emitir' },
+  { value: 'overdue', label: 'Vencidas' },
+  { value: 'due_today', label: 'Vencem hoje' },
+  { value: 'awaiting_return', label: 'Aguardando devolução' },
+  { value: 'paused', label: 'Pausadas' },
+];
 
 export default function ContratosPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const quickFilter = normalizeRentalQuickFilter(searchParams.get('quick'));
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | 'rental' | 'energy_management' | 'recurring_service' | 'other'>('all');
@@ -19,13 +35,15 @@ export default function ContratosPage() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [customerId, setCustomerId] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const hasActiveFilters = search.trim() !== '' || customerId !== '' || kind !== 'all' || status !== 'all';
+  const hasActiveFilters = search.trim() !== '' || customerId !== '' || kind !== 'all' || status !== 'all' || quickFilter !== 'all';
+  const visibleContracts = filterContractsByQuickFilter(contracts, billings, quickFilter);
 
   const clearFilters = () => {
     setSearch('');
     setCustomerId('');
     setKind('all');
     setStatus('all');
+    if (quickFilter !== 'all') router.push(pathname);
   };
 
   useEffect(() => {
@@ -58,14 +76,19 @@ export default function ContratosPage() {
       setLoading(true);
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
-        const data = await listContracts(readClient, {
-          search: debouncedSearch,
-          kind,
-          status,
-          customerId: customerId || undefined,
-        }, toLocalDateKey());
+        const today = toLocalDateKey();
+        const [data, financialRows] = await Promise.all([
+          listContracts(readClient, {
+            search: debouncedSearch,
+            kind,
+            status,
+            customerId: customerId || undefined,
+          }, today),
+          listBillings(readClient, today),
+        ]);
         if (!cancelled) {
           setContracts(data);
+          setBillings(financialRows);
         }
       } catch (error) {
         if (!cancelled) {
@@ -85,9 +108,9 @@ export default function ContratosPage() {
   }, [debouncedSearch, kind, status, customerId]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+        <div className="relative min-w-40 flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             className="w-full rounded-xl border border-gray-300 py-2 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -97,7 +120,7 @@ export default function ContratosPage() {
           />
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <select aria-label="Cliente" className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
             <option value="">Todos os clientes</option>
             {customers.map((customer) => (
@@ -130,7 +153,7 @@ export default function ContratosPage() {
             </button>
           )}
           <Link
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-radial-primary px-4 py-2 text-sm font-semibold text-white hover:bg-radial-primary-hover whitespace-nowrap"
             href="/contratos-locacoes/contratos/novo"
           >
             <Plus size={16} />
@@ -139,16 +162,27 @@ export default function ContratosPage() {
         </div>
       </div>
 
-      <div className="grid gap-4">
+      <nav aria-label="Filtros rápidos de locações" className="flex gap-1.5 overflow-x-auto pb-1">
+        {quickFilters.map((filter) => (
+          <Link
+            aria-current={quickFilter === filter.value ? 'page' : undefined}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${quickFilter === filter.value ? 'border-radial-primary bg-emerald-50 text-emerald-900' : 'border-radial-border bg-white text-slate-600 hover:bg-slate-50'}`}
+            href={filter.value === 'all' ? pathname : `${pathname}?quick=${filter.value}`}
+            key={filter.value}
+          >{filter.label}</Link>
+        ))}
+      </nav>
+
+      <div className="grid gap-2.5">
         {loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">Carregando contratos...</div>
-        ) : contracts.length === 0 ? (
+        ) : visibleContracts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
-            <p className="text-base font-semibold text-gray-900">Nenhum contrato ou locação encontrado</p>
-            <p className="mt-1 text-sm text-gray-500">Crie o primeiro contrato para começar o módulo.</p>
+            <p className="text-base font-semibold text-gray-900">{hasActiveFilters ? 'Nenhuma locação encontrada para estes filtros' : 'Nenhum contrato ou locação encontrado'}</p>
+            <p className="mt-1 text-sm text-gray-500">{hasActiveFilters ? 'Ajuste ou limpe os filtros para ver outras locações.' : 'Crie o primeiro contrato para começar o módulo.'}</p>
           </div>
         ) : (
-          contracts.map((contract) => <ContractListCard contract={contract} key={contract.id} />)
+          visibleContracts.map((contract) => <ContractListCard billing={selectOperationalBilling(contract.id, billings)} contract={contract} key={contract.id} />)
         )}
       </div>
     </div>

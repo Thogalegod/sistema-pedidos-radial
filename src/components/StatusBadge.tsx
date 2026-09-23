@@ -63,7 +63,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
   // 1. Overdue
   if (isOverdue && order.status !== 'Concluído') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold shadow-sm border border-red-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
         <AlertTriangle className="w-3.5 h-3.5" />
         Vencido: {format(parseISO(order.dueDate!), "dd/MM", { locale: ptBR })}
       </div>
@@ -72,7 +72,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
 
   if (order.status === 'Concluído') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold shadow-sm border border-emerald-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
         <CheckCircle2 className="w-3.5 h-3.5" />
         Concluído
       </div>
@@ -82,7 +82,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
   // 2. High Priority Today
   if (isToday && order.priority === 'Alta') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold shadow-sm border border-orange-200 animate-pulse">
+      <div className="flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">
         <AlertCircle className="w-3.5 h-3.5" />
         Urgente para Hoje
       </div>
@@ -92,7 +92,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
   // 3. Aguardando Cliente
   if (order.status === 'Aguardando Cliente') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-semibold shadow-sm border border-yellow-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
         <Clock className="w-3.5 h-3.5" />
         Aguardando Cliente
       </div>
@@ -102,7 +102,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
   // 4. Prazo Concessionária
   if (order.status === 'Prazo Concessionária') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold shadow-sm border border-blue-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
         <Calendar className="w-3.5 h-3.5" />
         {order.dueDate ? `Concessionária: ${format(parseISO(order.dueDate), "dd/MM", { locale: ptBR })}` : 'Prazo Concessionária'}
       </div>
@@ -112,7 +112,7 @@ export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBad
   // 5. Ação Pendente
   if (order.status === 'Ação Pendente') {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold shadow-sm border border-amber-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
         <User className="w-3.5 h-3.5" />
         {order.assignee ? `Ação: ${order.assignee}` : 'Ação Pendente'}
       </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FileText, Paperclip, Wallet } from 'lucide-react';
+import { ChevronDown, FileText, Paperclip, Wallet } from 'lucide-react';
+import { useId, useState } from 'react';
 import { calculateBillingBalance, buildBillingStatus } from '@/lib/contratos-locacoes/dashboard';
 import { resolveEffectiveBillingStatus } from '@/lib/contratos-locacoes/billing-status-presentation';
 import { alertLevel } from '@/lib/contratos-locacoes/dates';
@@ -75,12 +76,30 @@ export function BillingPeriodCard({
   const balanceAmount = Number.parseInt(balance.balance_amount, 10);
   const today = new Date().toISOString().slice(0, 10);
   const alert = status === 'paid' ? 'ok' : alertLevel(today, billing.due_date);
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <article
       aria-label={`Cobrança ${formatDateLabel(billing.period_start)} a ${formatDateLabel(billing.period_end)}`}
-      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+      className="rounded-xl border border-slate-200 bg-white"
     >
+      <button
+        type="button"
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+        className="flex min-h-16 w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3 text-left transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-700"
+      >
+        <span className="sr-only">Detalhes da cobrança </span>
+        <span className="min-w-0 flex-1 basis-44 text-sm font-semibold text-slate-900">{formatDateLabel(billing.period_start)} a {formatDateLabel(billing.period_end)}</span>
+        <BillingStatusBadge alert={alert} balanceAmount={balanceAmount} paidAmount={paidAmount} status={status} />
+        <span className="text-sm font-semibold text-slate-900">{formatBRL(billing.total_amount)}</span>
+        <span className="text-xs text-slate-600">Saldo {formatBRL(balanceAmount)}</span>
+        <span className="text-xs text-slate-600">Vencimento {formatDateLabel(billing.due_date)}</span>
+        <ChevronDown size={18} aria-hidden="true" className={`ml-auto shrink-0 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      <div id={detailsId} hidden={!expanded} className="border-t border-slate-100 px-4 pb-4 pt-4">
       <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div>
@@ -119,7 +138,12 @@ export function BillingPeriodCard({
         </div>
       </div>
 
-      {billing.notes ? <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">{billing.notes}</p> : null}
+      {billing.notes ? (
+        <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          <p>{billing.notes}</p>
+          {billing.show_note_on_invoice ? <p className="mt-1 text-xs text-gray-500">Visível na fatura</p> : null}
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700" onClick={() => onEdit(billing)} type="button">
@@ -129,7 +153,7 @@ export function BillingPeriodCard({
           <FileText size={14} />
           Abrir fatura
         </Link>
-        <button className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => onRegisterPayment(billing)} type="button">
+        <button className="inline-flex items-center gap-1 rounded-lg bg-radial-primary px-3 py-2 text-xs font-semibold text-white hover:bg-radial-primary-hover" onClick={() => onRegisterPayment(billing)} type="button">
           <Wallet size={14} />
           Registrar recebimento
         </button>
@@ -179,7 +203,7 @@ export function BillingPeriodCard({
                 {billing.sent_at && deliveryEvents[0] ? (
                   <p className="mb-2 text-xs text-blue-800">Último envio para {deliveryEvents[0].recipients.join(', ')}</p>
                 ) : null}
-                <button className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => onSendBilling(billing)} type="button">
+                <button className="rounded-lg bg-radial-primary px-3 py-2 text-xs font-semibold text-white hover:bg-radial-primary-hover" onClick={() => onSendBilling(billing)} type="button">
                   {billing.sent_at ? 'Reenviar cobrança' : 'Enviar cobrança'}
                 </button>
               </div>
@@ -238,6 +262,7 @@ export function BillingPeriodCard({
             })}
           </div>
         )}
+      </div>
       </div>
     </article>
   );

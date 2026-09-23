@@ -71,7 +71,7 @@ export function RemittanceInvoiceEditor({
         onClick={openEditor}
         type="button"
       >
-        Editar dados da NF de remessa
+        {contract.has_remittance_invoice ? 'Editar dados da NF de remessa' : 'Adicionar dados da NF de remessa'}
       </button>
     );
   }

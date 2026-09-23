@@ -33,7 +33,7 @@ export function Sidebar({ pathname, name, initials, collapsed = false, onToggle,
     return <Link key={item.id} href={item.href} onClick={onNavigate} title={collapsed ? item.label : undefined}
       aria-label={item.label} aria-current={active ? (exactPage ? 'page' : 'location') : undefined}
       className={`flex min-h-10 min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${collapsed ? 'justify-center' : ''} ${options.module ? 'gap-2 px-2 text-[13px]' : ''} ${options.child ? 'ml-5 min-h-9 border-l border-slate-200 pl-4 text-[13px]' : ''} ${active ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
-      <Icon size={options.child ? 16 : 18} className={`shrink-0 ${active ? 'text-blue-600' : ''}`} aria-hidden="true" />
+      <Icon size={options.child ? 16 : 18} className={`shrink-0 ${active ? 'text-radial-primary' : ''}`} aria-hidden="true" />
       <span className={collapsed ? 'sr-only' : 'truncate'}>{item.label}</span>
     </Link>;
   };

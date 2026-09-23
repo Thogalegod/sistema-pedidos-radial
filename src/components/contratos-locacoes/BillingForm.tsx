@@ -24,6 +24,7 @@ export function BillingForm({ contractOptions, submitLabel, onSubmit }: BillingF
     surcharge_amount: '0',
     exemption_amount: '0',
     notes: '',
+    show_note_on_invoice: false,
     items: [
       {
         id: crypto.randomUUID(),

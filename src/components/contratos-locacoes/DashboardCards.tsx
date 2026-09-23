@@ -4,39 +4,40 @@ import type { DashboardSnapshot } from '@/lib/contratos-locacoes/dashboard';
 
 interface DashboardCardsProps {
   snapshot: DashboardSnapshot;
+  periodsToIssueCount: number;
 }
 
-export function DashboardCards({ snapshot }: DashboardCardsProps) {
+export function DashboardCards({ snapshot, periodsToIssueCount }: DashboardCardsProps) {
   const cards = [
-    { label: 'Cobranças a emitir', value: snapshot.summary.billings_to_issue_count, href: '/contratos-locacoes/cobrancas?status=to_issue' },
-    { label: 'Vencendo em 7 dias', value: snapshot.summary.due_soon_count, href: '/contratos-locacoes/cobrancas?status=due_soon' },
-    { label: 'No vencimento', value: snapshot.summary.due_today_count, href: '/contratos-locacoes/cobrancas?status=due_today' },
-    { label: 'Vencidas', value: snapshot.summary.overdue_count, href: '/contratos-locacoes/cobrancas?status=overdue' },
+    { label: 'Períodos a emitir', value: periodsToIssueCount, href: '/contratos-locacoes/contratos?quick=periods_to_issue', tone: 'text-amber-800' },
+    { label: 'Cobranças vencidas', value: snapshot.summary.overdue_count, href: '/contratos-locacoes/cobrancas?status=overdue&month=all', tone: 'text-red-800' },
+    { label: 'Vencem hoje', value: snapshot.summary.due_today_count, href: '/contratos-locacoes/cobrancas?status=due_today&month=all', tone: 'text-amber-800' },
+    { label: 'Próximos 7 dias', value: snapshot.summary.due_soon_count, href: '/contratos-locacoes/cobrancas?status=due_soon&month=all', tone: 'text-slate-900' },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
       {cards.map((card) => (
         <Link
-          className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md"
+          className="rounded-xl border border-radial-border bg-white px-3 py-3 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-radial-primary"
           href={card.href}
           key={card.label}
         >
-          <p className="text-sm font-medium text-gray-500">{card.label}</p>
-          <p className="mt-2 text-3xl font-black text-gray-900">{card.value}</p>
+          <p className="text-xs font-medium text-radial-muted">{card.label}</p>
+          <p className={`mt-1 text-xl font-semibold tabular-nums ${card.tone}`}>{card.value}</p>
         </Link>
       ))}
 
-      <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-        <p className="text-sm font-medium text-emerald-700">Saldo em aberto</p>
-        <p className="mt-2 text-3xl font-black text-emerald-950">
+      <div className="min-w-0 rounded-xl border border-radial-border bg-white px-3 py-3">
+        <p className="text-xs font-medium text-radial-muted">Saldo em aberto</p>
+        <p className="mt-1 break-words text-lg font-semibold tabular-nums text-emerald-900">
           {formatBRL(Number.parseInt(snapshot.summary.open_total_amount, 10))}
         </p>
       </div>
 
-      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-        <p className="text-sm font-medium text-amber-700">Em atraso</p>
-        <p className="mt-2 text-3xl font-black text-amber-950">
+      <div className="min-w-0 rounded-xl border border-radial-border bg-white px-3 py-3">
+        <p className="text-xs font-medium text-radial-muted">Em atraso</p>
+        <p className="mt-1 break-words text-lg font-semibold tabular-nums text-red-900">
           {formatBRL(Number.parseInt(snapshot.summary.overdue_total_amount, 10))}
         </p>
       </div>

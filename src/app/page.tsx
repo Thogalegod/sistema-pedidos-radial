@@ -774,7 +774,7 @@ export default function Home() {
           actions={<button
             type="button"
             onClick={() => setIsNewOrderOpen(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-radial-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-radial-primary-hover"
           >
             <Plus className="size-4" />
             Novo Pedido

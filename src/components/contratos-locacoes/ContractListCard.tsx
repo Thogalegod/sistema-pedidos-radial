@@ -1,97 +1,77 @@
 import Link from 'next/link';
-import type { ContractListItem } from '@/lib/contratos-locacoes/queries';
+import { StickyNote } from 'lucide-react';
+import type { BillingListItem, ContractListItem } from '@/lib/contratos-locacoes/queries';
 import { getContractKindLabel, getContractStatusLabel } from '@/lib/contratos-locacoes/contract-presentation';
 import { buildRentalListReference } from '@/lib/contratos-locacoes/contract-reference';
 import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
+import { resolveBillingStatusPresentation } from '@/lib/contratos-locacoes/billing-status-presentation';
+import { isPeriodToIssue } from '@/lib/contratos-locacoes/rental-operations';
 
 interface ContractListCardProps {
   contract: ContractListItem;
+  billing?: BillingListItem | null;
 }
 
-export function ContractListCard({ contract }: ContractListCardProps) {
+export function ContractListCard({ contract, billing = null }: ContractListCardProps) {
   const isRental = contract.kind === 'rental';
-  const isNormalActiveRental = isRental && contract.status === 'active';
   const reference = isRental
     ? buildRentalListReference({
         legacyOrderNumber: contract.legacy_order_number,
         internalNumber: contract.internal_number,
       })
     : null;
-  const needsBillingPeriod = contract.billing_coverage_status === 'first_period_required'
-    || contract.billing_coverage_status === 'new_period_required';
+  const needsBillingPeriod = isPeriodToIssue(contract);
+  const financial = billing ? resolveBillingStatusPresentation({
+    status: billing.status,
+    alert: billing.alert,
+    paidAmount: Number(billing.paid_amount),
+    balanceAmount: Number(billing.balance_amount),
+  }) : null;
+  const financialTone = billing?.alert === 'overdue' ? 'bg-red-50 text-red-800 ring-red-200'
+    : billing?.alert === 'due_today' || billing?.alert === 'due_soon'
+      ? 'bg-amber-50 text-amber-800 ring-amber-200'
+      : 'bg-slate-100 text-slate-700 ring-slate-200';
+  const statusTone = contract.status === 'active' ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+    : contract.status === 'paused' || contract.status === 'closing_requested' || contract.status === 'awaiting_return' || contract.status === 'inspection'
+      ? 'bg-amber-50 text-amber-800 ring-amber-200'
+      : 'bg-slate-100 text-slate-700 ring-slate-200';
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md">
+    <article className="overflow-hidden rounded-xl border border-radial-border bg-white transition-colors hover:border-slate-300 hover:bg-slate-50">
       <Link
         aria-label={`Abrir locação de ${contract.customer_name}`}
-        className="block p-5"
+        className="block px-3 pb-2 pt-3 focus-visible:outline-2 focus-visible:outline-radial-primary sm:px-4"
         href={`/contratos-locacoes/contratos/${contract.id}`}
       >
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900">{contract.customer_name}</h2>
-              {!isRental ? (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {getContractKindLabel(contract.kind)}
-                </span>
-              ) : null}
-              {!isNormalActiveRental ? (
-                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                  {getContractStatusLabel(contract.status)}
-                </span>
-              ) : null}
-            </div>
-            {reference ? (
-              <p className="mt-1 text-sm font-semibold text-gray-700">{reference.primary}</p>
-            ) : contract.legacy_order_number ? (
-              <p className="mt-1 text-sm font-semibold text-gray-700">{contract.legacy_order_number}</p>
-            ) : null}
-            <p className="text-sm text-gray-500">{contract.site_name}</p>
-            {contract.notes?.trim() ? (
-              <p className="mt-2 line-clamp-2 text-xs text-gray-500">Obs.: {contract.notes.trim()}</p>
-            ) : null}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="truncate text-base font-semibold text-radial-ink">{contract.customer_name}</h2>
+            {contract.notes?.trim() ? <StickyNote aria-label="Possui observação interna" className="shrink-0 text-slate-400" size={14} /> : null}
           </div>
-          {isRental ? (
-            <div className="grid gap-1 text-sm text-gray-500 md:min-w-64 md:text-right">
-              <p className="text-base font-bold text-gray-900">
-                {formatBRL(contract.current_monthly_amount ?? '0')}/mês
-              </p>
-              {contract.latest_billing_period_end && contract.latest_billing_due_date ? (
-                <>
-                  <span>Faturado até: {formatDateLabel(contract.latest_billing_period_end)}</span>
-                  <span>Vencimento da fatura: {formatDateLabel(contract.latest_billing_due_date)}</span>
-                </>
-              ) : (
-                <span>Nenhum período emitido</span>
-              )}
-              {contract.billing_coverage_status === 'current' ? (
-                <span className="mt-1 justify-self-start rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 md:justify-self-end">
-                  Período vigente
-                </span>
-              ) : null}
-              <span className="mt-1 text-xs">Início: {formatDateLabel(contract.start_date)} · Itens: {contract.item_count}</span>
-            </div>
-          ) : (
-            <div className="grid gap-1 text-sm text-gray-500 md:text-right">
-              <span>Início: {formatDateLabel(contract.start_date)}</span>
-              <span>Recorrência: {contract.recurrence_days} dias</span>
-              <span>Itens: {contract.item_count}</span>
-            </div>
-          )}
+          {isRental ? <strong className="whitespace-nowrap text-sm font-semibold tabular-nums text-radial-ink">{formatBRL(contract.current_monthly_amount ?? '0')}/mês</strong> : null}
         </div>
+        <p className="mt-0.5 truncate text-xs text-radial-muted">
+          {reference?.primary ?? contract.legacy_order_number ?? getContractKindLabel(contract.kind)} · {contract.site_name}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${statusTone}`}>{getContractStatusLabel(contract.status)}</span>
+          {needsBillingPeriod ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">Período a emitir</span> : null}
+          {isRental && contract.billing_coverage_status === 'current' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">Período vigente</span> : null}
+          {financial ? <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${financialTone}`}>{financial.variant === 'issued' ? 'Em dia' : financial.label}</span> : null}
+        </div>
+        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-radial-muted">
+          {isRental && contract.latest_billing_period_end ? <span>Faturado até: {formatDateLabel(contract.latest_billing_period_end)}</span> : null}
+          {isRental && !contract.latest_billing_period_end ? <span>Nenhum período emitido</span> : null}
+          {billing ? <span>Vencimento: {formatDateLabel(billing.due_date)}</span> : contract.latest_billing_due_date ? <span>Vencimento: {formatDateLabel(contract.latest_billing_due_date)}</span> : null}
+          {billing ? <span className={billing.alert === 'overdue' ? 'font-semibold text-red-800' : ''}>Saldo: {formatBRL(billing.balance_amount)}</span> : null}
+          <span>Início: {formatDateLabel(contract.start_date)} · {contract.item_count} {contract.item_count === 1 ? 'item' : 'itens'}</span>
+        </p>
       </Link>
-      {needsBillingPeriod ? (
-        <div className="flex justify-end border-t border-gray-100 px-5 py-3">
-          <Link
-            className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
-            href={`/contratos-locacoes/contratos/${contract.id}?action=new-billing`}
-          >
-            Emitir período
-          </Link>
-        </div>
-      ) : null}
+      <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-3 py-2 sm:px-4">
+        <Link className="rounded-lg border border-radial-border px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" href={`/contratos-locacoes/contratos/${contract.id}`}>Ver</Link>
+        {needsBillingPeriod ? <Link className="rounded-lg bg-radial-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-radial-primary-hover" href={`/contratos-locacoes/contratos/${contract.id}?action=new-billing`}>Emitir período</Link> : null}
+      </div>
     </article>
   );
 }

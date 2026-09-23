@@ -6,8 +6,20 @@ import ContratosPage from './page';
 
 const mocks = vi.hoisted(() => ({
   listContracts: vi.fn(),
+  listBillings: vi.fn(),
   listCustomers: vi.fn(),
   toastError: vi.fn(),
+}));
+
+const navigation = vi.hoisted(() => ({
+  params: new URLSearchParams(),
+  push: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/contratos-locacoes/contratos',
+  useRouter: () => ({ push: navigation.push }),
+  useSearchParams: () => navigation.params,
 }));
 
 vi.mock('react-hot-toast', () => ({
@@ -21,6 +33,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/contratos-locacoes/queries', () => ({
   createSupabaseContractsLocacoesReadClient: () => ({}),
   listContracts: mocks.listContracts,
+  listBillings: mocks.listBillings,
   listCustomers: mocks.listCustomers,
 }));
 
@@ -36,7 +49,9 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  navigation.params = new URLSearchParams();
   mocks.listContracts.mockResolvedValue([]);
+  mocks.listBillings.mockResolvedValue([]);
   mocks.listCustomers.mockResolvedValue([
     { id: 'customer-1', legal_name: 'Alpha Engenharia' },
     { id: 'customer-2', legal_name: 'Beta Construções' },

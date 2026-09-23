@@ -56,6 +56,29 @@ describe('ContractBillingSection future pricing', () => {
     expect(screen.getByRole('heading', { name: 'Novo período de cobrança' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvar período' })).toBeInTheDocument();
     expect(onCreateBillingPeriod).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox', { name: 'Exibir esta observação na fatura' })).not.toBeChecked();
+  });
+
+  it('loads the saved invoice visibility when editing a period', async () => {
+    const user = userEvent.setup();
+    const detail = detailWithUpdatedPrice();
+    detail.billingCycles[0] = { ...detail.billingCycles[0], notes: 'Aviso público', show_note_on_invoice: true };
+    const onUpdateBillingPeriod = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ContractBillingSection
+        detail={detail} paymentProofDocuments={[]}
+        onAttachBoleto={vi.fn()} onAttachPaymentProof={vi.fn()} onCreateBillingPeriod={vi.fn()}
+        onOpenBoleto={vi.fn()} onOpenPaymentProof={vi.fn()} onRecordBillingPayment={vi.fn()}
+        onRepairPendingBoleto={vi.fn()} onReplaceBoleto={vi.fn()}
+        onUpdateBillingPeriod={onUpdateBillingPeriod}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(screen.getByRole('checkbox', { name: 'Exibir esta observação na fatura' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    expect(onUpdateBillingPeriod).toHaveBeenCalledWith(detail.billingCycles[0], expect.objectContaining({ show_note_on_invoice: true }));
   });
 
   it('opens the send modal from a ready boleto for an authorized user', async () => {
@@ -77,6 +100,7 @@ describe('ContractBillingSection future pricing', () => {
       />
     );
 
+    await user.click(screen.getByRole('button', { name: /detalhes da cobrança/i }));
     await user.click(screen.getByRole('button', { name: /^enviar cobrança$/i }));
     expect(screen.getByRole('dialog', { name: /enviar cobrança por e-mail/i })).toBeInTheDocument();
   });

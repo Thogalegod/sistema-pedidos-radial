@@ -134,7 +134,7 @@ function AuthenticatedShell({ children, pathname }: { children: React.ReactNode;
   const sidebarProps = { pathname, name, initials, onSearch: openSearch, onLogout: logout, signingOut, logoutError };
 
   return <ShellUserContext.Provider value={{ user, loading, name }}>
-    <div className="radial-shell min-h-dvh bg-slate-50/60" data-collapsed={collapsed}>
+    <div className="radial-shell min-h-dvh bg-radial-canvas text-radial-ink" data-collapsed={collapsed}>
       <a href="#radial-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3 focus:text-blue-700">Ir para o conteúdo</a>
       <aside className={`fixed inset-y-0 left-0 z-30 hidden border-r border-slate-100 bg-white lg:block print:hidden ${collapsed ? 'w-[72px]' : 'w-[244px]'}`} aria-label="Menu lateral">
         <Sidebar key={pathname} {...sidebarProps} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />

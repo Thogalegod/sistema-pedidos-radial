@@ -6,6 +6,29 @@ import { buildRentalInvoiceSnapshot as buildReceiptSnapshot } from '../rental-in
 import type { BillingCycle, BillingLine, Contract, Customer, CustomerSite } from '../types';
 
 describe('RentalInvoiceDocument', () => {
+  it('passes only explicitly public period observations to the PDF content', async () => {
+    const { buildRentalInvoiceDocumentContent } = await import('./ReceiptDocument');
+    const base = {
+      contract: makeContract({ notes: 'Nota interna da locação' }),
+      customer: makeCustomer(), site: makeSite(), billingLines: [makeBillingLine()], payments: [],
+    };
+    const privateContent = buildRentalInvoiceDocumentContent(buildReceiptSnapshot({
+      ...base, billing: makeBilling({ notes: 'Nota interna do período', show_note_on_invoice: false }),
+    }));
+    const publicContent = buildRentalInvoiceDocumentContent(buildReceiptSnapshot({
+      ...base, billing: makeBilling({ notes: 'Texto para o cliente', show_note_on_invoice: true }),
+    }));
+    const blankContent = buildRentalInvoiceDocumentContent(buildReceiptSnapshot({
+      ...base, billing: makeBilling({ notes: ' ', show_note_on_invoice: true }),
+    }));
+
+    expect(privateContent.notes).toBeNull();
+    expect(publicContent.notes).toBe('Texto para o cliente');
+    expect(blankContent.notes).toBeNull();
+    expect(publicContent.totalLabel).toBe(privateContent.totalLabel);
+    expect(publicContent.invoiceDataRows).toEqual(privateContent.invoiceDataRows);
+  });
+
   it('renders the approved customer-facing invoice content without operational payment data', async () => {
     const snapshot = buildReceiptSnapshot({
       billing: makeBilling({ base_amount: '300000', total_amount: '300000' }),

@@ -148,9 +148,9 @@ describe('rental invoice snapshot builder', () => {
     });
   });
 
-  it('uses the rental observation when the billing note is blank', () => {
+  it('keeps period and rental notes out of the invoice by default', () => {
     const snapshot = buildReceiptSnapshot({
-      billing: makeBilling({ notes: '   ' }),
+      billing: makeBilling({ notes: 'Recado interno', show_note_on_invoice: false }),
       contract: makeContract({ notes: 'Equipamento instalado na área externa.' }),
       customer: makeCustomer(),
       site: makeSite(),
@@ -158,7 +158,20 @@ describe('rental invoice snapshot builder', () => {
       payments: [],
     });
 
-    expect(snapshot.notes).toBe('Equipamento instalado na área externa.');
+    expect(snapshot.notes).toBeNull();
+    expect(snapshot.invoiceNumber).toBe('R000023001');
+    expect(snapshot.totals.totalAmount).toBe('150000');
+  });
+
+  it('shows the period note only when explicitly allowed and non-empty', () => {
+    const base = {
+      contract: makeContract({ notes: 'Observação interna da locação' }),
+      customer: makeCustomer(), site: makeSite(), billingLines: [makeBillingLine()], payments: [],
+    };
+
+    expect(buildReceiptSnapshot({ ...base, billing: makeBilling({ notes: 'Enviar ao cliente', show_note_on_invoice: true }) }).notes).toBe('Enviar ao cliente');
+    expect(buildReceiptSnapshot({ ...base, billing: makeBilling({ notes: '   ', show_note_on_invoice: true }) }).notes).toBeNull();
+    expect(buildReceiptSnapshot({ ...base, billing: makeBilling({ notes: null, show_note_on_invoice: false }) }).notes).toBeNull();
   });
 });
 
@@ -219,6 +232,7 @@ function makeBilling(overrides: Partial<BillingCycle> = {}): BillingCycle {
     boleto_change_operation_id: null,
     boleto_change_started_at: null,
     notes: 'Recibo mensal',
+    show_note_on_invoice: false,
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-01T00:00:00.000Z',
     ...overrides,

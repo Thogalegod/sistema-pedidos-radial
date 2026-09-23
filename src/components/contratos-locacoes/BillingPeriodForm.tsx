@@ -10,6 +10,7 @@ export interface BillingPeriodFormValues {
   due_date: string;
   amount: string;
   notes: string | null;
+  show_note_on_invoice: boolean;
 }
 
 interface BillingPeriodFormProps {
@@ -103,13 +104,27 @@ export function BillingPeriodForm({
       </p>
 
       <label className="grid gap-1 text-sm font-medium text-gray-700">
-        Observação
+        Observação interna do período
         <textarea
           className="min-h-20 rounded-lg border border-gray-300 px-3 py-2"
           value={values.notes ?? ''}
-          onChange={(event) => update({ notes: event.target.value })}
+          onChange={(event) => update({
+            notes: event.target.value,
+            show_note_on_invoice: event.target.value.trim() ? values.show_note_on_invoice : false,
+          })}
         />
       </label>
+
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={values.show_note_on_invoice && Boolean(values.notes?.trim())}
+          disabled={!values.notes?.trim()}
+          onChange={(event) => update({ show_note_on_invoice: event.target.checked })}
+        />
+        Exibir esta observação na fatura
+      </label>
+      <p className="text-xs text-gray-500">Por padrão, esta observação é visível apenas internamente.</p>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 

@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { AlertList } from '@/components/contratos-locacoes/AlertList';
+import { OperationalAlertGroups } from '@/components/contratos-locacoes/OperationalAlertGroups';
 import { DashboardCards } from '@/components/contratos-locacoes/DashboardCards';
-import { createSupabaseContractsLocacoesReadClient, getDashboardSnapshot } from '@/lib/contratos-locacoes/queries';
+import { createSupabaseContractsLocacoesReadClient, getDashboardSnapshot, listContracts, type ContractListItem } from '@/lib/contratos-locacoes/queries';
 import type { DashboardSnapshot } from '@/lib/contratos-locacoes/dashboard';
+import { toLocalDateKey } from '@/lib/contratos-locacoes/dates';
+import { isPeriodToIssue } from '@/lib/contratos-locacoes/rental-operations';
 import { supabase } from '@/lib/supabase';
 
 export default function ContratosLocacoesPage() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -17,10 +20,15 @@ export default function ContratosLocacoesPage() {
     const load = async () => {
       try {
         const readClient = createSupabaseContractsLocacoesReadClient(supabase);
-        const data = await getDashboardSnapshot(readClient, new Date().toISOString().slice(0, 10));
+        const today = toLocalDateKey();
+        const [data, rentalContracts] = await Promise.all([
+          getDashboardSnapshot(readClient, today),
+          listContracts(readClient, { kind: 'rental' }, today),
+        ]);
 
         if (!cancelled) {
           setSnapshot(data);
+          setContracts(rentalContracts);
         }
       } catch (error) {
         if (!cancelled) {
@@ -41,14 +49,8 @@ export default function ContratosLocacoesPage() {
 
   return (
     <div className="space-y-6">
-      <DashboardCards snapshot={snapshot} />
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Alertas prioritários</h2>
-          <p className="text-sm text-gray-500">Vencidos, vencendo em 7 dias e cobranças no dia.</p>
-        </div>
-        <AlertList alerts={snapshot.alerts} />
-      </section>
+      <DashboardCards periodsToIssueCount={contracts.filter(isPeriodToIssue).length} snapshot={snapshot} />
+      <OperationalAlertGroups alerts={snapshot.alerts} contracts={contracts} />
     </div>
   );
 }

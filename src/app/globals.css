@@ -3,11 +3,25 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --radial-canvas: #f6f7f5;
+  --radial-surface: #ffffff;
+  --radial-border: #e1e6e1;
+  --radial-ink: #1b2922;
+  --radial-muted: #617067;
+  --radial-primary: #176247;
+  --radial-primary-hover: #0f503a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-radial-canvas: var(--radial-canvas);
+  --color-radial-surface: var(--radial-surface);
+  --color-radial-border: var(--radial-border);
+  --color-radial-ink: var(--radial-ink);
+  --color-radial-muted: var(--radial-muted);
+  --color-radial-primary: var(--radial-primary);
+  --color-radial-primary-hover: var(--radial-primary-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

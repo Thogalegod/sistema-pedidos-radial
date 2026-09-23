@@ -99,7 +99,7 @@ function HubContent() {
 
       <section aria-label="Atalhos rápidos" className="mb-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {QUICK_LINKS.map(({ label, href, icon: Icon }) => <Link key={href} href={href}
-          className="group flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+          className="group flex min-h-11 items-center gap-2.5 rounded-xl border border-radial-border bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-radial-primary">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><Icon size={15} aria-hidden="true" /></span>
           <span className="min-w-0 flex-1 truncate">{label}</span>
           <ArrowRight size={14} aria-hidden="true" className="hidden shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 sm:block" />
@@ -123,11 +123,11 @@ function HubContent() {
             key={key}
             href={buildCentralViewHref(view)}
             aria-current={active ? 'page' : undefined}
-            className={`group min-w-0 rounded-xl border bg-white p-4 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${active ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200/80 hover:border-slate-300 hover:bg-slate-50'}`}
+            className={`group min-w-0 rounded-xl border bg-white p-4 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-radial-primary ${active ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-radial-border hover:border-slate-300 hover:bg-slate-50'}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className={`text-xs font-medium leading-5 sm:text-sm ${active ? 'text-blue-700' : 'text-slate-500'}`}>{label}</p>
+                <p className={`text-xs font-medium leading-5 sm:text-sm ${active ? 'text-emerald-800' : 'text-slate-500'}`}>{label}</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-slate-950">{snapshot?.summary[key] ?? '—'}</p>
               </div>
               <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${tone}`}><Icon size={17} aria-hidden="true" /></span>

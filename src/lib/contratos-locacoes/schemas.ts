@@ -314,6 +314,7 @@ export const billingDraftSchema = z.object({
   surcharge_amount: moneyStringField,
   exemption_amount: moneyStringField,
   notes: optionalText,
+  show_note_on_invoice: z.boolean().default(false),
   items: z.array(billingLineDraftSchema).min(1, 'Adicione pelo menos uma linha de cobrança'),
 }).superRefine((value, ctx) => {
   if (value.period_end < value.period_start) {
