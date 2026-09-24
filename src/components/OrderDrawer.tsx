@@ -27,10 +27,10 @@ interface OrderDrawerProps {
   onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<void>;
   onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<void>;
   today?: Date;
-  currentUser: TeamMember;
+  canManageOrder?: boolean;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), currentUser }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember>('Thomás');
@@ -175,7 +175,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Detalhes do Pedido</h2>
               <div className="flex items-center gap-2">
-                {currentUser === 'Thomás' && (
+                {canManageOrder && (
                   <button 
                     onClick={() => setIsDeleting(true)}
                     className="p-2 rounded-full hover:bg-red-50 text-red-500 transition-colors"
@@ -562,7 +562,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                           </div>
                         </div>
                         <div className="flex items-center gap-1 no-accordion" onClick={(e) => e.stopPropagation()}>
-                          {currentUser === 'Thomás' && (
+                          {canManageOrder && (
                             <button 
                               onClick={(e) => { 
                                 e.preventDefault(); 
@@ -799,7 +799,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                           </span>
                         </div>
                         <p className="text-sm text-gray-700 pr-6">{atividade.descricao}</p>
-                        {currentUser === 'Thomás' && (
+                        {canManageOrder && (
                           <button 
                             onClick={() => {
                               if (window.confirm('Deseja excluir este registro permanentemente?')) {
@@ -971,7 +971,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                             </div>
                           )}
                           
-                          {currentUser === 'Thomás' && onDeleteAnexo && (
+                          {canManageOrder && onDeleteAnexo && (
                             <button 
                               onClick={(e) => {
                                 e.preventDefault();

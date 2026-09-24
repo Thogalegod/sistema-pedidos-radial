@@ -8,8 +8,14 @@ import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
 import { NewOrderDrawer, type NewOrderDrawerProps } from '../components/NewOrderDrawer';
 import { encodeOrderStatus, mapLegacyTask, mapOrder } from '../lib/pedidos-tarefas/mappers';
-import { readCapabilities } from '../lib/pedidos-tarefas/members';
-import type { Capabilities } from '../lib/pedidos-tarefas/types';
+import {
+  formatMemberLabel,
+  listMembers,
+  readCapabilities,
+  readCurrentMembershipRole,
+  type MembershipRole,
+} from '../lib/pedidos-tarefas/members';
+import type { Capabilities, Member } from '../lib/pedidos-tarefas/types';
 import { Search, Plus, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -24,6 +30,8 @@ import {
 import { resolveOrdersPageIntent } from '../lib/pedidos-tarefas/navigation';
 import { getCurrentTaskDateKey, getTaskDueStatus } from '../lib/pedidos-tarefas/task-due';
 import { deleteOrderDetail } from '../lib/pedidos-tarefas/detail-deletion';
+import { isMyTask } from '../lib/pedidos-tarefas/mine';
+import { MemberNameEditor } from '../components/pedidos-tarefas/MemberNameEditor';
 
 export default function Home() {
   const router = useRouter();
@@ -36,34 +44,28 @@ export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membershipRole, setMembershipRole] = useState<MembershipRole | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const ordersRequestRef = useRef(0);
   const handledIntentRef = useRef<string | null>(null);
 
-  // User logic
-  const [currentUser, setCurrentUser] = useState<TeamMember>('Thomás');
-
   const todayISO = getCurrentTaskDateKey();
   const today = useMemo(() => new Date(`${todayISO}T12:00:00`), [todayISO]);
-
-  useEffect(() => {
-    if (session?.user?.email) {
-      const email = session.user.email.toLowerCase();
-      let name: TeamMember = 'Thomás';
-      if (email.includes('roberto')) name = 'Roberto';
-      if (email.includes('katlyn')) name = 'Katlyn';
-      
-      setCurrentUser(name);
-    }
-  }, [session]);
+  const viewerId = session?.user.id ?? null;
+  const currentMember = members.find(member => member.userId === viewerId) ?? null;
+  const currentUser: TeamMember = currentMember
+    ? formatMemberLabel(currentMember)
+    : 'Membro sem nome';
 
   const fetchOrders = async (currentOrganizationId: string) => {
     const request = ++ordersRequestRef.current;
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [mode, { data, error }] = await Promise.all([
+      const [mode, directory, { data, error }] = await Promise.all([
         readCapabilities(supabase, currentOrganizationId),
+        listMembers(supabase, currentOrganizationId),
         supabase.from('pedidos')
           .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)')
           .eq('organization_id', currentOrganizationId),
@@ -82,6 +84,7 @@ export default function Home() {
       }));
       if (request !== ordersRequestRef.current) return;
       setCapabilities(mode);
+      setMembers(directory);
       setOrders(mappedOrders);
     } catch (error) {
       if (request !== ordersRequestRef.current) return;
@@ -106,7 +109,11 @@ export default function Home() {
           const currentOrganizationId = await getCurrentOrganizationId(supabase);
           if (!active) return;
           setOrganizationId(currentOrganizationId);
-          await fetchOrders(currentOrganizationId);
+          const [role] = await Promise.all([
+            readCurrentMembershipRole(supabase, currentOrganizationId, session.user.id),
+            fetchOrders(currentOrganizationId),
+          ]);
+          if (active) setMembershipRole(role);
         } catch (error) {
           console.error('Error identifying current organization:', error);
           toast.error('Não foi possível identificar a organização atual');
@@ -119,6 +126,8 @@ export default function Home() {
       if (!session) {
         ordersRequestRef.current++;
         setCapabilities(null);
+        setMembers([]);
+        setMembershipRole(null);
         setOrders([]);
         router.replace('/login');
       } else {
@@ -153,9 +162,11 @@ export default function Home() {
     let filtered = orders;
     
     if (filterMode === 'meus') {
-      filtered = filtered.filter(order => 
-        order.tasks.some(t => t.assignee === currentUser && !t.completed)
-      );
+      filtered = viewerId
+        ? filtered.filter(order => order.tasks.some(task =>
+            isMyTask({ assigneeUserId: task.assigneeUserId ?? null }, viewerId) && !task.completed
+          ))
+        : [];
     }
 
     if (searchQuery.trim() !== '') {
@@ -168,7 +179,7 @@ export default function Home() {
       );
     }
     return sortOrders(filtered, today);
-  }, [orders, today, searchQuery, filterMode, currentUser]);
+  }, [orders, today, searchQuery, filterMode, viewerId]);
 
   const selectedOrder = useMemo(() => {
     return orders.find(o => o.id === selectedOrderId) || null;
@@ -782,6 +793,13 @@ export default function Home() {
             />
           </div>}
         />
+
+        {organizationId && membershipRole === 'admin' && (
+          <MemberNameEditor
+            organizationId={organizationId}
+            onChanged={() => fetchOrders(organizationId)}
+          />
+        )}
         
         {/* Indicators Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -943,7 +961,7 @@ export default function Home() {
         onAddComentarioTarefa={handleAddComentarioTarefa}
         onDeleteComentarioTarefa={handleDeleteComentarioTarefa}
         today={today}
-        currentUser={currentUser}
+        canManageOrder={membershipRole === 'admin'}
       />
 
       <NewOrderDrawer

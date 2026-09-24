@@ -29,7 +29,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [x] **1A.3 — Subtarefas e dependências (M03): aplicada no IURQ, 34/34 migrations, QA limpo e aceite; incluída no fechamento autorizado de 1A.1–1B.1.**
 - [x] **1B.1 — Leitores tolerantes: testes/QA e aceite concluídos; fechamento 1A.1–1B.1 no commit `5ea1be65d335fd12fdd3384f4d7cc33146618c5d`, push realizado. Preview publicada; comprovação de seu vínculo com IURQ substituída por validação da aplicação local contra IURQ mediante autorização humana explícita em 24/09/2026. Baseline de lint documentado.**
 - [x] **1B.2 — Backfill idempotente (M04): aplicada exclusivamente no IURQ, 35/35 migrations sincronizadas; integridade e QA técnico aprovados. Correções de exclusão de subtarefa/nota retestadas e aceitas manualmente pelo usuário; fechamento Git autorizado.**
-- [ ] 1B.3 — Prontidão nominal e associação explícita de responsáveis.
+- [x] **1B.3 — Identidade por usuário e associação explícita: implementação e testes concluídos; dados atuais classificados como testes descartáveis, sem reconciliação; interface esclarecida e aceita manualmente pelo usuário.**
 - [ ] 1C.1 — Comandos e ações humanas (M05).
 - [ ] 1C.2 — Status canônico e bloqueio de writers obsoletos (M06).
 - [ ] 1D — Validação de constraints (M07).
@@ -66,7 +66,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechamento Git autorizado de 1B.2 e preparação local de 1B.3. M04 aplicada com autorização humana no IURQ, 35 migrations locais/35 remotas, nenhuma pendente. O usuário autorizou substituir a comprovação da Preview pela validação da aplicação local compatível contra IURQ; essa decisão não comprova o runtime da Preview. Próximo gate: 1B.3, ainda não iniciado; identidades dependem de revisão humana nominal. Nenhuma próxima migration remota está autorizada. As oportunidades gerais de refatoração ficam nos gates correspondentes; não constituem uma frente paralela.
+Prioridade atual: fechamento Git autorizado de 1B.3. M04 permanece aplicada no IURQ, com 35 migrations locais/35 remotas e nenhuma pendente. O responsável do produto confirmou que os dois membros e as quatro tarefas atuais são dados de teste descartáveis e que o ambiente começará limpo; por isso não houve reconciliação nominal. Nenhuma identidade foi inferida e nenhuma exclusão foi executada. Após o fechamento, o próximo gate é a preparação local de 1C.1; nenhuma nova migration remota está autorizada.
 
 ### Evidências de 1B.2 — aplicação e QA no IURQ (24/09/2026)
 
@@ -173,3 +173,16 @@ Prioridade atual: fechamento Git autorizado de 1B.2 e preparação local de 1B.3
 - Pedido QA `c52b6068-0829-4583-886c-fe37ba7400f2`, tarefa `04153f19-7416-4342-9b69-cb11dfd39390` e Frente gerada removidos com SQL autenticado, IDs/tenant/título exatos e guardas contra conteúdo inesperado. Nenhum anexo criado. Zero resíduos e fingerprints das seis relações do Pedido original idênticos. Inventário remoto permanece 34 e local sem migration nova.
 - Limite: sete status cobertos pela matriz unitária; navegador exercitou os estados presentes no IURQ e o ciclo do Pedido de QA. Aplicação disponível apenas no servidor local existente. Antes de aplicar M04, publicar/autorizar o leitor compatível no destino correto; não usar localhost como prova de publicação.
 - Aceite e fechamento: usuário confirmou “feito pode fazer o commit e push e vamos para o proximo passo”. Autorizado registrar e enviar somente os arquivos dos gates concluídos 1A.1–1B.1, após staging seletivo e staged gate. A autorização não inclui deploy, merge ou aplicação de M04.
+
+### Evidências de 1B.3 — preparação local (24/09/2026)
+
+- Predecessor fechado: 1B.2 passou por staging seletivo e `ai:gate:staged`; commit `15215da` (`data: concluir backfill e exclusoes do pedido`) publicado em `origin/codex/controle-locacoes`. Nenhum deploy ou migration posterior.
+- Inventário read-only no IURQ: dois membros ativos, ambos sem `display_name`, sendo um administrador; quatro tarefas, todas sem `responsavel_user_id`, agrupadas em dois rótulos legados. Nenhuma tarefa possui correspondência nominal com membro e não há vínculo inválido. Nenhum nome ou e-mail foi inferido/exposto.
+- Preparação local: diretório e leitura da função por membership; editor administrativo de nomes; associação explícita de grupos legados pelas RPCs da M02; sugestão somente quando o nome normalizado é único; homônimos ficam sem seleção; confirmação antes da associação; erros preservam o grupo visível. “Minhas Tarefas” passou a comparar `responsavel_user_id` com o UUID autenticado. Autorizações do drawer deixaram de depender do nome literal `Thomás` e usam a função real do membro.
+- RED observado para módulos/comportamentos ausentes e para a autorização nominal antiga; após o feedback manual, novo RED comprovou a ausência da explicação para dados descartáveis. GREEN focal final: **21/21** em `members`, `mine`, `MemberNameEditor` e `OrderDrawer`. `tsc --noEmit` e `git diff --check` passaram; `http://localhost:3001/` respondeu 200.
+- Lint focal: arquivos novos e demais alterações sem diagnóstico novo; `OrderDrawer.tsx` conserva apenas a dívida preexistente já documentada (5 erros e 2 warnings de voz/reset/import/img), sem ampliação deste gate.
+- A tentativa de repetir pgTAP focal não iniciou porque o banco local descartável não estava ativo (`127.0.0.1:54322`). O SQL/M02 não foi alterado; permanece a evidência anterior de 86/86, sem declarar uma nova passagem nesta rodada.
+- Ruling do gate humano: o responsável do produto confirmou que todos os membros/tarefas atuais são testes descartáveis e serão removidos antes do uso real. A reconciliação nominal desses registros foi dispensada; `display_name` e `responsavel_user_id` permanecem nulos, sem inferência. O reset não faz parte deste gate e exige autorização destrutiva separada.
+- Feedback manual: o painel amarelo não explicava por que nomes/vínculos eram solicitados e sugeria obrigação sobre dados descartáveis. RED→GREEN focal adicionou orientação explícita de que a área é opcional e usada somente para dados reais que precisam ser preservados; dados de teste que serão apagados não devem ser preenchidos ou associados. O painel passou a apresentação neutra, sem aparência de alerta.
+- Aceite: o usuário enviou captura da interface esclarecida e confirmou que a orientação ficou clara e que a tela continua ativa. O aceite não autoriza reset dos dados, deploy ou migration remota; autoriza o fechamento Git seletivo de 1B.3 conforme o protocolo do projeto.
+- Nenhuma escrita de dados remota, migration ou deploy foi realizada para 1B.3. MISFY não acessado; 1C.1 não iniciado durante este gate.

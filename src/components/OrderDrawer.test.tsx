@@ -54,8 +54,8 @@ function deferred() {
   return { promise, resolve };
 }
 
-function renderDrawer(overrides: Partial<React.ComponentProps<typeof OrderDrawer>> = {}) {
-  const props: React.ComponentProps<typeof OrderDrawer> = {
+function renderDrawerProps(overrides: Partial<React.ComponentProps<typeof OrderDrawer>> = {}) {
+  return {
     order,
     isOpen: true,
     onClose: vi.fn(),
@@ -67,12 +67,14 @@ function renderDrawer(overrides: Partial<React.ComponentProps<typeof OrderDrawer
     onAddAtividade: vi.fn(),
     onDeleteAtividade: vi.fn(),
     onEditTaskTitle: vi.fn(),
-    currentUser: 'Roberto',
     onDeleteSubtarefa: vi.fn().mockResolvedValue(undefined),
     onDeleteComentarioTarefa: vi.fn().mockResolvedValue(undefined),
     ...overrides,
-  };
+  } satisfies React.ComponentProps<typeof OrderDrawer>;
+}
 
+function renderDrawer(overrides: Partial<React.ComponentProps<typeof OrderDrawer>> = {}) {
+  const props = renderDrawerProps(overrides);
   render(<OrderDrawer {...props} />);
   return props;
 }
@@ -84,6 +86,23 @@ async function expandTask(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('OrderDrawer detail deletion', () => {
+  it('uses membership authorization instead of a person name for administrative actions', () => {
+    const { unmount } = render(
+      <OrderDrawer
+        {...renderDrawerProps({ canManageOrder: false })}
+      />
+    );
+    expect(screen.queryByTitle('Deletar pedido')).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <OrderDrawer
+        {...renderDrawerProps({ canManageOrder: true })}
+      />
+    );
+    expect(screen.getByTitle('Deletar pedido')).toBeInTheDocument();
+  });
+
   it('offers both delete actions to an authorized organization member', async () => {
     const user = userEvent.setup();
     renderDrawer();
