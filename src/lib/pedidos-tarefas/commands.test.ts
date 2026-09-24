@@ -97,6 +97,30 @@ describe('pedido command RPC wrappers', () => {
     });
   });
 
+  it('forwards canonical workflow, waiting and priority fields without a legacy bool', async () => {
+    const canonicalTask = {
+      ...taskResult,
+      status: 'Aguardando',
+      priority: 'Urgente',
+      waiting: { type: 'internal_user', userId: 'user-a', note: 'Retorno interno' },
+      completedAt: null,
+    };
+    const { client, requests } = commandClient({ update_pedido_task: { data: canonicalTask } });
+    const patch = {
+      status: 'Aguardando' as const,
+      priority: 'Urgente' as const,
+      waiting: { type: 'internal_user' as const, userId: 'user-a', note: 'Retorno interno' },
+    };
+
+    await expect(updateTask(client, 'org-a', 'task-a', patch))
+      .resolves.toEqual({ ok: true, value: canonicalTask });
+    expect(requests).toEqual([{
+      rpc: 'update_pedido_task',
+      body: { p_org: 'org-a', p_id: 'task-a', p_patch: patch },
+    }]);
+    expect(requests[0].body).not.toHaveProperty('p_patch.completed');
+  });
+
   it('saves subtasks and removes tasks through scoped RPCs', async () => {
     const save = commandClient({ save_pedido_subtask: {} });
     await expect(saveSubtask(save.client, 'org-a', {

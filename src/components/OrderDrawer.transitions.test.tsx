@@ -56,6 +56,23 @@ describe('explicit order and task transitions', () => {
     expect(onSetOrderStatus).toHaveBeenCalledWith('order-a', 'Finalizado');
   });
 
+  it('confirms cancellation and reopens an ended order explicitly', async () => {
+    const user = userEvent.setup();
+    const onSetOrderStatus = vi.fn().mockResolvedValue(true);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { rerender } = render(<OrderDrawer {...drawerProps({ onSetOrderStatus })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }));
+    expect(onSetOrderStatus).toHaveBeenCalledWith('order-a', 'Cancelado');
+
+    rerender(<OrderDrawer {...drawerProps({
+      order: { ...order, status: 'Cancelado' },
+      onSetOrderStatus,
+    })} />);
+    await user.click(screen.getByRole('button', { name: 'Reabrir pedido' }));
+    expect(onSetOrderStatus).toHaveBeenLastCalledWith('order-a', 'Em andamento');
+  });
+
   it('keeps a new task in the form when the command fails', async () => {
     const user = userEvent.setup();
     const onAddTask = vi.fn().mockResolvedValue(false);

@@ -31,7 +31,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [x] **1B.2 — Backfill idempotente (M04): aplicada exclusivamente no IURQ, 35/35 migrations sincronizadas; integridade e QA técnico aprovados. Correções de exclusão de subtarefa/nota retestadas e aceitas manualmente pelo usuário; fechamento Git autorizado.**
 - [x] **1B.3 — Identidade por usuário e associação explícita: implementação e testes concluídos; dados atuais classificados como testes descartáveis, sem reconciliação; interface esclarecida e aceita manualmente pelo usuário.**
 - [x] **1C.1 — Comandos e ações humanas (M05): M05 aplicada no IURQ, 36/36; verificação, QA técnico e teste manual aprovados; fechamento Git autorizado.**
-- [ ] 1C.2 — Status canônico e bloqueio de writers obsoletos (M06).
+- [x] **1C.2 — Status canônico e bloqueio de writers obsoletos (M06): aplicada e validada tecnicamente no IURQ; aceite manual final recebido; fechamento Git autorizado.**
 - [ ] 1D — Validação de constraints (M07).
 
 ### Lote 2 — Tela do Pedido
@@ -66,7 +66,28 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechamento Git seletivo de 1C.1. M05 está aplicada exclusivamente no IURQ e o inventário está sincronizado em 36/36. Verificação, QA técnico e fluxo visual crítico passaram; após commit/push, o próximo gate é a preparação local de 1C.2. Nenhuma aplicação de M06 está autorizada.
+Prioridade atual: fechamento Git seletivo de 1C.2. A M06 foi aplicada somente no IURQ após autorização explícita; inventário 37 migrations locais/37 remotas e rollout `v1/legacy`. O usuário aprovou o teste manual final. Não aplicar M07 neste fechamento.
+
+### Evidências de 1C.2 — ativação e QA no IURQ (24/09/2026)
+
+- Target explícito `iurqgskfuupslrghgtej`; dry-run mostrou apenas `20260923200500_pedidos_v1_activate.sql`, sem seeds/roles. A primeira execução abortou antes de alterar schema porque `LOCK TABLE` exigia transação explícita. Histórico permaneceu em 36 migrations e `legacy/legacy`; M06 ainda não aplicada foi ajustada com `BEGIN`/`COMMIT`. Novo dry-run exclusivamente M06; aplicação concluiu e histórico passou a 37/37.
+- Pós-M06: `v1/legacy`; 2 Pedidos e 7 tarefas preservados; 1 status legado de Pedido reconciliado, 0 status legado remanescente, 0 divergência status/bool/timestamp, 0 espera inválida. Trigger canônico ativo, legado ausente; SELECT de Pedido/tarefa preservado, DELETE protegido de Pedido preservado e writers diretos obsoletos revogados.
+- QA remoto focal em transação com `ROLLBACK`, somente registros identificados `QA-M06-ROLLBACK-*`: quatro estados, cinco tipos de espera, membro interno, prioridade independente, conclusão e reabertura, Pedido sem auto-finalização, finalização/cancelamento explícitos, bloqueio de tarefa em Pedido encerrado e de UPDATE direto legado passaram. Após rollback: 2 Pedidos/7 tarefas; 0 registros QA persistidos.
+- A consulta read-only de espera foi corrigida para tratar `NULL` como ausência de espera; o alerta inicial 7/7 era falso positivo da verificação. Repetição: 0 inválidos. Testes focais Vitest 15/15, TypeScript, lint focal e `git diff --check` passaram. Advisor de segurança consultado; nenhum achado para o novo trigger canônico (avisos preexistentes fora deste gate não foram alterados).
+- QA visual não foi executado pelo agente (sem Computer Use/Chrome); o usuário confirmou o aceite manual final com “Aprovado”. Staging/commit/push seletivos de 1C.2 autorizados; nenhum deploy solicitado. MISFY não acessado.
+- Após o aceite: suíte do aplicativo `npm test -- src` passou (802 testes, 4 ignorados); `npm run ai:gate:test` passou (12/12); testes focais 15/15, TypeScript e lint focal passaram. `npm test` sem filtro inclui indevidamente um teste temporário ignorado de M04 que depende de leitura autenticada externa e o teste Node do gate sob Vitest; ambos falharam por runner/ambiente, sem falha dos 802 testes do aplicativo. Não foram modificados neste gate.
+
+### Evidências de 1C.2 — preparação local e preflight (24/09/2026)
+
+- Predecessor fechado: 1C.1 no commit `fd88d97` (`refactor: centralizar comandos e conclusao manual de pedidos`), publicado em `origin/codex/controle-locacoes`. Naquele preflight, M05 estava aplicada no IURQ em 36/36; nenhum deploy havia sido feito.
+- M06 local `20260923200500_pedidos_v1_activate.sql`: a CLI gerou `20260924203937_pedidos_v1_activate.sql`; o arquivo vazio foi renomeado antes de qualquer uso para o timestamp reservado. Nenhuma migration aplicada foi editada.
+- RED observado antes da M06: capability legacy, trigger antigo presente, trigger canônico ausente, grants diretos de Pedido/tarefa ativos, Pedido novo armazenado como Ação Pendente e cliente antigo ainda capaz de escrever status/bool diretamente.
+- Cutover transacional local: lock exclusivo e preflight de estados; reconciliação de deltas sem alterar `updated_at`; Pedidos legados normalizados; trigger legado substituído por projeção canônica status→bool/timestamp/espera; modo passa a `v1/legacy`; INSERT/UPDATE direto de Pedido e INSERT/UPDATE/DELETE direto de tarefa revogados, preservando SELECT e DELETE protegido de Pedido.
+- GREEN pgTAP M06 **37/37**: grants, quatro estados, cinco tipos de espera, membro interno válido, prioridade independente, timestamps de conclusão, espera preservada em edição não relacionada, limpeza ao sair de Aguardando, bloqueio de cliente antigo e de Pedido finalizado/cancelado, reabertura explícita e ausência de auto-finalização.
+- Transição real M05→M06 sobre fixtures legadas dentro de rollback passou: três Pedidos e duas tarefas preservados, status antigos reconciliados, projeção íntegra e capability V1; rollback devolveu o container ao estado anterior ao harness. Verificação SQL local: `v1/legacy`, somente triggers canônico/timestamp, zero estados legados, divergências ou esperas inválidas, grants e oito RPCs corretos.
+- Client/tests: comandos aceitam workflow/espera/prioridade canônicos sem campo bool; interface confirma cancelamento e reabertura explícita. Vitest focal **15/15**, `tsc --noEmit` e lint dos testes alterados passaram. Busca no código encontrou apenas leituras diretas de Pedido/tarefa e o DELETE protegido de Pedido; writers de INSERT/UPDATE/tarefa usam os comandos M05.
+- Preflight remoto exclusivamente read-only: target IURQ `iurqgskfuupslrghgtej`; 37 locais/36 remotas; dry-run somente `20260923200500_pedidos_v1_activate.sql`, sem seeds/roles. Inventário agregado: 2 Pedidos, 7 tarefas, 1 status legado de Pedido a reconciliar, 0 status desconhecido, 0 divergência status/bool, 0 responsável/espera inválidos e 8 comandos M05 presentes.
+- Ponto de parada daquele preflight (superado pela ativação registrada acima): M06 ainda não aplicada e IURQ em `legacy/legacy`; aguardava autorização explícita. MISFY não acessado.
 
 ### Evidências de 1C.1 — preparação local e preflight (24/09/2026)
 
