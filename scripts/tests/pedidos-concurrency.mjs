@@ -46,8 +46,46 @@ async function until(predicate, label) {
   throw new Error(label);
 }
 
+async function runOrderClose() {
+  const inspected = await docker(['inspect', '--format', '{{.Name}}', container]);
+  assert.equal(inspected.code, 0, inspected.stderr);
+  assert.equal(inspected.stdout, `/${container}`);
+  await until(async () => (await docker(['exec', container, 'pg_isready', '-U', 'postgres'])).code === 0, 'Disposable DB not ready');
+  assert.equal(await sql("SELECT to_regprocedure('public.create_pedido_task(uuid,jsonb)') IS NOT NULL AND to_regprocedure('public.set_pedido_status(uuid,uuid,text)') IS NOT NULL"), 't', 'M05 command RPCs missing');
+  assert.equal(await sql("SELECT count(*) FROM auth.users WHERE id IN ('05000000-0000-4000-8000-000000000001','05000000-0000-4000-8000-000000000002','05000000-0000-4000-8000-000000000003')"), '0', 'Fixture user collision');
+  assert.equal(await sql("SELECT count(*) FROM public.organizations WHERE id IN ('05000001-0000-4000-8000-000000000001','05000001-0000-4000-8000-000000000002')"), '0', 'Fixture tenant collision');
+  const base = await readFile(new URL('supabase/tests/helpers/pedidos-v1-fixtures.sql', root), 'utf8');
+  await sql(`BEGIN; ${base}\nCOMMIT;`);
+  const initialTasks = await sql(`SELECT count(*) FROM public.tarefas WHERE organization_id='${org}' AND pedido_id='${order}'`);
+  const sessions = [];
+  try {
+    const closing = query(`BEGIN; SET LOCAL statement_timeout='15s'; SET LOCAL application_name='gate1c1-close'; ${auth} SELECT public.set_pedido_status('${org}','${order}','Finalizado'); SELECT pg_sleep(6); COMMIT;`);
+    sessions.push(closing);
+    await until(async () => await sql("SELECT count(*) FROM pg_stat_activity WHERE application_name='gate1c1-close' AND wait_event='PgSleep'") === '1', 'Close transaction never reached barrier');
+    const creating = query(`BEGIN; SET LOCAL statement_timeout='15s'; SET LOCAL application_name='gate1c1-create'; ${auth} SELECT public.create_pedido_task('${org}',jsonb_build_object('title','Concurrent task','orderId','${order}','frontId',NULL)); COMMIT;`);
+    sessions.push(creating);
+    await until(async () => await sql("SELECT count(*) FROM pg_stat_activity WHERE application_name='gate1c1-create' AND cardinality(pg_blocking_pids(pid))>0") === '1', 'Task creation did not wait for the order lock');
+    const [closeResult, createResult] = await Promise.all(sessions);
+    assert.equal(closeResult.code, 0, closeResult.stderr);
+    assert.notEqual(createResult.code, 0, 'Task creation committed after order finalization');
+    assert.match(createResult.stderr, /23514/, 'Closed order must reject the waiting task command');
+    assert.equal(await sql(`SELECT status FROM public.pedidos WHERE organization_id='${org}' AND id='${order}'`), 'Concluído');
+    assert.equal(await sql(`SELECT count(*) FROM public.tarefas WHERE organization_id='${org}' AND pedido_id='${order}'`), initialTasks);
+    console.log('PASS: explicit close held the order lock; concurrent task creation waited, revalidated, and was rejected (23514).');
+  } finally {
+    await Promise.allSettled(sessions);
+    await sql("BEGIN; DELETE FROM public.anexos WHERE organization_id IN ('05000001-0000-4000-8000-000000000001','05000001-0000-4000-8000-000000000002'); DELETE FROM public.organizations WHERE id IN ('05000001-0000-4000-8000-000000000001','05000001-0000-4000-8000-000000000002'); DELETE FROM auth.users WHERE id IN ('05000000-0000-4000-8000-000000000001','05000000-0000-4000-8000-000000000002','05000000-0000-4000-8000-000000000003'); COMMIT;");
+  }
+}
+
 async function main() {
-  assert.deepEqual(process.argv.slice(2), ['dependencies'], 'Usage: node scripts/tests/pedidos-concurrency.mjs dependencies');
+  const mode = process.argv[2];
+  assert.ok(['dependencies', 'order-close'].includes(mode), 'Usage: node scripts/tests/pedidos-concurrency.mjs dependencies|order-close');
+  assert.equal(process.argv.length, 3, 'Exactly one concurrency mode is required');
+  if (mode === 'order-close') {
+    await runOrderClose();
+    return;
+  }
   const inspected = await docker(['inspect', '--format', '{{.Name}}', container]);
   assert.equal(inspected.code, 0, inspected.stderr);
   assert.equal(inspected.stdout, `/${container}`);

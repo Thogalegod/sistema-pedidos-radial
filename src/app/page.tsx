@@ -7,7 +7,16 @@ import { sortOrders } from '../lib/sorting';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
 import { NewOrderDrawer, type NewOrderDrawerProps } from '../components/NewOrderDrawer';
-import { encodeOrderStatus, mapLegacyTask, mapOrder } from '../lib/pedidos-tarefas/mappers';
+import { mapOrder } from '../lib/pedidos-tarefas/mappers';
+import {
+  createOrder,
+  createTask,
+  removeTask,
+  saveSubtask,
+  setOrderStatus,
+  updateOrder,
+  updateTask,
+} from '../lib/pedidos-tarefas/commands';
 import {
   formatMemberLabel,
   listMembers,
@@ -72,15 +81,26 @@ export default function Home() {
       ]);
       if (error) throw error;
       if (!data) throw new Error('Resposta de Pedidos ausente');
+      const directoryById = new Map(directory.map(member => [member.userId, member]));
       const mappedOrders = await Promise.all(data.map(async row => {
         const order = mapOrder(row, mode.statusMode);
+        const tasks = order.tasks.map(task => {
+          if (!task.assigneeUserId) return task;
+          const member = directoryById.get(task.assigneeUserId);
+          return {
+            ...task,
+            assignee: member
+              ? formatMemberLabel(member)
+              : task.assignee ?? `Membro sem nome · ${task.assigneeUserId.slice(0, 8)}`,
+          };
+        });
         const anexos = await Promise.all((order.anexos ?? []).map(async attachment => {
           const { data: signedData, error: signedError } = await supabase.storage
             .from('anexos-pedidos').createSignedUrl(attachment.storage_path, 3600);
           if (signedError) throw signedError;
           return { ...attachment, signed_url: signedData?.signedUrl };
         }));
-        return { ...order, anexos };
+        return { ...order, tasks, anexos };
       }));
       if (request !== ordersRequestRef.current) return;
       setCapabilities(mode);
@@ -227,133 +247,112 @@ export default function Home() {
     return true;
   };
 
+  const reportCommandFailure = (
+    result: { ok: false; message: string },
+    userMessage: string,
+    toastId?: string,
+  ) => {
+    console.error(userMessage, result.message);
+    toast.error(userMessage, toastId ? { id: toastId } : undefined);
+  };
+
   // Handlers
   const handleToggleTask = async (orderId: string, taskId: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const order = orders.find(o => o.id === orderId);
-    if (!order) return;
+    if (!order) return false;
     
     const task = order.tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task) return false;
 
     const newCompleted = !task.completed;
-    const completedAtValue = newCompleted ? new Date().toISOString() : undefined;
-
-    const { error: taskError } = await supabase.from('tarefas').update({
-      concluido: newCompleted,
-      concluida_em: completedAtValue ?? null
-    }).eq('organization_id', currentOrganizationId).eq('id', taskId);
-
-    if (reportMutationError(taskError, 'Erro ao atualizar tarefa')) return;
-
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted, completedAt: completedAtValue } : t)
-    } : o));
-
-    const updatedOrder = orders.find(o => o.id === orderId);
-    if (updatedOrder) {
-      const allCompleted = updatedOrder.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted } : t).length > 0 
-        && updatedOrder.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted } : t).every(t => t.completed);
-        
-      const newStatus = allCompleted ? 'Finalizado' : (updatedOrder.status === 'Finalizado' ? 'Em andamento' : updatedOrder.status);
-      
-      if (newStatus !== updatedOrder.status) {
-        const { error: statusError } = await supabase.from('pedidos').update({ status: encodeOrderStatus(newStatus, capabilities!.statusMode) }).eq('organization_id', currentOrganizationId).eq('id', orderId);
-        if (reportMutationError(statusError, 'Erro ao atualizar status do pedido')) return;
-
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-        if (newStatus === 'Finalizado') toast.success('Pedido marcado como Finalizado!');
-      }
+    const result = await updateTask(supabase, currentOrganizationId, taskId, {
+      status: newCompleted ? 'Concluída' : 'Aberta',
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar tarefa');
+      return false;
     }
+
+    await fetchOrders(currentOrganizationId);
+    return true;
   };
 
   const handleSaveNewOrder: NewOrderDrawerProps['onSave'] = async (newOrderData) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const toastId = toast.loading('Criando pedido...');
-    const { data, error } = await supabase.from('pedidos').insert({
-      organization_id: currentOrganizationId,
-      numero_pedido: newOrderData.orderNumber,
-      projeto: newOrderData.title,
-      cliente: newOrderData.client,
-      endereco: newOrderData.address,
+    const result = await createOrder(supabase, currentOrganizationId, {
+      number: newOrderData.orderNumber,
+      title: newOrderData.title,
+      client: newOrderData.client,
+      address: newOrderData.address,
       cep: newOrderData.cep || null,
-      prioridade: newOrderData.priority,
-      status: encodeOrderStatus(newOrderData.status, capabilities!.statusMode),
-    }).select().single();
-
-    if (!error && data) {
-      toast.success('Pedido criado com sucesso!', { id: toastId });
-      fetchOrders(currentOrganizationId);
-    } else {
-      toast.error('Erro ao criar pedido', { id: toastId });
+      legacyPriority: newOrderData.priority,
+      utilityDueDate: null,
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao criar pedido', toastId);
+      return false;
     }
+
+    toast.success('Pedido criado com sucesso!', { id: toastId });
+    await fetchOrders(currentOrganizationId);
+    return true;
   };
 
   const handleChangePriority = async (orderId: string, newPriority: Priority) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('pedidos').update({ prioridade: newPriority }).eq('organization_id', currentOrganizationId).eq('id', orderId);
-    if (reportMutationError(error, 'Erro ao alterar prioridade')) return;
+    const result = await updateOrder(supabase, currentOrganizationId, orderId, {
+      legacyPriority: newPriority,
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao alterar prioridade');
+      return;
+    }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, priority: newPriority } : o));
+    await fetchOrders(currentOrganizationId);
     toast.success(`Prioridade alterada para ${newPriority}`);
   };
 
-  const handleAddTask = async (orderId: string, taskTitle: string, assignee: TeamMember, dueDate?: string) => {
+  const handleAddTask = async (orderId: string, taskTitle: string, assigneeId: string | null, dueDate?: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const toastId = toast.loading('Adicionando tarefa...');
-    const { data, error } = await supabase.from('tarefas').insert({
-      organization_id: currentOrganizationId,
-      pedido_id: orderId,
-      descricao: taskTitle,
-      responsavel: assignee,
-      vencimento: dueDate || null
-    }).select().single();
-
-    if (!error && data) {
-      const order = orders.find(o => o.id === orderId);
-      if (order && order.status === 'Finalizado') {
-        const { error: statusError } = await supabase.from('pedidos').update({ status: encodeOrderStatus('Em andamento', capabilities!.statusMode) }).eq('organization_id', currentOrganizationId).eq('id', orderId);
-        if (reportMutationError(statusError, 'Tarefa criada, mas o status do pedido não foi atualizado')) {
-          await fetchOrders(currentOrganizationId);
-          return;
-        }
-      }
-
-      setOrders(prev => prev.map(o => {
-        if (o.id !== orderId) return o;
-        const newStatus = o.status === 'Finalizado' ? 'Em andamento' : o.status;
-        return {
-          ...o,
-          status: newStatus,
-          tasks: [...o.tasks, mapLegacyTask(data, capabilities!.statusMode)]
-        };
-      }));
-      toast.success('Tarefa adicionada!', { id: toastId });
-    } else {
-      toast.error('Erro ao adicionar', { id: toastId });
+    const result = await createTask(supabase, currentOrganizationId, {
+      title: taskTitle,
+      orderId,
+      frontId: null,
+      assigneeId,
+      dueDate: dueDate ?? null,
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao adicionar tarefa', toastId);
+      return false;
     }
+
+    toast.success('Tarefa adicionada!', { id: toastId });
+    await fetchOrders(currentOrganizationId);
+    return true;
   };
 
   const handleEditTaskTitle = async (orderId: string, taskId: string, newTitle: string) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('tarefas').update({ descricao: newTitle }).eq('organization_id', currentOrganizationId).eq('id', taskId);
-    if (reportMutationError(error, 'Erro ao atualizar tarefa')) return;
+    const result = await updateTask(supabase, currentOrganizationId, taskId, { title: newTitle });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar tarefa');
+      return;
+    }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => t.id === taskId ? { ...t, title: newTitle } : t)
-    } : o));
+    await fetchOrders(currentOrganizationId);
     toast.success('Tarefa atualizada');
   };
 
@@ -361,13 +360,15 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('tarefas').update({ vencimento: newDueDate || null }).eq('organization_id', currentOrganizationId).eq('id', taskId);
-    if (reportMutationError(error, 'Erro ao atualizar prazo da tarefa')) return;
+    const result = await updateTask(supabase, currentOrganizationId, taskId, {
+      dueDate: newDueDate ?? null,
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar prazo da tarefa');
+      return;
+    }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => t.id === taskId ? { ...t, dueDate: newDueDate } : t)
-    } : o));
+    await fetchOrders(currentOrganizationId);
     toast.success('Prazo da tarefa atualizado');
   };
 
@@ -375,17 +376,21 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const dbColumnMap: Record<string, string> = {
-      orderNumber: 'numero_pedido',
-      title: 'projeto',
-      client: 'cliente',
-      address: 'endereco'
+    const commandFieldMap = {
+      orderNumber: 'number',
+      title: 'title',
+      client: 'client',
+      address: 'address',
+    } as const;
+    const result = await updateOrder(supabase, currentOrganizationId, orderId, {
+      [commandFieldMap[field]]: newValue,
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar pedido');
+      return;
     };
 
-    const { error } = await supabase.from('pedidos').update({ [dbColumnMap[field]]: newValue }).eq('organization_id', currentOrganizationId).eq('id', orderId);
-    if (reportMutationError(error, 'Erro ao atualizar pedido')) return;
-
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: newValue } : o));
+    await fetchOrders(currentOrganizationId);
     toast.success('Informação atualizada');
   };
 
@@ -393,10 +398,13 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('tarefas').delete().eq('organization_id', currentOrganizationId).eq('id', taskId);
-    if (reportMutationError(error, 'Erro ao remover tarefa')) return;
+    const result = await removeTask(supabase, currentOrganizationId, taskId);
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao remover tarefa');
+      return;
+    }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, tasks: o.tasks.filter(t => t.id !== taskId) } : o));
+    await fetchOrders(currentOrganizationId);
     toast.success('Tarefa removida');
   };
 
@@ -462,30 +470,17 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { data, error } = await supabase.from('subtarefas').insert({
-      organization_id: currentOrganizationId,
-      tarefa_id: taskId,
-      descricao,
-      concluida: false
-    }).select().single();
-
-    if (!error && data) {
-      setOrders(prev => prev.map(o => o.id === orderId ? {
-        ...o,
-        tasks: o.tasks.map(t => t.id === taskId ? {
-          ...t,
-          subtarefas: [...(t.subtarefas || []), {
-            id: data.id,
-            tarefa_id: data.tarefa_id,
-            descricao: data.descricao,
-            concluida: data.concluida,
-            criado_em: data.criado_em
-          }]
-        } : t)
-      } : o));
-    } else {
-      toast.error('Erro ao adicionar subtarefa');
+    const result = await saveSubtask(supabase, currentOrganizationId, {
+      id: null,
+      taskId,
+      patch: { title: descricao, completed: false },
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao adicionar subtarefa');
+      return;
     }
+
+    await fetchOrders(currentOrganizationId);
   };
 
   const handleToggleSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
@@ -500,23 +495,32 @@ export default function Home() {
     if (!subtask) return;
 
     const newConcluida = !subtask.concluida;
-    const { error } = await supabase.from('subtarefas').update({ concluida: newConcluida }).eq('organization_id', currentOrganizationId).eq('id', subtaskId);
-    if (reportMutationError(error, 'Erro ao atualizar subtarefa')) return;
+    const result = await saveSubtask(supabase, currentOrganizationId, {
+      id: subtaskId,
+      taskId,
+      patch: { completed: newConcluida },
+    });
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar subtarefa');
+      return;
+    }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => {
-        if (t.id !== taskId) return t;
-        return {
-          ...t,
-          subtarefas: t.subtarefas?.map(s => {
-            if (s.id !== subtaskId) return s;
-            return { ...s, concluida: newConcluida };
-          })
-        };
-      })
-    } : o));
+    await fetchOrders(currentOrganizationId);
+  };
 
+  const handleSetOrderStatus = async (orderId: string, status: Order['status']) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return false;
+
+    const result = await setOrderStatus(supabase, currentOrganizationId, orderId, status);
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao atualizar status do pedido');
+      return false;
+    }
+
+    await fetchOrders(currentOrganizationId);
+    toast.success(`Pedido marcado como ${status}`);
+    return true;
   };
 
   const handleDeleteSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
@@ -940,12 +944,15 @@ export default function Home() {
 
       {/* Drawers */}
       <OrderDrawer 
+        key={selectedOrderId ?? 'closed'}
         order={selectedOrder} 
         isOpen={selectedOrderId !== null} 
         onClose={() => setSelectedOrderId(null)}
         onToggleTask={handleToggleTask}
         onChangePriority={handleChangePriority}
         onAddTask={handleAddTask}
+        onSetOrderStatus={handleSetOrderStatus}
+        members={members}
         onEditTaskTitle={handleEditTaskTitle}
         onEditTaskDueDate={handleEditTaskDueDate}
         onEditOrderField={handleEditOrderField}

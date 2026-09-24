@@ -1,9 +1,33 @@
-import { Order, Priority, TeamMember, Anexo } from '../types';
+import { Order, Priority, OrderStatus } from '../types';
+import { formatMemberLabel } from '../lib/pedidos-tarefas/members';
+import type { Member } from '../lib/pedidos-tarefas/types';
 import { StatusBadge, cn, memberColor } from './StatusBadge';
 import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useState } from 'react';
+
+type SpeechRecognitionResultEvent = {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+};
+
+type SpeechRecognitionErrorEvent = { error: string };
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+};
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionInstance;
+  webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+};
 
 interface OrderDrawerProps {
   order: Order | null;
@@ -11,7 +35,9 @@ interface OrderDrawerProps {
   onClose: () => void;
   onToggleTask: (orderId: string, taskId: string) => void;
   onChangePriority: (orderId: string, priority: Priority) => void;
-  onAddTask: (orderId: string, title: string, assignee: TeamMember, dueDate?: string) => void;
+  onAddTask: (orderId: string, title: string, assigneeId: string | null, dueDate?: string) => boolean | Promise<boolean>;
+  onSetOrderStatus?: (orderId: string, status: OrderStatus) => boolean | Promise<boolean>;
+  members?: Member[];
   onDeleteTask: (orderId: string, taskId: string) => void;
   onDeleteOrder: (orderId: string) => void;
   onAddAtividade: (orderId: string, descricao: string) => void;
@@ -30,11 +56,13 @@ interface OrderDrawerProps {
   canManageOrder?: boolean;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember>('Thomás');
+  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [newAtividade, setNewAtividade] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -57,6 +85,22 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+  };
+
+  const requestOrderStatus = async (status: OrderStatus) => {
+    if (!order || !onSetOrderStatus) return;
+    if (status === 'Finalizado' && !window.confirm(
+      'Finalizar este Pedido? A conclusão das tarefas não será alterada.'
+    )) return;
+    if (status === 'Cancelado' && !window.confirm(
+      'Cancelar este Pedido? As tarefas existentes serão preservadas.'
+    )) return;
+    setIsChangingStatus(true);
+    try {
+      await onSetOrderStatus(order.id, status);
+    } finally {
+      setIsChangingStatus(false);
+    }
   };
 
   const requestDeleteSubtask = async (taskId: string, subtaskId: string, description: string) => {
@@ -84,13 +128,13 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   };
 
   const startVoiceInput = (taskId: string) => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
       alert('Seu navegador não suporta reconhecimento de voz.');
       return;
     }
-    
-    // @ts-ignore
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
     recognition.interimResults = false;
@@ -100,7 +144,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
       setIsRecording(prev => ({ ...prev, [taskId]: true }));
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setNewComentarioText(prev => ({
         ...prev,
@@ -108,7 +152,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
       }));
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
       setIsRecording(prev => ({ ...prev, [taskId]: false }));
     };
@@ -120,16 +164,6 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
     recognition.start();
   };
 
-  // Reset input when order changes
-  useEffect(() => {
-    setNewTaskTitle('');
-    setNewTaskDueDate('');
-    setNewAtividade('');
-    setIsDeleting(false);
-    setStagedFiles([]);
-    setEditingOrderField(null);
-  }, [order?.id]);
-  
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -301,6 +335,39 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge order={order} today={today} />
                 </div>
+                {onSetOrderStatus && (
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === 'Em andamento' ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={isChangingStatus}
+                          onClick={() => void requestOrderStatus('Finalizado')}
+                          className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          Finalizar pedido
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isChangingStatus}
+                          onClick={() => void requestOrderStatus('Cancelado')}
+                          className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
+                        >
+                          Cancelar pedido
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isChangingStatus}
+                        onClick={() => void requestOrderStatus('Em andamento')}
+                        className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Reabrir pedido
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Info section */}
@@ -705,7 +772,6 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                   type="button"
                                   onClick={() => {
                                     if (isRecording[task.id]) {
-                                      // @ts-ignore
                                       // We can't stop it directly without the recognition instance reference, but it will auto-stop when speech ends.
                                       // Ideally we store the instance, but for now we rely on auto-end or toggle.
                                     } else {
@@ -736,12 +802,24 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   )})}
                   
                   <form 
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
-                      if (!newTaskTitle.trim()) return;
-                      onAddTask(order.id, newTaskTitle.trim(), newTaskAssignee, newTaskDueDate || undefined);
-                      setNewTaskTitle('');
-                      setNewTaskDueDate('');
+                      if (!newTaskTitle.trim() || isSavingTask) return;
+                      setIsSavingTask(true);
+                      try {
+                        const succeeded = await onAddTask(
+                          order.id,
+                          newTaskTitle.trim(),
+                          newTaskAssigneeId || null,
+                          newTaskDueDate || undefined
+                        );
+                        if (succeeded !== false) {
+                          setNewTaskTitle('');
+                          setNewTaskDueDate('');
+                        }
+                      } finally {
+                        setIsSavingTask(false);
+                      }
                     }} 
                     className="flex items-center gap-1.5 mt-3 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200"
                   >
@@ -753,15 +831,17 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                       className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     />
                     <select
-                      value={newTaskAssignee}
-                      onChange={(e) => setNewTaskAssignee(e.target.value as TeamMember)}
-                      className="w-24 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
+                      value={newTaskAssigneeId}
+                      onChange={(e) => setNewTaskAssigneeId(e.target.value)}
+                      className="w-36 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
                       title="Responsável"
                     >
-                      <option value="Thomás">Thomás</option>
-                      <option value="Roberto">Roberto</option>
-                      <option value="Katlyn">Katlyn</option>
-                      <option value="Equipe de Campo">Equipe de Campo</option>
+                      <option value="">Sem responsável</option>
+                      {members.map(member => (
+                        <option key={member.userId} value={member.userId}>
+                          {formatMemberLabel(member)}
+                        </option>
+                      ))}
                     </select>
                     <input 
                       type="date"
@@ -772,7 +852,8 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     />
                     <button 
                       type="submit"
-                      disabled={!newTaskTitle.trim()}
+                      aria-label="Adicionar tarefa"
+                      disabled={!newTaskTitle.trim() || isSavingTask}
                       className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                     >
                       <Plus className="w-4 h-4" />

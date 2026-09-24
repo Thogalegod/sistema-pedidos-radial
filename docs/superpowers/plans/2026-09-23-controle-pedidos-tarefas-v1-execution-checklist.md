@@ -30,7 +30,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [x] **1B.1 — Leitores tolerantes: testes/QA e aceite concluídos; fechamento 1A.1–1B.1 no commit `5ea1be65d335fd12fdd3384f4d7cc33146618c5d`, push realizado. Preview publicada; comprovação de seu vínculo com IURQ substituída por validação da aplicação local contra IURQ mediante autorização humana explícita em 24/09/2026. Baseline de lint documentado.**
 - [x] **1B.2 — Backfill idempotente (M04): aplicada exclusivamente no IURQ, 35/35 migrations sincronizadas; integridade e QA técnico aprovados. Correções de exclusão de subtarefa/nota retestadas e aceitas manualmente pelo usuário; fechamento Git autorizado.**
 - [x] **1B.3 — Identidade por usuário e associação explícita: implementação e testes concluídos; dados atuais classificados como testes descartáveis, sem reconciliação; interface esclarecida e aceita manualmente pelo usuário.**
-- [ ] 1C.1 — Comandos e ações humanas (M05).
+- [x] **1C.1 — Comandos e ações humanas (M05): M05 aplicada no IURQ, 36/36; verificação, QA técnico e teste manual aprovados; fechamento Git autorizado.**
 - [ ] 1C.2 — Status canônico e bloqueio de writers obsoletos (M06).
 - [ ] 1D — Validação de constraints (M07).
 
@@ -66,7 +66,32 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechamento Git autorizado de 1B.3. M04 permanece aplicada no IURQ, com 35 migrations locais/35 remotas e nenhuma pendente. O responsável do produto confirmou que os dois membros e as quatro tarefas atuais são dados de teste descartáveis e que o ambiente começará limpo; por isso não houve reconciliação nominal. Nenhuma identidade foi inferida e nenhuma exclusão foi executada. Após o fechamento, o próximo gate é a preparação local de 1C.1; nenhuma nova migration remota está autorizada.
+Prioridade atual: fechamento Git seletivo de 1C.1. M05 está aplicada exclusivamente no IURQ e o inventário está sincronizado em 36/36. Verificação, QA técnico e fluxo visual crítico passaram; após commit/push, o próximo gate é a preparação local de 1C.2. Nenhuma aplicação de M06 está autorizada.
+
+### Evidências de 1C.1 — preparação local e preflight (24/09/2026)
+
+- Predecessor fechado: 1B.3 foi aprovado, passou por staging seletivo e `ai:gate:staged`; commit `17c901296c10a644ac20e250b25417c3cb1341d8` publicado em `origin/codex/controle-locacoes`. Nenhuma migration ou deploy foi incluído nesse fechamento.
+- RED observado: wrappers de comandos ausentes; três falhas de interface para finalização explícita e preservação dos formulários em erro; oito falhas SQL esperadas pela ausência das RPCs; modo `order-close` ausente no harness concorrente.
+- M05 local `20260923200400_pedidos_v1_commands.sql`: oito RPCs com membership/tenant, JSON camelCase validado, `auth.uid()` como autor, lock do Pedido antes de mutações de tarefa, Frente Geral atômica pelo mecanismo existente, histórico operacional protegido e remoção de Frente transacional. É aditiva; writers diretos continuam disponíveis até M06.
+- Client/UI: writers atuais de Pedido, tarefa e subtarefa passaram pelos comandos finos; responsável novo envia UUID do diretório ou nulo; falhas não fecham/limpam formulários; Pedido só finaliza, cancela ou reabre por ação explícita e confirmação. Concluir/reabrir tarefa não altera status do Pedido e criar tarefa não reabre Pedido fechado.
+- GREEN local: comandos/transições/drawer **19/19**; pgTAP M05 **55/55**. Regressões SQL: M04 30/30, M03 62/62, M02 86/86, M01 52/52 e M00 148/148 (**378/378**). Concorrência `order-close` e `dependencies` passou, incluindo espera no lock e rejeição 23514 após fechamento.
+- Verificação read-only local: rollout `legacy/legacy`; oito RPCs SECURITY DEFINER com `search_path` vazio, EXECUTE somente authenticated entre roles de API; rotinas privadas inacessíveis; trigger de proteção habilitado; zero órfãos de Pedido/Frente/subtarefa, responsáveis inválidos ou divergências status/bool. Grants diretos legados permanecem conforme recuperação de 1C.1.
+- Qualidade: `tsc --noEmit` passou; lint focal sem erros e com apenas o aviso antigo de `<img>` no drawer; `git diff --check` passou. Nenhuma suíte ampla do app foi repetida sem necessidade.
+- Preflight remoto exclusivamente read-only: vínculo local e CLI apontam explicitamente para IURQ `iurqgskfuupslrghgtej`; inventário 36 locais/35 remotas; dry-run aponta somente M05, sem seeds/roles e sem migration inesperada. M05 não aplicada, remoto não alterado.
+- Ponto de parada: aguardar autorização explícita para aplicar somente M05 no IURQ; depois executar a verificação preparada, QA focal do CRUD antigo/conclusão manual e limpeza dos registros descartáveis. QA visual ainda não executado. Sem commit, push ou deploy de 1C.1; MISFY não acessado.
+
+### Evidências de 1C.1 — aplicação e QA técnico no IURQ (24/09/2026)
+
+- Autorização explícita recebida: “pode aplicar, vamos seguir”. Target reconfirmado como IURQ `iurqgskfuupslrghgtej`; dry-run anterior continha somente M05, sem seeds/roles. CLI aplicou exclusivamente `20260923200400_pedidos_v1_commands.sql`; inventário posterior 36/36, sem pendência ou migration inesperada.
+- Verificação remota: rollout permaneceu `legacy/legacy`; oito comandos SECURITY DEFINER com `search_path` vazio, EXECUTE para authenticated e sem anon; duas rotinas privadas sem acesso das roles de API; trigger de proteção do histórico habilitado. Grants diretos legados permaneceram ativos como previsto até M06.
+- Integridade pós-M05: zero Pedido ausente para tarefa, vínculo de Frente cruzado, responsável inválido, subtarefa sem pai, evento de sistema órfão/sem autor ou divergência entre status legado e bool de conclusão.
+- QA remoto em transação com `ROLLBACK`, usando membership existente e registros marcados `QA-M05-ROLLBACK-20260924`: criou/editou Pedido, criou duas tarefas com Geral única, atribuiu responsável por UUID, editou título/prazo, criou/concluiu subtarefa sem concluir o pai, concluiu/reabriu tarefa sem mudar Pedido, finalizou/reabriu/cancelou Pedido explicitamente, recusou nova tarefa em Pedido fechado, removeu uma tarefa preservando irmã/Pedido/histórico e bloqueou evento de sistema forjado.
+- Limpeza comprovada após rollback: zero Pedido/tarefa/evento com os marcadores de QA e todos os contadores de integridade permaneceram em zero; rollout continuou `legacy/legacy`. Nenhum dado real foi excluído ou alterado.
+- Advisor de segurança não apontou exposição anon nos oito comandos. O aviso `authenticated_security_definer_function_executable` é esperado para RPCs autenticadas que validam membership/tenant. Permanecem avisos anteriores fora de M05: função de timestamp com search_path mutável, três RPCs anon de relatórios, tabelas técnicas RLS sem policy e proteção de senhas vazadas desativada.
+- Antes do teste manual, `http://localhost:3001/` recusou conexão; conforme regra do projeto, o agente não iniciou servidor. O usuário iniciou o ambiente posteriormente e executou o QA visual. Até esse aceite não houve staging, commit, push, deploy ou avanço para 1C.2; MISFY não acessado.
+- Aceite manual: o usuário iniciou o servidor e validou pela interface a criação de Pedido, duas tarefas sem responsável, conclusão das duas sem auto-finalizar o Pedido, finalização explícita com confirmação e persistência, rejeição de nova tarefa em Pedido fechado e criação normal após reabertura. Confirmou os resultados como “perfeito”.
+- Os passos visuais adicionais de edição, subtarefa, remoção, cancelamento e nova reabertura não foram exigidos do usuário porque já haviam sido comprovados no QA remoto transacional com rollback e nos testes focais. O agente não usou Computer Use nem controlou o navegador. Gate manual considerado suficiente; autorizado o fechamento Git seletivo de 1C.1, sem incluir M06 ou deploy.
+- Fechamento: staging seletivo contém exclusivamente os 11 arquivos de 1C.1; `git diff --cached --check` passou e `npm run ai:gate:staged` retornou `STAGED_GATE_PASS`. Pronto para o commit sugerido do gate e push da branch, sem M06.
 
 ### Evidências de 1B.2 — aplicação e QA no IURQ (24/09/2026)
 

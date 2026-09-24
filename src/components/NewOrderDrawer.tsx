@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Priority, OrderStatus } from '../types';
 import { X, Save, Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from './StatusBadge';
@@ -16,7 +16,7 @@ export interface NewOrderDrawerProps {
     cep: string;
     priority: Priority;
     status: OrderStatus;
-  }) => void;
+  }) => boolean | Promise<boolean>;
 }
 
 interface ViaCepResponse {
@@ -41,35 +41,38 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
   const status: OrderStatus = 'Em andamento';
   const [isFetchingCep, setIsFetchingCep] = useState(false);
   const [cepError, setCepError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Monta o endereço completo para salvar
   const fullAddress = [street, number, neighborhood, city, uf].filter(Boolean).join(', ');
 
-  // Reset form when opened
-  useEffect(() => {
-    if (isOpen) {
-      setOrderNumber('');
-      setTitle('');
-      setClient('');
-      setCep('');
-      setStreet('');
-      setNumber('');
-      setNeighborhood('');
-      setCity('');
-      setUf('');
-      setPriority('Normal');
-      setCepError('');
-    }
-  }, [isOpen]);
+  const resetForm = useCallback(() => {
+    setOrderNumber('');
+    setTitle('');
+    setClient('');
+    setCep('');
+    setStreet('');
+    setNumber('');
+    setNeighborhood('');
+    setCity('');
+    setUf('');
+    setPriority('Normal');
+    setCepError('');
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [onClose, resetForm]);
 
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeDrawer();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [closeDrawer]);
 
   const fetchCep = async (rawCep: string) => {
     const cleaned = rawCep.replace(/\D/g, '');
@@ -106,20 +109,25 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderNumber || !title || !client || !street) return;
+    if (!orderNumber || !title || !client || !street || isSaving) return;
 
-    onSave({
-      orderNumber,
-      title,
-      client,
-      address: fullAddress || street,
-      cep,
-      priority,
-      status,
-    });
-    onClose();
+    setIsSaving(true);
+    try {
+      const succeeded = await onSave({
+        orderNumber,
+        title,
+        client,
+        address: fullAddress || street,
+        cep,
+        priority,
+        status,
+      });
+      if (succeeded !== false) closeDrawer();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const inputClass = "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all";
@@ -132,7 +140,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
           "fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300",
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
-        onClick={onClose}
+        onClick={closeDrawer}
       />
 
       {/* Drawer */}
@@ -146,7 +154,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <h2 className="text-lg font-semibold text-gray-900">Novo Pedido</h2>
           <button
-            onClick={onClose}
+            onClick={closeDrawer}
             className="p-2 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -329,10 +337,11 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
           <div className="mt-auto pt-6">
             <button
               type="submit"
+              disabled={isSaving}
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              Salvar Pedido
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {isSaving ? 'Salvando...' : 'Salvar Pedido'}
             </button>
           </div>
 
