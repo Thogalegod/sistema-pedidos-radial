@@ -23,6 +23,7 @@ import {
 } from '../lib/pedidos-tarefas/attachment-deletion';
 import { resolveOrdersPageIntent } from '../lib/pedidos-tarefas/navigation';
 import { getCurrentTaskDateKey, getTaskDueStatus } from '../lib/pedidos-tarefas/task-due';
+import { deleteOrderDetail } from '../lib/pedidos-tarefas/detail-deletion';
 
 export default function Home() {
   const router = useRouter();
@@ -511,8 +512,15 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('subtarefas').delete().eq('organization_id', currentOrganizationId).eq('id', subtaskId);
-    if (reportMutationError(error, 'Erro ao remover subtarefa')) return;
+    try {
+      await deleteOrderDetail(supabase, 'subtarefas', currentOrganizationId, subtaskId);
+    } catch (error) {
+      reportMutationError(
+        error instanceof Error ? error : { message: 'Falha desconhecida' },
+        'Erro ao remover subtarefa'
+      );
+      return;
+    }
 
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,
@@ -557,8 +565,20 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('comentarios_tarefa').delete().eq('organization_id', currentOrganizationId).eq('id', comentarioId);
-    if (reportMutationError(error, 'Erro ao remover nota')) return;
+    try {
+      await deleteOrderDetail(
+        supabase,
+        'comentarios_tarefa',
+        currentOrganizationId,
+        comentarioId
+      );
+    } catch (error) {
+      reportMutationError(
+        error instanceof Error ? error : { message: 'Falha desconhecida' },
+        'Erro ao remover nota'
+      );
+      return;
+    }
 
     setOrders(prev => prev.map(o => o.id === orderId ? {
       ...o,

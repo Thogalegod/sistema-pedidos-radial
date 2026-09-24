@@ -52,9 +52,35 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   const [newSubtarefaText, setNewSubtarefaText] = useState<{ [taskId: string]: string }>({});
   const [newComentarioText, setNewComentarioText] = useState<{ [taskId: string]: string }>({});
   const [isRecording, setIsRecording] = useState<{ [taskId: string]: boolean }>({});
+  const [deletingSubtaskId, setDeletingSubtaskId] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+  };
+
+  const requestDeleteSubtask = async (taskId: string, subtaskId: string, description: string) => {
+    if (!order || !onDeleteSubtarefa) return;
+    if (!window.confirm(`Deseja excluir a subtarefa "${description}"?`)) return;
+
+    setDeletingSubtaskId(subtaskId);
+    try {
+      await onDeleteSubtarefa(order.id, taskId, subtaskId);
+    } finally {
+      setDeletingSubtaskId(current => current === subtaskId ? null : current);
+    }
+  };
+
+  const requestDeleteComment = async (taskId: string, commentId: string, text: string) => {
+    if (!order || !onDeleteComentarioTarefa) return;
+    if (!window.confirm(`Deseja excluir a nota de campo "${text}"?`)) return;
+
+    setDeletingCommentId(commentId);
+    try {
+      await onDeleteComentarioTarefa(order.id, taskId, commentId);
+    } finally {
+      setDeletingCommentId(current => current === commentId ? null : current);
+    }
   };
 
   const startVoiceInput = (taskId: string) => {
@@ -586,12 +612,19 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                     {sub.descricao}
                                   </span>
                                 </label>
-                                <button
-                                  onClick={() => onDeleteSubtarefa && onDeleteSubtarefa(order.id, task.id, sub.id)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                                {onDeleteSubtarefa && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void requestDeleteSubtask(task.id, sub.id, sub.descricao)}
+                                    disabled={deletingSubtaskId !== null}
+                                    aria-busy={deletingSubtaskId === sub.id}
+                                    aria-label={`Excluir subtarefa ${sub.descricao}`}
+                                    title="Excluir subtarefa"
+                                    className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                  >
+                                    <Trash2 className={cn("w-3 h-3", deletingSubtaskId === sub.id && "animate-pulse")} />
+                                  </button>
+                                )}
                               </div>
                             ))}
                             <form 
@@ -632,12 +665,17 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-700">{com.texto}</p>
-                                  {currentUser === 'Thomás' && (
+                                  {onDeleteComentarioTarefa && (
                                     <button
-                                      onClick={() => onDeleteComentarioTarefa && onDeleteComentarioTarefa(order.id, task.id, com.id)}
-                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-yellow-600 hover:text-red-500 transition-all bg-yellow-50 rounded-md"
+                                      type="button"
+                                      onClick={() => void requestDeleteComment(task.id, com.id, com.texto)}
+                                      disabled={deletingCommentId !== null}
+                                      aria-busy={deletingCommentId === com.id}
+                                      aria-label={`Excluir nota de campo ${com.texto}`}
+                                      title="Excluir nota de campo"
+                                      className="absolute top-1 right-1 p-1 text-yellow-600 hover:text-red-500 transition-colors bg-yellow-50 rounded-md disabled:opacity-50 disabled:cursor-wait"
                                     >
-                                      <Trash2 className="w-3 h-3" />
+                                      <Trash2 className={cn("w-3 h-3", deletingCommentId === com.id && "animate-pulse")} />
                                     </button>
                                   )}
                                 </div>
