@@ -3,7 +3,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { isBefore, isSameDay, parseISO, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Clock, AlertCircle, AlertTriangle, User, Calendar, CheckCircle2 } from 'lucide-react';
+import { Clock, AlertCircle, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -51,73 +51,27 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ order, today = new Date('2026-04-29') }: StatusBadgeProps) {
-  let isOverdue = false;
-  let isToday = false;
-
-  if (order.dueDate) {
-    const dueDate = parseISO(order.dueDate);
-    isOverdue = isBefore(dueDate, today) && !isSameDay(dueDate, today);
-    isToday = isSameDay(dueDate, today);
-  }
-
-  // 1. Overdue
-  if (isOverdue && order.status !== 'Concluído') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
-        <AlertTriangle className="w-3.5 h-3.5" />
-        Vencido: {format(parseISO(order.dueDate!), "dd/MM", { locale: ptBR })}
-      </div>
-    );
-  }
-
-  if (order.status === 'Concluído') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-        <CheckCircle2 className="w-3.5 h-3.5" />
-        Concluído
-      </div>
-    );
-  }
-
-  // 2. High Priority Today
-  if (isToday && order.priority === 'Alta') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">
-        <AlertCircle className="w-3.5 h-3.5" />
-        Urgente para Hoje
-      </div>
-    );
-  }
-
-  // 3. Aguardando Cliente
-  if (order.status === 'Aguardando Cliente') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
-        <Clock className="w-3.5 h-3.5" />
-        Aguardando Cliente
-      </div>
-    );
-  }
-
-  // 4. Prazo Concessionária
-  if (order.status === 'Prazo Concessionária') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
-        <Calendar className="w-3.5 h-3.5" />
-        {order.dueDate ? `Concessionária: ${format(parseISO(order.dueDate), "dd/MM", { locale: ptBR })}` : 'Prazo Concessionária'}
-      </div>
-    );
-  }
-
-  // 5. Ação Pendente
-  if (order.status === 'Ação Pendente') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
-        <User className="w-3.5 h-3.5" />
-        {order.assignee ? `Ação: ${order.assignee}` : 'Ação Pendente'}
-      </div>
-    );
-  }
-
-  return null;
+  const active = order.status === 'Em andamento';
+  const dueDate = order.dueDate ? parseISO(order.dueDate) : null;
+  const isOverdue = active && dueDate && isBefore(dueDate, today) && !isSameDay(dueDate, today);
+  const Icon = order.status === 'Finalizado' ? CheckCircle2 : order.status === 'Cancelado' ? XCircle : Clock;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+        order.status === 'Finalizado' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
+        active ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-gray-200 bg-gray-50 text-gray-700')}>
+        <Icon className="w-3.5 h-3.5" />{order.status}
+      </span>
+      {isOverdue && dueDate && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
+          <AlertTriangle className="w-3.5 h-3.5" />Vencido: {format(dueDate, 'dd/MM', { locale: ptBR })}
+        </span>
+      )}
+      {active && dueDate && isSameDay(dueDate, today) && order.priority === 'Alta' && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">
+          <AlertCircle className="w-3.5 h-3.5" />Urgente para Hoje
+        </span>
+      )}
+    </div>
+  );
 }

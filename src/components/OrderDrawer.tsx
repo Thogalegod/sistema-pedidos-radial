@@ -479,6 +479,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                 memberColor(task.assignee).badge
                               )}>
                                 {task.assignee}
+                                {!task.assigneeUserId && <span className="ml-1 normal-case font-normal">· não vinculado</span>}
                               </span>
                             )}
                             {editingTaskDueDateId === task.id ? (

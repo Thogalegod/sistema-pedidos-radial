@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Order, Priority, Task, Atividade, TeamMember } from '../types';
+import type { Session } from '@supabase/supabase-js';
+import { Order, Priority, TeamMember } from '../types';
 import { sortOrders } from '../lib/sorting';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDrawer } from '../components/OrderDrawer';
-import { NewOrderDrawer } from '../components/NewOrderDrawer';
-import { CheckSquare, Search, Plus, AlertCircle, Clock, CheckCircle2, Flame } from 'lucide-react';
+import { NewOrderDrawer, type NewOrderDrawerProps } from '../components/NewOrderDrawer';
+import { encodeOrderStatus, mapLegacyTask, mapOrder } from '../lib/pedidos-tarefas/mappers';
+import { readCapabilities } from '../lib/pedidos-tarefas/members';
+import type { Capabilities } from '../lib/pedidos-tarefas/types';
+import { Search, Plus, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
@@ -28,8 +32,11 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'todos' | 'meus'>('todos');
   const [isLoading, setIsLoading] = useState(true);
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const ordersRequestRef = useRef(0);
   const handledIntentRef = useRef<string | null>(null);
 
   // User logic
@@ -50,91 +57,53 @@ export default function Home() {
   }, [session]);
 
   const fetchOrders = async (currentOrganizationId: string) => {
+    const request = ++ordersRequestRef.current;
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('pedidos')
-      .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)')
-      .eq('organization_id', currentOrganizationId);
-
-    if (error) {
+    setLoadError(null);
+    try {
+      const [mode, { data, error }] = await Promise.all([
+        readCapabilities(supabase, currentOrganizationId),
+        supabase.from('pedidos')
+          .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)')
+          .eq('organization_id', currentOrganizationId),
+      ]);
+      if (error) throw error;
+      if (!data) throw new Error('Resposta de Pedidos ausente');
+      const mappedOrders = await Promise.all(data.map(async row => {
+        const order = mapOrder(row, mode.statusMode);
+        const anexos = await Promise.all((order.anexos ?? []).map(async attachment => {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from('anexos-pedidos').createSignedUrl(attachment.storage_path, 3600);
+          if (signedError) throw signedError;
+          return { ...attachment, signed_url: signedData?.signedUrl };
+        }));
+        return { ...order, anexos };
+      }));
+      if (request !== ordersRequestRef.current) return;
+      setCapabilities(mode);
+      setOrders(mappedOrders);
+    } catch (error) {
+      if (request !== ordersRequestRef.current) return;
       console.error('Error fetching orders:', error);
+      setLoadError('Não foi possível carregar os Pedidos. Recarregue a página para tentar novamente.');
       toast.error('Erro ao carregar dados');
-      setIsLoading(false);
-      return;
+    } finally {
+      if (request === ordersRequestRef.current) setIsLoading(false);
     }
-
-    const mappedOrders: Order[] = await Promise.all(data.map(async d => ({
-      id: d.id,
-      orderNumber: d.numero_pedido,
-      title: d.projeto,
-      client: d.cliente,
-      address: d.endereco,
-      priority: d.prioridade as Priority,
-      status: d.status as any,
-      createdAt: d.data_criacao,
-      dueDate: d.prazo_concessionaria || undefined,
-      tasks: d.tarefas?.map((t: any) => ({
-        id: t.id,
-        title: t.descricao,
-        completed: t.concluido,
-        assignee: t.responsavel,
-        dueDate: t.vencimento || undefined,
-        completedAt: t.concluida_em || undefined,
-        subtarefas: t.subtarefas?.map((s: any) => ({
-          id: s.id,
-          tarefa_id: s.tarefa_id,
-          descricao: s.descricao,
-          concluida: s.concluida,
-          criado_em: s.criado_em
-        })).sort((a: any, b: any) => new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime()) || [],
-        comentarios: t.comentarios_tarefa?.map((c: any) => ({
-          id: c.id,
-          tarefa_id: c.tarefa_id,
-          texto: c.texto,
-          usuario: c.usuario,
-          criado_em: c.criado_em
-        })).sort((a: any, b: any) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()) || []
-      })) || [],
-      atividades: d.atividades?.map((a: any) => ({
-        id: a.id,
-        descricao: a.descricao,
-        usuario: a.usuario,
-        criado_em: a.criado_em
-      })) || [],
-      anexos: await Promise.all(d.anexos?.map(async (a: any) => {
-        const { data: signedData, error: signedError } = await supabase.storage
-          .from('anexos-pedidos')
-          .createSignedUrl(a.storage_path, 3600);
-
-        if (signedError) {
-          console.error('Error signing attachment URL:', signedError);
-        }
-
-        return {
-          id: a.id,
-          pedido_id: a.pedido_id,
-          nome_arquivo: a.nome_arquivo,
-          legenda: a.legenda,
-          storage_path: a.storage_path,
-          signed_url: signedData?.signedUrl,
-          tipo: a.tipo,
-          criado_em: a.criado_em
-        };
-      }) || [])
-    })));
-
-    setOrders(mappedOrders);
-    setIsLoading(false);
   };
 
   useEffect(() => {
+    const pendingReads = ordersRequestRef;
+    let active = true;
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!active) return;
       if (!session) {
         router.replace('/login');
       } else {
         setSession(session);
         try {
           const currentOrganizationId = await getCurrentOrganizationId(supabase);
+          if (!active) return;
           setOrganizationId(currentOrganizationId);
           await fetchOrders(currentOrganizationId);
         } catch (error) {
@@ -147,13 +116,16 @@ export default function Home() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
+        ordersRequestRef.current++;
+        setCapabilities(null);
+        setOrders([]);
         router.replace('/login');
       } else {
         setSession(session);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => { active = false; pendingReads.current++; subscription.unsubscribe(); };
   }, [router]);
 
   useEffect(() => {
@@ -224,7 +196,7 @@ export default function Home() {
   }, [tarefasVencidas, tarefasVencemHoje]);
 
   const requireOrganizationId = () => {
-    if (!organizationId) {
+    if (!organizationId || !capabilities || loadError) {
       toast.error('Organização atual indisponível');
       return null;
     }
@@ -274,19 +246,19 @@ export default function Home() {
       const allCompleted = updatedOrder.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted } : t).length > 0 
         && updatedOrder.tasks.map(t => t.id === taskId ? { ...t, completed: newCompleted } : t).every(t => t.completed);
         
-      const newStatus = allCompleted ? 'Concluído' : (updatedOrder.status === 'Concluído' ? 'Ação Pendente' : updatedOrder.status);
+      const newStatus = allCompleted ? 'Finalizado' : (updatedOrder.status === 'Finalizado' ? 'Em andamento' : updatedOrder.status);
       
       if (newStatus !== updatedOrder.status) {
-        const { error: statusError } = await supabase.from('pedidos').update({ status: newStatus }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+        const { error: statusError } = await supabase.from('pedidos').update({ status: encodeOrderStatus(newStatus, capabilities!.statusMode) }).eq('organization_id', currentOrganizationId).eq('id', orderId);
         if (reportMutationError(statusError, 'Erro ao atualizar status do pedido')) return;
 
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus as any } : o));
-        if (newStatus === 'Concluído') toast.success('Pedido marcado como Concluído!');
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+        if (newStatus === 'Finalizado') toast.success('Pedido marcado como Finalizado!');
       }
     }
   };
 
-  const handleSaveNewOrder = async (newOrderData: any) => {
+  const handleSaveNewOrder: NewOrderDrawerProps['onSave'] = async (newOrderData) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
@@ -299,7 +271,7 @@ export default function Home() {
       endereco: newOrderData.address,
       cep: newOrderData.cep || null,
       prioridade: newOrderData.priority,
-      status: newOrderData.status,
+      status: encodeOrderStatus(newOrderData.status, capabilities!.statusMode),
     }).select().single();
 
     if (!error && data) {
@@ -336,8 +308,8 @@ export default function Home() {
 
     if (!error && data) {
       const order = orders.find(o => o.id === orderId);
-      if (order && order.status === 'Concluído') {
-        const { error: statusError } = await supabase.from('pedidos').update({ status: 'Ação Pendente' }).eq('organization_id', currentOrganizationId).eq('id', orderId);
+      if (order && order.status === 'Finalizado') {
+        const { error: statusError } = await supabase.from('pedidos').update({ status: encodeOrderStatus('Em andamento', capabilities!.statusMode) }).eq('organization_id', currentOrganizationId).eq('id', orderId);
         if (reportMutationError(statusError, 'Tarefa criada, mas o status do pedido não foi atualizado')) {
           await fetchOrders(currentOrganizationId);
           return;
@@ -346,11 +318,11 @@ export default function Home() {
 
       setOrders(prev => prev.map(o => {
         if (o.id !== orderId) return o;
-        const newStatus = o.status === 'Concluído' ? 'Ação Pendente' : o.status;
+        const newStatus = o.status === 'Finalizado' ? 'Em andamento' : o.status;
         return {
           ...o,
-          status: newStatus as any,
-          tasks: [...o.tasks, { id: data.id, title: data.descricao, completed: false, assignee: data.responsavel, dueDate: data.vencimento || undefined }]
+          status: newStatus,
+          tasks: [...o.tasks, mapLegacyTask(data, capabilities!.statusMode)]
         };
       }));
       toast.success('Tarefa adicionada!', { id: toastId });
@@ -908,6 +880,8 @@ export default function Home() {
                 <div className="h-10 bg-gray-200 rounded w-full md:w-32"></div>
               </div>
             ))
+          ) : loadError ? (
+            <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
           ) : processedOrders.length > 0 ? (
             processedOrders.map(order => (
               <OrderCard 

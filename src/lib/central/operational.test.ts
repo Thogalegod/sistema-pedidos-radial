@@ -4,6 +4,11 @@ import { buildCentralOperationalSnapshot, type CentralOperationalInput } from '.
 const TODAY = '2026-09-22';
 
 describe('Central operational snapshot', () => {
+  it('uses canonical task completion only when capability is v1, preserving order links', () => {
+    const input = makeInput({ tasks: [{ ...task('late', '2026-09-21'), status: 'Concluída' }] });
+    expect(buildCentralOperationalSnapshot(input).tasks[0].href).toBe('/?pedido=order-1');
+    expect(buildCentralOperationalSnapshot({ ...input, statusMode: 'v1' }).tasks).toEqual([]);
+  });
   it('counts overdue and today tasks, excluding tomorrow and completed tasks', () => {
     const snapshot = buildCentralOperationalSnapshot(makeInput({
       tasks: [

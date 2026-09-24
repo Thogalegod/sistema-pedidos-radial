@@ -1,12 +1,13 @@
 export type Priority = 'Baixa' | 'Normal' | 'Alta';
-export type OrderStatus = 'Ação Pendente' | 'Aguardando Cliente' | 'Prazo Concessionária' | 'Concluído';
-export type TeamMember = 'Thomás' | 'Roberto' | 'Katlyn' | 'Equipe de Campo';
+export type OrderStatus = import('@/lib/pedidos-tarefas/types').OrderStatusV1;
+export type TeamMember = string;
 
 export interface Task {
   id: string;
   title: string;
   completed: boolean;
   assignee?: TeamMember;
+  assigneeUserId?: string | null;
   dueDate?: string; // ISO format YYYY-MM-DD
   completedAt?: string; // ISO timestamp
   subtarefas?: Subtarefa[];

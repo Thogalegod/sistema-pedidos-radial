@@ -5,7 +5,7 @@ import { Priority, OrderStatus } from '../types';
 import { X, Save, Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from './StatusBadge';
 
-interface NewOrderDrawerProps {
+export interface NewOrderDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (order: {
@@ -38,7 +38,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
   const [city, setCity] = useState('');
   const [uf, setUf] = useState('');
   const [priority, setPriority] = useState<Priority>('Normal');
-  const [status, setStatus] = useState<OrderStatus>('Ação Pendente');
+  const status: OrderStatus = 'Em andamento';
   const [isFetchingCep, setIsFetchingCep] = useState(false);
   const [cepError, setCepError] = useState('');
 
@@ -58,7 +58,6 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
       setCity('');
       setUf('');
       setPriority('Normal');
-      setStatus('Ação Pendente');
       setCepError('');
     }
   }, [isOpen]);
@@ -320,12 +319,10 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
             <label className="text-sm font-medium text-gray-700">Status Inicial</label>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as OrderStatus)}
+              disabled
               className={inputClass}
             >
-              <option value="Ação Pendente">Ação Pendente</option>
-              <option value="Aguardando Cliente">Aguardando Cliente</option>
-              <option value="Prazo Concessionária">Prazo Concessionária</option>
+              <option value="Em andamento">Em andamento</option>
             </select>
           </div>
 

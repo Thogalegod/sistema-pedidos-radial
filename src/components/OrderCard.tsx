@@ -33,7 +33,7 @@ export function OrderCard({ order, onClick, today = new Date('2026-04-29') }: Or
       }}
       className={cn(
         "group relative cursor-pointer rounded-xl border border-radial-border bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-radial-primary md:p-5",
-        isOverdue && order.status !== 'Concluído' ? "border-red-300 bg-red-50/30" : ""
+        isOverdue && order.status === 'Em andamento' ? "border-red-300 bg-red-50/30" : ""
       )}
     >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

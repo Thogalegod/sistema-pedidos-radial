@@ -5,6 +5,8 @@ import { hasPendingPhysicalReturns } from '@/lib/contratos-locacoes/rental-closu
 import type { BillingStatus, ContractKind, ContractStatus } from '@/lib/contratos-locacoes/types';
 import { buildOrderHref } from '@/lib/pedidos-tarefas/navigation';
 import { getTaskDueStatus } from '@/lib/pedidos-tarefas/task-due';
+import { resolveTaskStatus } from '@/lib/pedidos-tarefas/mappers';
+import type { Capabilities } from '@/lib/pedidos-tarefas/types';
 
 export interface CentralTaskRow {
   id: string;
@@ -12,6 +14,7 @@ export interface CentralTaskRow {
   descricao: string;
   vencimento: string | null;
   concluido: boolean;
+  status?: string | null;
 }
 
 export interface CentralOrderRow {
@@ -60,6 +63,7 @@ export interface CentralPaymentRow {
 }
 
 export interface CentralOperationalInput {
+  statusMode?: Capabilities['statusMode'];
   today: string;
   tasks: CentralTaskRow[];
   orders: CentralOrderRow[];
@@ -122,7 +126,8 @@ export function buildCentralOperationalSnapshot(input: CentralOperationalInput) 
   const paymentsByBilling = groupBy(input.payments, (payment) => payment.billing_cycle_id);
 
   const tasks = input.tasks.flatMap<CentralTaskAttention>((task) => {
-    const dueStatus = getTaskDueStatus({ completed: task.concluido, dueDate: task.vencimento }, input.today);
+    const completed = resolveTaskStatus(task, input.statusMode ?? 'legacy') === 'Concluída';
+    const dueStatus = getTaskDueStatus({ completed, dueDate: task.vencimento }, input.today);
     if ((dueStatus !== 'overdue' && dueStatus !== 'today') || !task.vencimento) return [];
     const order = ordersById.get(task.pedido_id);
     return [{

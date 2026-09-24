@@ -11,7 +11,7 @@ export const initialOrders: Order[] = [
     client: 'Indústria Metalúrgica Atlas',
     address: 'Av. das Nações Unidas, 15000 - São Paulo, SP',
     priority: 'Alta',
-    status: 'Ação Pendente',
+    status: 'Em andamento',
     assignee: 'Thomás',
     dueDate: '2026-04-29', // Today, High Priority -> Should be 2nd
     createdAt: '2026-04-20',
@@ -28,7 +28,7 @@ export const initialOrders: Order[] = [
     client: 'Condomínio Residencial Parque das Árvores',
     address: 'Rua das Figueiras, 45 - Guarulhos, SP',
     priority: 'Normal',
-    status: 'Prazo Concessionária',
+    status: 'Em andamento',
     dueDate: '2026-05-15', // Future -> Should be 4th
     createdAt: '2026-04-10',
     tasks: [
@@ -43,7 +43,7 @@ export const initialOrders: Order[] = [
     client: 'Fazenda Boa Esperança',
     address: 'Rodovia SP-332, Km 120 - Campinas, SP',
     priority: 'Alta',
-    status: 'Ação Pendente',
+    status: 'Em andamento',
     assignee: 'Equipe de Campo',
     dueDate: '2026-04-25', // Overdue! -> Should be 1st
     createdAt: '2026-04-01',
@@ -60,7 +60,7 @@ export const initialOrders: Order[] = [
     client: 'Shopping Center Norte',
     address: 'Travessa Casalbuono, 120 - São Paulo, SP',
     priority: 'Normal',
-    status: 'Aguardando Cliente',
+    status: 'Em andamento',
     assignee: 'Thomás',
     dueDate: '2026-05-02', // Normal task, waiting -> Should be 4th
     createdAt: '2026-04-22',
@@ -77,7 +77,7 @@ export const initialOrders: Order[] = [
     client: 'Hospital São Luiz',
     address: 'Rua Doutor Alceu de Campos Rodrigues, 95 - São Paulo, SP',
     priority: 'Normal',
-    status: 'Ação Pendente',
+    status: 'Em andamento',
     assignee: 'Thomás',
     dueDate: '2026-05-05', // Normal task, pending -> Should be 3rd
     createdAt: '2026-04-28',
