@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { mapOrder, mapTask, normalizeOrderStatus } from './mappers';
 import type { Anexo, Atividade, Order } from '@/types';
 import type { Capabilities, Dependency, Front, Id, OrderV1, Subtask, TaskV1 } from './types';
+import { instanceDateRuleSchema } from './template-schema';
 
 const orderSchema = z.object({
   id: z.string(), organization_id: z.string(), numero_pedido: z.string(), projeto: z.string(),
@@ -16,6 +17,7 @@ const frontSchema = z.array(z.object({
 const subtaskSchema = z.array(z.object({
   id: z.string(), tarefa_id: z.string(), descricao: z.string(), concluida: z.boolean().nullable(),
   vencimento: z.string().nullable(), prioridade: z.enum(['Urgente', 'Alta', 'Normal', 'Baixa']).nullable(),
+  vencimento_rule: instanceDateRuleSchema.nullish(),
 }));
 const dependencySchema = z.array(z.object({ tarefa_id: z.string(), predecessora_id: z.string() }));
 const recentSchema = z.object({ descricao: z.string(), criado_em: z.string(), usuario: z.string() });
@@ -43,7 +45,7 @@ export async function loadOrderTasks(client: SupabaseClient, org: Id, orderId: I
   const [frontResult, taskResult, dependencyResult] = await Promise.all([
     client.from('pedido_frentes').select('id,pedido_id,nome,ordem')
       .eq('organization_id', org).eq('pedido_id', orderId).order('ordem'),
-    client.from('tarefas').select('id,organization_id,pedido_id,frente_id,descricao,descricao_detalhada,status,prioridade,responsavel_user_id,responsavel,vencimento,follow_up_date,waiting_type,waiting_user_id,waiting_note,updated_at,concluida_em,concluido')
+    client.from('tarefas').select('id,organization_id,pedido_id,frente_id,descricao,descricao_detalhada,status,prioridade,responsavel_user_id,responsavel,vencimento,vencimento_rule,follow_up_date,follow_up_rule,waiting_type,waiting_user_id,waiting_note,updated_at,concluida_em,concluido')
       .eq('organization_id', org).eq('pedido_id', orderId),
     client.from('tarefa_dependencias').select('tarefa_id,predecessora_id')
       .eq('organization_id', org).eq('pedido_id', orderId),
@@ -55,12 +57,12 @@ export async function loadOrderTasks(client: SupabaseClient, org: Id, orderId: I
   let subtasks: Subtask[] = [];
   if (tasks.length > 0) {
     const { data, error } = await client.from('subtarefas')
-      .select('id,tarefa_id,descricao,concluida,vencimento,prioridade')
+      .select('id,tarefa_id,descricao,concluida,vencimento,prioridade,vencimento_rule')
       .eq('organization_id', org).in('tarefa_id', tasks.map(task => task.id));
     if (error) throw error;
     subtasks = subtaskSchema.parse(data ?? []).map(row => ({ id: row.id, taskId: row.tarefa_id,
       title: row.descricao, completed: row.concluida ?? false, dueDate: row.vencimento,
-      priority: row.prioridade }));
+      priority: row.prioridade, dueRule: row.vencimento_rule ?? null }));
   }
   return {
     fronts: frontSchema.parse(frontResult.data ?? []).map(row => ({ id: row.id, orderId: row.pedido_id,

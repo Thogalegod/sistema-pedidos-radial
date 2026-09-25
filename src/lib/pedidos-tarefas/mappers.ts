@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Order, Task } from '@/types';
 import type { Capabilities, OrderStatusV1, TaskStatus, TaskV1 } from './types';
+import { instanceDateRuleSchema } from './template-schema';
 
 const dateKey = z.iso.date();
 const taskStatus = z.enum(['Aberta', 'Em andamento', 'Aguardando', 'Concluída']);
@@ -18,6 +19,7 @@ export const taskRowSchema = z.object({
   follow_up_date: dateKey.nullish(), waiting_type: waitingType.nullish(),
   waiting_user_id: z.string().nullish(), waiting_note: z.string().nullish(),
   updated_at: z.string().nullish(),
+  vencimento_rule: instanceDateRuleSchema.nullish(), follow_up_rule: instanceDateRuleSchema.nullish(),
 });
 export type TaskRow = Omit<z.input<typeof taskRowSchema>, 'status'> & { status?: string | null };
 
@@ -60,6 +62,7 @@ export function mapTask(row: TaskRow, mode: Capabilities['statusMode']): TaskV1 
     waiting: mode === 'v1' && status === 'Aguardando' && data.waiting_type
       ? { type: data.waiting_type, userId: data.waiting_user_id ?? null, note: data.waiting_note ?? null } : null,
     updatedAt: data.updated_at ?? null, completedAt: data.concluida_em,
+    dueRule: data.vencimento_rule ?? null, followUpRule: data.follow_up_rule ?? null,
   };
 }
 
@@ -67,6 +70,7 @@ const subtaskSchema = z.object({
   id: z.string(), tarefa_id: z.string(), descricao: z.string(),
   concluida: z.boolean().nullable().transform(value => value ?? false), criado_em: z.string(),
   vencimento: dateKey.nullish(), prioridade: taskPriority.nullish(),
+  vencimento_rule: instanceDateRuleSchema.nullish(),
 });
 const commentSchema = z.object({
   id: z.string(), tarefa_id: z.string(), texto: z.string(), usuario: z.string(), criado_em: z.string(),

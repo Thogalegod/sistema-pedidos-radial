@@ -47,7 +47,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ### Lote 4 — Templates
 
-- [ ] 4A — Blueprint, versões e datas civis (M09).
+- [x] 4A — Blueprint, versões e datas civis (M09): aplicada e verificada no IURQ; aceite humano recebido em 25/09/2026.
 - [ ] 4B — Instanciação atômica, edição e duplicação (M10).
 - [ ] 4C — Materialização após primeira conclusão (M11).
 
@@ -75,7 +75,19 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar o 3B seletivamente após aceite humano e seguir para 4A. Não antecipar o redesign de UX anotado acima. M08 foi aplicada somente no IURQ; o 3B não exige migration. Sem deploy.
+Prioridade atual: fechar o Git seletivo da M09/4A aprovada. Sem deploy; 4B não iniciado.
+
+### Preparação de 4A — blueprint, versionamento e datas civis (25/09/2026)
+
+- Predecessor 3B fechado e publicado seletivamente no commit `974e229` da branch `codex/controle-locacoes`; `STAGED_GATE_PASS` havia passado. Nenhum deploy foi feito.
+- M09 `20260923200800_pedidos_v1_templates.sql` criada vazia pela CLI e renomeada ao timestamp reservado antes da edição. Cria `pedido_templates` com RLS e somente SELECT para authenticated, validador privado de blueprint/grafos, proveniência de template no Pedido e regras relativas nas tarefas/subtarefas. Escritas de template ficam reservadas às RPCs do 4B.
+- Cliente preparado com schema Zod versionado, referências/ciclos/offsets validados, soma de dias civis e leitura nullable da proveniência. RED comprovou módulos/campos ausentes; GREEN focal de `src/lib/pedidos-tarefas`: **105/105** em 19 arquivos. TypeScript, lint focal e `git diff --check` passaram.
+- Após dois resets locais sem seed, todas as **40 migrations** aplicaram do zero. pgTAP M09: **36/36**; regressão focal M09+M08+M07: **80/80**. Um teste RED adicional comprovou que espaços poderiam ocultar ciclo no grafo SQL; a normalização foi corrigida e coberta. Verificação local: `v1/legacy`, zero blueprint/regra/proveniência inválida, constraints validadas, somente SELECT autenticado, anon sem acesso e funções privadas sem EXECUTE de API.
+- Lint de banco não aponta aviso novo da M09; permanecem apenas avisos antigos em funções não tocadas. Advisor de segurança mantém um aviso antigo de `search_path` em `public.update_updated_at_column`; as funções novas usam `search_path=''` e não são SECURITY DEFINER. A tentativa de suíte pgTAP global encontrou incompatibilidades já conhecidas dos fixtures de fases antigas quando executados após o cutover e duplicação de diretórios pela CLI; os testes focais acima passaram e essas auditorias antigas não foram reabertas.
+- Target local explicitamente vinculado ao IURQ `iurqgskfuupslrghgtej`. Inventário autenticado anterior à aplicação: **39 migrations**, até M08; local: **40**, somente M09 ausente remotamente. Preflight read-only IURQ: rollout `v1/legacy`, 4 Pedidos, 11 tarefas, 3 subtarefas e nenhum objeto/coluna da M09 já existente.
+- Após autorização humana explícita, o vínculo do CLI com o mesmo IURQ foi renovado por conexão direta. O novo `db push --dry-run --skip-vault` listou exclusivamente `20260923200800_pedidos_v1_templates.sql`, sem seeds ou roles; a aplicação concluiu somente essa migration. Histórico pós-aplicação: **40 migrations locais / 40 remotas**, com a M09 registrada uma única vez no timestamp reservado.
+- Pós-M09 no IURQ: rollout `v1/legacy`; os 4 Pedidos, 11 tarefas e 3 subtarefas existentes foram preservados; zero templates, regras de instância ou proveniência inválida. As cinco constraints esperadas estão validadas, RLS está ativa, authenticated conserva somente SELECT, anon não tem grants e as seis funções privadas não são SECURITY DEFINER, usam `search_path=''` e não são executáveis pelas roles de API. O advisor não apontou achado novo da M09; permanecem apenas avisos antigos fora deste gate. Sem commit, push ou deploy do 4A; MISFY não acessado.
+- Aceite humano do 4A recebido em 25/09/2026; autorizado o fechamento Git seletivo. Não há interface nova neste gate e 4B permanece fora do escopo deste fechamento.
 
 ### Preparação de 3B — quatro filas, filtros e criação rápida (25/09/2026)
 

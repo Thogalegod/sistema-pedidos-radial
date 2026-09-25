@@ -24,7 +24,9 @@ const task = { id: 't1', organization_id: 'org1', pedido_id: 'p1', frente_id: 'f
   descricao: 'Conferir', descricao_detalhada: null, status: 'Aberta', prioridade: 'Normal',
   responsavel_user_id: null, responsavel: null, vencimento: null, follow_up_date: null,
   waiting_type: null, waiting_user_id: null, waiting_note: null, updated_at: null,
-  concluida_em: null, concluido: false };
+  concluida_em: null, concluido: false,
+  vencimento_rule: { sourceTaskId: 'source-1', offsetDays: 2, timeZone: 'America/Sao_Paulo',
+    state: 'pending', materializedAt: null }, follow_up_rule: null };
 
 describe('focused Pedido queries', () => {
   it('loads only the requested organization/order and returns null when absent', async () => {
@@ -40,15 +42,21 @@ describe('focused Pedido queries', () => {
     const { client, urls } = queryClient({
       pedido_frentes: [{ id: 'f1', pedido_id: 'p1', nome: 'Geral', ordem: 0 }],
       tarefas: [task],
-      subtarefas: [{ id: 's1', tarefa_id: 't1', descricao: 'Etapa', concluida: false, vencimento: null, prioridade: null }],
+      subtarefas: [{ id: 's1', tarefa_id: 't1', descricao: 'Etapa', concluida: false, vencimento: null,
+        prioridade: null, vencimento_rule: null }],
       tarefa_dependencias: [{ tarefa_id: 't1', predecessora_id: 't2' }],
     });
     const result = await loadOrderTasks(client, 'org1', 'p1');
     expect(result).toMatchObject({ fronts: [{ id: 'f1', name: 'Geral' }],
-      tasks: [{ id: 't1', title: 'Conferir' }], subtasks: [{ id: 's1', taskId: 't1' }],
+      tasks: [{ id: 't1', title: 'Conferir', dueRule: { sourceTaskId: 'source-1', state: 'pending' } }],
+      subtasks: [{ id: 's1', taskId: 't1', dueRule: null }],
       dependencies: [{ taskId: 't1', predecessorId: 't2' }] });
     expect(urls.every(url => url.searchParams.get('organization_id') === 'eq.org1')).toBe(true);
     expect(urls.filter(url => url.pathname.endsWith('/tarefas'))[0].searchParams.get('pedido_id')).toBe('eq.p1');
+    expect(urls.filter(url => url.pathname.endsWith('/tarefas'))[0].searchParams.get('select'))
+      .toMatch(/vencimento_rule.*follow_up_rule/);
+    expect(urls.filter(url => url.pathname.endsWith('/subtarefas'))[0].searchParams.get('select'))
+      .toContain('vencimento_rule');
     expect(urls.map(url => url.href).join(' ')).not.toMatch(/anexos|storage|signed/i);
   });
 

@@ -40,6 +40,12 @@ describe('transition readers', () => {
     });
     expect(() => mapTask(row, 'v1')).toThrow();
   });
+  it('maps pending instance date rules without treating them as active dates', () => {
+    const dueRule = { sourceTaskId: 'source-a', offsetDays: 2, timeZone: 'America/Sao_Paulo',
+      state: 'pending', materializedAt: null };
+    expect(mapTask({ ...row, status: 'Aberta', vencimento_rule: dueRule,
+      follow_up_rule: null }, 'v1')).toMatchObject({ dueDate: null, dueRule, followUpRule: null });
+  });
   it('keeps legacy assignee text and unknown dates readable under v1 constraints', () => {
     expect(mapTask({ ...row, status: 'Aberta', prioridade: null, updated_at: null }, 'v1'))
       .toMatchObject({
