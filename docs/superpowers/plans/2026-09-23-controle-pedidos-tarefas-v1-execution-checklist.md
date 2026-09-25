@@ -36,7 +36,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ### Lote 2 — Tela do Pedido
 
-- [ ] 2A — Indicadores e próxima ação puros.
+- [x] **2A — Indicadores e próxima ação puros: implementação e testes focais concluídos; aceite humano recebido, sem mudança visual ou remota.**
 - [ ] 2B — Consultas focadas, Resumo e navegação.
 - [ ] 2C — Frentes, agrupamento e detalhe de tarefa.
 
@@ -72,7 +72,13 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechamento Git seletivo de 1D; próximo gate do plano é 2A, ainda não iniciado. O 1C.2 foi fechado no commit/push `7ef6c729ab04ef290daac8a0f4cbd192f45fd844`. M07 aplicada somente no IURQ e verificada; 38 migrations locais/38 remotas. O usuário autorizou prosseguir com o aceite de 1D; sem deploy.
+Prioridade atual: 2A aprovado; próximo gate do plano é 2B, ainda não iniciado. O 1D foi fechado no commit/push `4733c77370de6b4e9bfe192723b5112a77405fbd`; M07 permanece aplicada somente no IURQ. Sem deploy.
+
+### Evidências de 2A — cálculo puro (25/09/2026)
+
+- RED observado antes da implementação: data civil impossível aceita por `task-due`; módulo novo de indicadores ausente e, após criar somente as assinaturas, 9 falhas comportamentais em 11 testes. GREEN: indicadores + datas 18/18; regressão focal de `src/lib/pedidos-tarefas` 73/73; TypeScript, lint dos quatro arquivos alterados e `git diff --check` passaram.
+- Progresso vazio retorna `null`, nunca 100%; tarefa concluída sai dos alertas ativos; atraso, hoje, espera, follow-up e bloqueio são contagens independentes. Próxima ação usa atraso → hoje → follow-up vencido/hoje → próximo prazo, com desempate por data civil, prioridade manual e ID; não altera status nem prioridade. Subtarefas concluídas apenas sugerem a conclusão manual da tarefa.
+- QA read-only exclusivamente no IURQ confirmado: três Pedidos, sendo um misto com 2/3 tarefas concluídas (67% esperado) e um com 4 tarefas atrasadas; nenhum Pedido vazio disponível para comparação remota, coberto por teste unitário. Nenhum registro ou configuração remota foi alterado; MISFY não acessado. Usuário aprovou 2A em 25/09/2026; não houve QA visual nem deploy de 2A.
 
 ### Evidências de 1D — preparação local e preflight (25/09/2026)
 
