@@ -16,7 +16,11 @@ vi.mock('../lib/supabase', () => ({ supabase: {
     getSession: async () => ({ data: { session: { user: { id: 'member-a' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
   },
-  from: () => ({ select: (columns: string) => {
+  from: (table: string) => table === 'pedido_templates' ? ({
+    select: () => ({
+      eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }),
+    }),
+  }) : ({ select: (columns: string) => {
     mocks.listSelect(columns);
     return { eq: async () => ({ data: mocks.listRows, error: null }) };
   } }),

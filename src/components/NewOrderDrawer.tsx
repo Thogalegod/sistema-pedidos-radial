@@ -1,9 +1,18 @@
 'use client';
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { Priority, OrderStatus } from '../types';
 import { X, Save, Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from './StatusBadge';
+import type { TemplateRecord } from '@/lib/pedidos-tarefas/templates';
+import { TemplatePicker } from './pedidos-tarefas/TemplatePicker';
+
+export type NewOrderTemplateSelection = {
+  templateId: string;
+  expectedVersion: number;
+  requestId: string;
+  timeZone: string;
+};
 
 export interface NewOrderDrawerProps {
   isOpen: boolean;
@@ -16,7 +25,11 @@ export interface NewOrderDrawerProps {
     cep: string;
     priority: Priority;
     status: OrderStatus;
+    template: NewOrderTemplateSelection | null;
   }) => boolean | Promise<boolean>;
+  templates?: TemplateRecord[];
+  templatesError?: string | null;
+  onManageTemplates?: () => void;
 }
 
 interface ViaCepResponse {
@@ -27,7 +40,14 @@ interface ViaCepResponse {
   erro?: boolean;
 }
 
-export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps) {
+export function NewOrderDrawer({
+  isOpen,
+  onClose,
+  onSave,
+  templates = [],
+  templatesError = null,
+  onManageTemplates,
+}: NewOrderDrawerProps) {
   const [orderNumber, setOrderNumber] = useState('');
   const [title, setTitle] = useState('');
   const [client, setClient] = useState('');
@@ -42,6 +62,8 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
   const [isFetchingCep, setIsFetchingCep] = useState(false);
   const [cepError, setCepError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const requestIdRef = useRef<string | null>(null);
 
   // Monta o endereço completo para salvar
   const fullAddress = [street, number, neighborhood, city, uf].filter(Boolean).join(', ');
@@ -58,6 +80,8 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
     setUf('');
     setPriority('Normal');
     setCepError('');
+    setSelectedTemplateId(null);
+    requestIdRef.current = null;
   }, []);
 
   const closeDrawer = useCallback(() => {
@@ -123,6 +147,17 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
         cep,
         priority,
         status,
+        template: (() => {
+          const selected = templates.find(template => template.id === selectedTemplateId);
+          if (!selected) return null;
+          requestIdRef.current ??= crypto.randomUUID();
+          return {
+            templateId: selected.id,
+            expectedVersion: selected.version,
+            requestId: requestIdRef.current,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          };
+        })(),
       });
       if (succeeded !== false) closeDrawer();
     } finally {
@@ -163,6 +198,18 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 flex flex-col">
+
+          <TemplatePicker
+            templates={templates}
+            selectedId={selectedTemplateId}
+            onSelect={id => {
+              setSelectedTemplateId(id);
+              requestIdRef.current = null;
+            }}
+            disabled={isSaving}
+            onManage={onManageTemplates}
+            error={templatesError}
+          />
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700">Número do Pedido *</label>

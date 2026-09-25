@@ -44,6 +44,7 @@ import { deleteOrderDetail } from '../lib/pedidos-tarefas/detail-deletion';
 import { isMyTask } from '../lib/pedidos-tarefas/mine';
 import { MemberNameEditor } from '../components/pedidos-tarefas/MemberNameEditor';
 import { StandaloneTaskDetail } from '../components/pedidos-tarefas/StandaloneTaskDetail';
+import { TemplateEditor } from '../components/pedidos-tarefas/TemplateEditor';
 import type { OrderTab } from '../components/pedidos-tarefas/OrderTabs';
 import { blockedCount, chooseNextAction, summarizeTasks } from '../lib/pedidos-tarefas/indicators';
 import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation';
@@ -51,6 +52,14 @@ import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecent
   loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
 import { addTaskNote, deleteTaskNote } from '../lib/pedidos-tarefas/task-notes';
 import type { Dependency, Front, OrderV1, Subtask, TaskV1 } from '../lib/pedidos-tarefas/types';
+import {
+  duplicateTemplate,
+  instantiateTemplate,
+  listTemplates,
+  saveTemplate,
+  type SaveTemplateInput,
+  type TemplateRecord,
+} from '../lib/pedidos-tarefas/templates';
 
 type SelectedDetail = { id: string; organizationId: string; revision: number; order: Order; canonicalOrder: OrderV1;
   fronts: Front[]; tasks: TaskV1[]; subtasks: Subtask[]; dependencies: Dependency[];
@@ -76,6 +85,10 @@ export default function Home() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [membershipRole, setMembershipRole] = useState<MembershipRole | null>(null);
+  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const ordersRequestRef = useRef(0);
   const handledIntentRef = useRef<string | null>(null);
@@ -87,6 +100,20 @@ export default function Home() {
   const currentUser: TeamMember = currentMember
     ? formatMemberLabel(currentMember)
     : 'Membro sem nome';
+
+  const fetchTemplates = async (currentOrganizationId: string) => {
+    setTemplatesError(null);
+    try {
+      const records = await listTemplates(supabase, currentOrganizationId);
+      setTemplates(records);
+      return records;
+    } catch (error) {
+      console.error('Error fetching Pedido templates:', error);
+      setTemplates([]);
+      setTemplatesError('Não foi possível carregar os templates. O Pedido em branco continua disponível.');
+      return [];
+    }
+  };
 
   const fetchOrders = async (currentOrganizationId: string) => {
     const request = ++ordersRequestRef.current;
@@ -148,6 +175,7 @@ export default function Home() {
           const [role] = await Promise.all([
             readCurrentMembershipRole(supabase, currentOrganizationId, session.user.id),
             fetchOrders(currentOrganizationId),
+            fetchTemplates(currentOrganizationId),
           ]);
           if (active) setMembershipRole(role);
         } catch (error) {
@@ -167,6 +195,10 @@ export default function Home() {
         setCapabilities(null);
         setMembers([]);
         setMembershipRole(null);
+        setTemplates([]);
+        setTemplatesError(null);
+        setIsTemplateEditorOpen(false);
+        setEditingTemplateId(null);
         setOrders([]);
         router.replace('/login');
       } else {
@@ -450,7 +482,7 @@ export default function Home() {
     if (!currentOrganizationId) return false;
 
     const toastId = toast.loading('Criando pedido...');
-    const result = await createOrder(supabase, currentOrganizationId, {
+    const orderInput = {
       number: newOrderData.orderNumber,
       title: newOrderData.title,
       client: newOrderData.client,
@@ -458,7 +490,13 @@ export default function Home() {
       cep: newOrderData.cep || null,
       legacyPriority: newOrderData.priority,
       utilityDueDate: null,
-    });
+    };
+    const result = newOrderData.template
+      ? await instantiateTemplate(supabase, currentOrganizationId, {
+        ...newOrderData.template,
+        order: orderInput,
+      })
+      : await createOrder(supabase, currentOrganizationId, orderInput);
     if (!result.ok) {
       reportCommandFailure(result, 'Erro ao criar pedido', toastId);
       return false;
@@ -467,6 +505,38 @@ export default function Home() {
     toast.success('Pedido criado com sucesso!', { id: toastId });
     await fetchOrders(currentOrganizationId);
     return true;
+  };
+
+  const handleSaveTemplate = async (input: SaveTemplateInput) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) {
+      return { ok: false, code: 'reload', message: 'Organização atual indisponível' } as const;
+    }
+    const result = await saveTemplate(supabase, currentOrganizationId, input);
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao salvar template');
+      return result;
+    }
+    await fetchTemplates(currentOrganizationId);
+    setEditingTemplateId(result.value.id);
+    toast.success('Template salvo com sucesso!');
+    return result;
+  };
+
+  const handleDuplicateTemplate = async (id: string, name: string) => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) {
+      return { ok: false, code: 'reload', message: 'Organização atual indisponível' } as const;
+    }
+    const result = await duplicateTemplate(supabase, currentOrganizationId, id, name);
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao duplicar template');
+      return result;
+    }
+    await fetchTemplates(currentOrganizationId);
+    setEditingTemplateId(result.value.id);
+    toast.success('Template duplicado com sucesso!');
+    return result;
   };
 
   const handleChangePriority = async (orderId: string, newPriority: Priority) => {
@@ -1207,7 +1277,27 @@ export default function Home() {
         isOpen={isNewOrderOpen}
         onClose={() => setIsNewOrderOpen(false)}
         onSave={handleSaveNewOrder}
+        templates={templates}
+        templatesError={templatesError}
+        onManageTemplates={() => {
+          setEditingTemplateId(templates[0]?.id ?? null);
+          setIsTemplateEditorOpen(true);
+        }}
       />
+      {isTemplateEditorOpen && (
+        <TemplateEditor
+          key={editingTemplateId
+            ? `${editingTemplateId}:${templates.find(item => item.id === editingTemplateId)?.version ?? 0}`
+            : 'new-template'}
+          template={templates.find(item => item.id === editingTemplateId) ?? null}
+          templates={templates}
+          onSelectTemplate={setEditingTemplateId}
+          onNew={() => setEditingTemplateId(null)}
+          onSave={handleSaveTemplate}
+          onDuplicate={handleDuplicateTemplate}
+          onClose={() => setIsTemplateEditorOpen(false)}
+        />
+      )}
     </div>
   );
 }

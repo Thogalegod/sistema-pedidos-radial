@@ -48,7 +48,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 ### Lote 4 — Templates
 
 - [x] 4A — Blueprint, versões e datas civis (M09): aplicada e verificada no IURQ; aceite humano recebido em 25/09/2026.
-- [ ] 4B — Instanciação atômica, edição e duplicação (M10).
+- [x] 4B — Instanciação atômica, edição e duplicação (M10): aplicada e verificada no IURQ; criação, edição, duplicação e instanciação de template aceitas manualmente pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [ ] 4C — Materialização após primeira conclusão (M11).
 
 ### Lote 5 — Timeline e Arquivos
@@ -75,7 +75,19 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar o Git seletivo da M09/4A aprovada. Sem deploy; 4B não iniciado.
+Prioridade atual: fechar seletivamente a M10/4B após aceite humano e iniciar a preparação local da M11/4C. Parar antes de qualquer aplicação remota da M11. Sem deploy.
+
+### Preparação de 4B — instanciação atômica, edição e duplicação (25/09/2026)
+
+- Predecessor 4A fechado e publicado seletivamente no commit `e14910c` da branch `codex/controle-locacoes`; `STAGED_GATE_PASS` havia passado. M09 permanece aplicada e verificada no IURQ.
+- M10 `20260923200900_pedidos_v1_template_instance.sql` criada vazia pela CLI e renomeada ao timestamp reservado antes da edição. Acrescenta fingerprint idempotente e três RPCs autenticadas para salvar com versão otimista, duplicar e instanciar template em uma única transação; writes diretos de template continuam revogados. Instância remapeia novos IDs, Frentes, tarefas, subtarefas e dependências; D+n usa a data local do servidor no fuso IANA; tarefas iniciam abertas, limpas e atribuídas ao criador. Regras após conclusão permanecem bloqueadas até 4C.
+- Cliente tipado implementa listagem e wrappers das RPCs. Novo Pedido conserva “Em branco” e oferece “Usar template”; editor integrado cria/edita/duplica Frentes, tarefas, subtarefas, prioridades, D+n e dependências, preservando o rascunho em conflito. Falha na leitura de templates não derruba a lista de Pedidos nem aparenta sucesso.
+- TDD: RED por módulos/UI/RPCs/coluna ausentes; GREEN focal do cliente/Pedido: **124/124** em 23 arquivos. TypeScript e lint focal passaram; `git diff --check` passou.
+- Reset local sem seed aplicou todas as **41 migrations** do zero. pgTAP M10: **38/38**; regressão focal M10+M09+M08: **95/95**. Cobertura inclui tenant, versão obsoleta, bloqueio de completion, novos IDs, dependências remapeadas, D+n, independência da instância, rollback após falha injetada na subtarefa e ausência de Pedido parcial. Duas sessões concorrentes com o mesmo `requestId` aguardaram corretamente e retornaram um único Pedido/tarefa. Verificação SQL local confirmou `v1/legacy`, constraint validada, zero proveniência inválida, somente SELECT direto em templates, anon sem RPC e três RPCs autenticadas com `search_path=''`.
+- Lint de banco não apontou aviso novo da M10; permanecem somente avisos antigos fora deste gate. Target explicitamente vinculado ao IURQ `iurqgskfuupslrghgtej`. Inventário autenticado remoto: **40 migrations**, até M09; local: **41**, somente M10 ausente remotamente. Dry-run com `--skip-vault` listou exclusivamente `20260923200900_pedidos_v1_template_instance.sql`, sem seeds ou roles.
+- Preflight read-only IURQ: rollout `v1/legacy`, 4 Pedidos, 11 tarefas, 3 subtarefas, zero templates e nenhum objeto da M10 existente. Com autorização humana explícita, o dry-run confirmou exclusivamente M10, sem seeds ou roles, e `20260923200900_pedidos_v1_template_instance.sql` foi aplicada somente no IURQ.
+- Pós-M10 remoto: **41/41 migrations** sincronizadas; contagens preservadas em 4 Pedidos, 11 tarefas e 3 subtarefas; zero instâncias/proveniências/fingerprints inválidos; constraint de fingerprint validada. As três RPCs estão `SECURITY DEFINER`, com `search_path=''`, EXECUTE apenas para `authenticated` e nenhum EXECUTE para `anon`; acesso direto a templates permanece somente SELECT. Teste de concorrência do `requestId` passou novamente após o isolamento do harness. Sem commit, push ou deploy do 4B; MISFY não acessado.
+- Teste manual final aprovado pelo usuário em 25/09/2026: criação/edição/duplicação de template, criação de Pedido a partir dele e persistência das tarefas/subtarefas após recarga. Fechamento Git do 4B autorizado; QA visual foi executado pelo usuário, não pelo agente.
 
 ### Preparação de 4A — blueprint, versionamento e datas civis (25/09/2026)
 
@@ -86,8 +98,8 @@ Prioridade atual: fechar o Git seletivo da M09/4A aprovada. Sem deploy; 4B não 
 - Lint de banco não aponta aviso novo da M09; permanecem apenas avisos antigos em funções não tocadas. Advisor de segurança mantém um aviso antigo de `search_path` em `public.update_updated_at_column`; as funções novas usam `search_path=''` e não são SECURITY DEFINER. A tentativa de suíte pgTAP global encontrou incompatibilidades já conhecidas dos fixtures de fases antigas quando executados após o cutover e duplicação de diretórios pela CLI; os testes focais acima passaram e essas auditorias antigas não foram reabertas.
 - Target local explicitamente vinculado ao IURQ `iurqgskfuupslrghgtej`. Inventário autenticado anterior à aplicação: **39 migrations**, até M08; local: **40**, somente M09 ausente remotamente. Preflight read-only IURQ: rollout `v1/legacy`, 4 Pedidos, 11 tarefas, 3 subtarefas e nenhum objeto/coluna da M09 já existente.
 - Após autorização humana explícita, o vínculo do CLI com o mesmo IURQ foi renovado por conexão direta. O novo `db push --dry-run --skip-vault` listou exclusivamente `20260923200800_pedidos_v1_templates.sql`, sem seeds ou roles; a aplicação concluiu somente essa migration. Histórico pós-aplicação: **40 migrations locais / 40 remotas**, com a M09 registrada uma única vez no timestamp reservado.
-- Pós-M09 no IURQ: rollout `v1/legacy`; os 4 Pedidos, 11 tarefas e 3 subtarefas existentes foram preservados; zero templates, regras de instância ou proveniência inválida. As cinco constraints esperadas estão validadas, RLS está ativa, authenticated conserva somente SELECT, anon não tem grants e as seis funções privadas não são SECURITY DEFINER, usam `search_path=''` e não são executáveis pelas roles de API. O advisor não apontou achado novo da M09; permanecem apenas avisos antigos fora deste gate. Sem commit, push ou deploy do 4A; MISFY não acessado.
-- Aceite humano do 4A recebido em 25/09/2026; autorizado o fechamento Git seletivo. Não há interface nova neste gate e 4B permanece fora do escopo deste fechamento.
+- Pós-M09 no IURQ: rollout `v1/legacy`; os 4 Pedidos, 11 tarefas e 3 subtarefas existentes foram preservados; zero templates, regras de instância ou proveniência inválida. As cinco constraints esperadas estão validadas, RLS está ativa, authenticated conserva somente SELECT, anon não tem grants e as seis funções privadas não são SECURITY DEFINER, usam `search_path=''` e não são executáveis pelas roles de API. O advisor não apontou achado novo da M09; permanecem apenas avisos antigos fora deste gate. Sem deploy; MISFY não acessado.
+- Aceite humano do 4A recebido em 25/09/2026. Fechamento Git seletivo aprovado pelo staged gate, commitado como `e14910c` e publicado em `origin/codex/controle-locacoes`. Não há interface nova nesse gate.
 
 ### Preparação de 3B — quatro filas, filtros e criação rápida (25/09/2026)
 
