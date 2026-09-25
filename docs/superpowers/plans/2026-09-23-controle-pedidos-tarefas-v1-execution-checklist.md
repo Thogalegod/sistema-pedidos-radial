@@ -38,7 +38,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 - [x] **2A — Indicadores e próxima ação puros: implementação e testes focais concluídos; aceite humano recebido, sem mudança visual ou remota.**
 - [x] **2B — Consultas focadas, Resumo e navegação: implementação e testes focais concluídos; teste manual realizado e aprovado pelo usuário em 25/09/2026. Fechamento Git autorizado.**
-- [ ] 2C — Frentes, agrupamento e detalhe de tarefa.
+- [x] **2C — Frentes, agrupamento e detalhe de tarefa: implementação e testes concluídos; teste manual aprovado pelo usuário em 25/09/2026. Fechamento Git autorizado.**
 
 ### Lote 3 — Dashboard operacional
 
@@ -75,7 +75,16 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: 2B aceito manualmente; fechar somente seu Git e depois iniciar 2C conforme o master plan, sem antecipar o redesign de UX anotado acima. HEAD anterior ao 2B: `b5e9aaedb23057dfded3747e8583ea8d706568a2`; M07 permanece aplicada somente no IURQ. Sem deploy do 2B.
+Prioridade atual: 2C aceito manualmente; fechar seu Git e iniciar 3A até o hard gate de aplicação da M08. Não antecipar o redesign de UX anotado acima. M07 permanece aplicada somente no IURQ; 2C não tem migration. Sem deploy do 2B/2C.
+
+### Evidências de 2C — Frentes e detalhe de tarefa (25/09/2026)
+
+- RED observado antes da implementação em escolha/CRUD de Frente, sinais operacionais, agrupamento Etapa/Prazo, editor de Frente, detalhe e formulário de tarefa. GREEN focal: 49/49 testes em 11 arquivos. Integração confirmou que `Esc` fecha apenas o detalhe da tarefa, não o Pedido.
+- UI local: Frente única preselecionada; várias exigem escolha; Pedido sem Frente usa a Geral criada pela RPC na primeira tarefa. Editor permite criar, renomear, subir/descer e remover Frente; remoção com tarefas exige destino e usa uma única RPC transacional `remove_pedido_front`. Detalhe permite status, prioridade, responsável real, espera condicional, descrição, prazo/follow-up, subtarefa, predecessora e notas; comandos existentes mantêm Pedido independente da conclusão das tarefas.
+- A aba Tarefas em produção usa a nova seção canônica quando o detalhe está carregado. O checklist antigo permanece apenas como fallback interno sem `taskSection`, para não quebrar os consumidores/testes legados durante a transição; não é exibido junto da seção nova. A troca de layout completo do Pedido segue como melhoria futura separada.
+- Suíte do aplicativo `npm test -- src`: 856 passaram, 4 ignorados (128 arquivos, 1 ignorado). TypeScript e lint focal passaram; permanece apenas o warning legado de `<img>` no OrderDrawer. Não houve QA visual nem operação remota pelo agente; IURQ não foi escrito, MISFY não foi acessado.
+- **Roteiro submetido ao teste manual no IURQ/local:** Pedido → Tarefas; criar/renomear/reordenar Frente, criar tarefa dentro dela, mover tarefa para outra Frente, remover a Frente antiga com destino, editar status/espera/prioridade/prazo, subtarefa e nota, e conferir reload. Marcar tarefas concluídas não deve finalizar Pedido; finalizar/reabrir permanece uma ação confirmada separada. O redesenho em página inteira não faz parte de 2C.
+- Aceite humano recebido em 25/09/2026: usuário informou “ok aprovado, siga com o plano”. O agente não declara QA visual próprio; commit/push seletivos do 2C foram autorizados por esse aceite.
 
 ### Evidências de 2B — leitura focada e Resumo (25/09/2026)
 

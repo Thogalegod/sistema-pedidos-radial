@@ -10,6 +10,7 @@ import type { NextAction, TaskSummary } from '../lib/pedidos-tarefas/indicators'
 import type { Front, OrderV1 } from '../lib/pedidos-tarefas/types';
 import { OrderSummary } from './pedidos-tarefas/OrderSummary';
 import { OrderTabs, type OrderTab } from './pedidos-tarefas/OrderTabs';
+import { OrderTasksSection, type OrderTasksSectionProps } from './pedidos-tarefas/OrderTasksSection';
 
 type SpeechRecognitionResultEvent = {
   results: { [index: number]: { [index: number]: { transcript: string } } };
@@ -53,9 +54,9 @@ interface OrderDrawerProps {
   onEditTaskDueDate?: (orderId: string, taskId: string, newDueDate: string | undefined) => Promise<void>;
   onAddSubtarefa?: (orderId: string, taskId: string, descricao: string) => Promise<void>;
   onToggleSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
-  onDeleteSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
-  onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<void>;
-  onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<void>;
+  onDeleteSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<boolean | void>;
+  onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<boolean | void>;
+  onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<boolean | void>;
   today?: Date;
   canManageOrder?: boolean;
   activeTab?: OrderTab;
@@ -68,9 +69,10 @@ interface OrderDrawerProps {
   detailError?: string | null;
   sectionError?: string | null;
   sectionLoading?: boolean;
+  taskSection?: OrderTasksSectionProps | null;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
@@ -114,9 +116,9 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   useEffect(() => {
     if (!isOpen) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
+    if (!taskSection?.focusedTaskId) closeButtonRef.current?.focus();
     return () => { previousFocus?.focus(); };
-  }, [isOpen, hasOrder]);
+  }, [isOpen, hasOrder, taskSection?.focusedTaskId]);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
@@ -202,11 +204,11 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (isOpen && e.key === 'Escape') onClose();
+      if (isOpen && e.key === 'Escape' && !taskSection?.focusedTaskId) onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose, isOpen]);
+  }, [onClose, isOpen, taskSection?.focusedTaskId]);
 
   // Prevent scroll on body when drawer is open
   useEffect(() => {
@@ -525,7 +527,8 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 onOpenTask={onFocusTask ?? (() => {})} />}
 
               {/* Checklist section */}
-              {activeTab === 'tasks' && <>
+              {activeTab === 'tasks' && taskSection && <OrderTasksSection {...taskSection} />}
+              {activeTab === 'tasks' && !taskSection && <>
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <CheckSquare className="w-5 h-5 text-blue-600" />

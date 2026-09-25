@@ -17,6 +17,8 @@ import {
   updateOrder,
   updateTask,
 } from '../lib/pedidos-tarefas/commands';
+import type { TaskInput, TaskPatch, SubtaskInput } from '../lib/pedidos-tarefas/commands';
+import { removeFront, saveFront } from '../lib/pedidos-tarefas/fronts';
 import {
   formatMemberLabel,
   listMembers,
@@ -46,10 +48,10 @@ import { blockedCount, chooseNextAction, summarizeTasks } from '../lib/pedidos-t
 import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation';
 import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecentActivity,
   loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
-import type { Dependency, Front, OrderV1, TaskV1 } from '../lib/pedidos-tarefas/types';
+import type { Dependency, Front, OrderV1, Subtask, TaskV1 } from '../lib/pedidos-tarefas/types';
 
 type SelectedDetail = { id: string; organizationId: string; revision: number; order: Order; canonicalOrder: OrderV1;
-  fronts: Front[]; tasks: TaskV1[]; dependencies: Dependency[];
+  fronts: Front[]; tasks: TaskV1[]; subtasks: Subtask[]; dependencies: Dependency[];
   recent: { text: string; at: string; author: string } | null };
 
 export default function Home() {
@@ -200,7 +202,8 @@ export default function Home() {
           : task.assignee ?? `Membro sem nome · ${task.assigneeUserId.slice(0, 8)}` };
       }) };
       setSelectedDetail({ id: orderId, organizationId: org, revision: detailRevision, order: resolvedOrder, canonicalOrder,
-        fronts: taskData.fronts, tasks: taskData.tasks, dependencies: taskData.dependencies, recent });
+        fronts: taskData.fronts, tasks: taskData.tasks, subtasks: taskData.subtasks,
+        dependencies: taskData.dependencies, recent });
     }).catch(error => {
       if (!active) return;
       console.error('Error loading Pedido detail:', error);
@@ -300,6 +303,12 @@ export default function Home() {
     setSectionError(null);
     setSectionLoading(false);
     window.history.pushState(null, '', '/');
+    handledIntentRef.current = window.location.search;
+  };
+
+  const closeTask = () => {
+    setFocusedTaskId(null);
+    if (selectedOrderId) window.history.replaceState(null, '', buildOrderHref(selectedOrderId));
     handledIntentRef.current = window.location.search;
   };
 
@@ -493,6 +502,90 @@ export default function Home() {
     return true;
   };
 
+  const handleCreateTaskV1 = async (input: TaskInput): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const toastId = toast.loading('Adicionando tarefa...');
+    const result = await createTask(supabase, org, input);
+    if (!result.ok) { reportCommandFailure(result, 'Erro ao adicionar tarefa', toastId); return false; }
+    await fetchOrders(org);
+    toast.success('Tarefa adicionada!', { id: toastId });
+    return true;
+  };
+
+  const handleSaveTaskV1 = async (id: string, patch: TaskPatch): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const result = await updateTask(supabase, org, id, patch);
+    if (!result.ok) { reportCommandFailure(result, 'Erro ao salvar tarefa'); return false; }
+    await fetchOrders(org);
+    toast.success('Tarefa atualizada');
+    return true;
+  };
+
+  const handleSaveFrontV1 = async (front: Front): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const result = await saveFront(supabase, org, front);
+    if (!result.ok) { reportCommandFailure(result, 'Erro ao salvar Frente'); return false; }
+    setDetailRevision(previous => previous + 1);
+    toast.success('Frente salva');
+    return true;
+  };
+
+  const handleRemoveFrontV1 = async (id: string, destinationId: string | null): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const result = await removeFront(supabase, org, id, destinationId);
+    if (!result.ok) { reportCommandFailure(result, 'Erro ao remover Frente'); return false; }
+    setDetailRevision(previous => previous + 1);
+    toast.success('Frente removida');
+    return true;
+  };
+
+  const handleReorderFrontV1 = async (id: string, direction: 'up' | 'down'): Promise<boolean> => {
+    const org = requireOrganizationId();
+    const detail = selectedDetail;
+    if (!org || !detail || detail.organizationId !== org) return false;
+    const ordered = [...detail.fronts].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    const index = ordered.findIndex(front => front.id === id);
+    const other = ordered[index + (direction === 'up' ? -1 : 1)];
+    const front = ordered[index];
+    if (!front || !other) return false;
+    const first = await saveFront(supabase, org, { ...front, position: other.position });
+    if (!first.ok) { reportCommandFailure(first, 'Erro ao reordenar Frente'); return false; }
+    const second = await saveFront(supabase, org, { ...other, position: front.position });
+    if (!second.ok) {
+      await saveFront(supabase, org, front);
+      reportCommandFailure(second, 'Erro ao reordenar Frente');
+      setDetailRevision(previous => previous + 1);
+      return false;
+    }
+    setDetailRevision(previous => previous + 1);
+    return true;
+  };
+
+  const handleSaveSubtaskV1 = async (input: SubtaskInput): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const result = await saveSubtask(supabase, org, input);
+    if (!result.ok) { reportCommandFailure(result, 'Erro ao salvar subtarefa'); return false; }
+    setDetailRevision(previous => previous + 1);
+    return true;
+  };
+
+  const handleDependencyV1 = async (action: 'add' | 'remove', taskId: string,
+    predecessorId: string): Promise<boolean> => {
+    const org = requireOrganizationId();
+    if (!org) return false;
+    const { error } = await supabase.rpc(action === 'add' ? 'add_pedido_dependency' : 'remove_pedido_dependency', {
+      p_org: org, p_task: taskId, p_predecessor: predecessorId,
+    });
+    if (error) { reportMutationError(error, 'Erro ao alterar dependência'); return false; }
+    setDetailRevision(previous => previous + 1);
+    return true;
+  };
+
   const handleEditTaskTitle = async (orderId: string, taskId: string, newTitle: string) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
@@ -547,16 +640,17 @@ export default function Home() {
 
   const handleDeleteTask = async (orderId: string, taskId: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const result = await removeTask(supabase, currentOrganizationId, taskId);
     if (!result.ok) {
       reportCommandFailure(result, 'Erro ao remover tarefa');
-      return;
+      return false;
     }
 
     await fetchOrders(currentOrganizationId);
     toast.success('Tarefa removida');
+    return true;
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -676,7 +770,7 @@ export default function Home() {
 
   const handleDeleteSubtarefa = async (orderId: string, taskId: string, subtaskId: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     try {
       await deleteOrderDetail(supabase, 'subtarefas', currentOrganizationId, subtaskId);
@@ -685,15 +779,16 @@ export default function Home() {
         error instanceof Error ? error : { message: 'Falha desconhecida' },
         'Erro ao remover subtarefa'
       );
-      return;
+      return false;
     }
 
     setDetailRevision(previous => previous + 1);
+    return true;
   };
 
   const handleAddComentarioTarefa = async (orderId: string, taskId: string, texto: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const { data, error } = await supabase.from('comentarios_tarefa').insert({
       organization_id: currentOrganizationId,
@@ -704,14 +799,16 @@ export default function Home() {
 
     if (!error && data) {
       setDetailRevision(previous => previous + 1);
+      return true;
     } else {
       toast.error('Erro ao salvar nota');
+      return false;
     }
   };
 
   const handleDeleteComentarioTarefa = async (orderId: string, taskId: string, comentarioId: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     try {
       await deleteOrderDetail(
@@ -725,10 +822,11 @@ export default function Home() {
         error instanceof Error ? error : { message: 'Falha desconhecida' },
         'Erro ao remover nota'
       );
-      return;
+      return false;
     }
 
     setDetailRevision(previous => previous + 1);
+    return true;
   };
 
 
@@ -1056,6 +1154,34 @@ export default function Home() {
           !selectedDetail.tasks.some(task => task.id === focusedTaskId)
           ? 'Tarefa não encontrada neste Pedido.' : sectionError}
         sectionLoading={sectionLoading}
+        taskSection={selectedOrder && selectedDetail && selectedDetail.id === selectedOrder.id ? {
+          orderId: selectedOrder.id,
+          tasks: selectedDetail.tasks,
+          subtasks: selectedDetail.subtasks,
+          dependencies: selectedDetail.dependencies,
+          fronts: selectedDetail.fronts,
+          commentsByTask: Object.fromEntries(selectedOrder.tasks.map(task => [task.id, task.comentarios ?? []])),
+          members,
+          today: todayISO,
+          focusedTaskId,
+          canManageOrder: membershipRole === 'admin',
+          defaultAssigneeId: currentMember?.userId ?? null,
+          onFocusTask: id => openOrder(selectedOrder.id, id),
+          onCloseTask: closeTask,
+          onCreateTask: handleCreateTaskV1,
+          onSaveTask: handleSaveTaskV1,
+          onToggleTask: id => handleToggleTask(selectedOrder.id, id),
+          onDeleteTask: id => handleDeleteTask(selectedOrder.id, id),
+          onSaveSubtask: handleSaveSubtaskV1,
+          onDeleteSubtask: (taskId, id) => handleDeleteSubtarefa(selectedOrder.id, taskId, id),
+          onAddNote: (taskId, text) => handleAddComentarioTarefa(selectedOrder.id, taskId, text),
+          onDeleteNote: (taskId, id) => handleDeleteComentarioTarefa(selectedOrder.id, taskId, id),
+          onAddDependency: (taskId, predecessorId) => handleDependencyV1('add', taskId, predecessorId),
+          onRemoveDependency: (taskId, predecessorId) => handleDependencyV1('remove', taskId, predecessorId),
+          onSaveFront: handleSaveFrontV1,
+          onRemoveFront: handleRemoveFrontV1,
+          onReorderFront: handleReorderFrontV1,
+        } : null}
         focusedTaskId={focusedTaskId}
         onFocusTask={taskId => {
           if (selectedOrderId) openOrder(selectedOrderId, taskId);
