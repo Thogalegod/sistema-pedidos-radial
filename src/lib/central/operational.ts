@@ -10,7 +10,7 @@ import type { Capabilities } from '@/lib/pedidos-tarefas/types';
 
 export interface CentralTaskRow {
   id: string;
-  pedido_id: string;
+  pedido_id: string | null;
   descricao: string;
   vencimento: string | null;
   concluido: boolean;
@@ -77,10 +77,10 @@ export interface CentralOperationalInput {
 export interface CentralTaskAttention {
   kind: 'task_overdue' | 'task_today';
   id: string;
-  orderId: string;
-  orderNumber: string;
+  orderId: string | null;
+  orderNumber: string | null;
   orderTitle: string;
-  customerName: string;
+  customerName: string | null;
   title: string;
   dueDate: string;
   href: string;
@@ -129,14 +129,14 @@ export function buildCentralOperationalSnapshot(input: CentralOperationalInput) 
     const completed = resolveTaskStatus(task, input.statusMode ?? 'legacy') === 'Concluída';
     const dueStatus = getTaskDueStatus({ completed, dueDate: task.vencimento }, input.today);
     if ((dueStatus !== 'overdue' && dueStatus !== 'today') || !task.vencimento) return [];
-    const order = ordersById.get(task.pedido_id);
+    const order = task.pedido_id ? ordersById.get(task.pedido_id) : undefined;
     return [{
       kind: dueStatus === 'overdue' ? 'task_overdue' : 'task_today',
       id: task.id,
       orderId: task.pedido_id,
       orderNumber: order?.numero_pedido ?? task.pedido_id,
-      orderTitle: order?.projeto ?? 'Pedido',
-      customerName: order?.cliente ?? 'Cliente não identificado',
+      orderTitle: order?.projeto ?? (task.pedido_id ? 'Pedido' : 'Tarefa avulsa'),
+      customerName: order?.cliente ?? (task.pedido_id ? 'Cliente não identificado' : null),
       title: task.descricao,
       dueDate: task.vencimento,
       href: buildTaskHref(task.id, task.pedido_id),

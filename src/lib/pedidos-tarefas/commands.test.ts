@@ -97,6 +97,29 @@ describe('pedido command RPC wrappers', () => {
     });
   });
 
+  it('forwards a standalone task as the coherent null/null pair with an explicit assignee', async () => {
+    const create = commandClient({ create_pedido_task: { data: 'quick-1' } });
+    const input = { title: 'Retornar cliente', orderId: null, frontId: null,
+      assigneeId: 'user-a', priority: 'Normal' as const };
+
+    await expect(createTask(create.client, 'org-a', input))
+      .resolves.toEqual({ ok: true, value: 'quick-1' });
+    expect(create.requests[0]).toEqual({
+      rpc: 'create_pedido_task', body: { p_org: 'org-a', p_input: input },
+    });
+  });
+
+  it('rejects invalid standalone shapes before calling the database', async () => {
+    const create = commandClient({});
+    await expect(createTask(create.client, 'org-a', {
+      title: 'Par parcial', orderId: null, frontId: 'front-a', assigneeId: 'user-a',
+    })).resolves.toMatchObject({ ok: false, code: 'invalid' });
+    await expect(createTask(create.client, 'org-a', {
+      title: 'Sem responsável', orderId: null, frontId: null, assigneeId: null,
+    })).resolves.toMatchObject({ ok: false, code: 'invalid' });
+    expect(create.requests).toEqual([]);
+  });
+
   it('forwards canonical workflow, waiting and priority fields without a legacy bool', async () => {
     const canonicalTask = {
       ...taskResult,

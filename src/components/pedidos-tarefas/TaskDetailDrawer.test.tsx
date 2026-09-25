@@ -87,4 +87,28 @@ describe('TaskDetailDrawer', () => {
       id: 'sub-a', taskId: 'task-a', patch: { priority: 'Alta' },
     }));
   });
+
+  it('edits a standalone task without requiring a Frente or offering dependencies', async () => {
+    const onSaveTask = vi.fn().mockResolvedValue(true);
+    render(<TaskDetailDrawer {...base} orderId={null} fronts={[]} orderTasks={[]}
+      task={taskFixture({ id: 'quick-1', orderId: null, frontId: null })}
+      taskId="quick-1" onSaveTask={onSaveTask} />);
+
+    expect(screen.getByText('Tarefa avulsa')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Frente da tarefa')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Predecessoras')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar tarefa' }));
+    await waitFor(() => expect(onSaveTask).toHaveBeenCalledWith('quick-1',
+      expect.objectContaining({ frontId: null })));
+  });
+
+  it('shows system events without exposing the human-note delete action', () => {
+    render(<TaskDetailDrawer {...base} comments={[{
+      id: 'event-a', tarefa_id: 'task-a', texto: 'Tarefa atualizada', usuario: 'Sistema',
+      criado_em: '2026-09-25T12:00:00Z', event_type: 'task_updated',
+    }]} />);
+
+    expect(screen.getByText('Sistema')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Excluir nota de campo/ })).not.toBeInTheDocument();
+  });
 });

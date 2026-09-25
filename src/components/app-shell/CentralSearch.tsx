@@ -11,8 +11,9 @@ import {
   type CentralSearchResults,
 } from '@/lib/central/search';
 
-const EMPTY_RESULTS: CentralSearchResults = { orders: [], customers: [], contracts: [], billings: [] };
+const EMPTY_RESULTS: CentralSearchResults = { tasks: [], orders: [], customers: [], contracts: [], billings: [] };
 const GROUPS = [
+  { key: 'tasks', label: 'Tarefas' },
   { key: 'orders', label: 'Pedidos' },
   { key: 'customers', label: 'Clientes' },
   { key: 'contracts', label: 'Contratos' },
@@ -50,7 +51,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Buscar em todo o Radial</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Pedidos, clientes, contratos e cobranças</p>
+          <p className="mt-0.5 text-xs text-slate-500">Tarefas, pedidos, clientes, contratos e cobranças</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Fechar busca"
           className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
@@ -100,7 +101,7 @@ function SearchExperience({ inputRef, onNavigate }: { inputRef: RefObject<HTMLIn
     <div className="relative sticky top-0 z-10 bg-white">
       <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
       <input ref={inputRef} type="search" aria-label="Busca global" value={query} onChange={(event) => setQuery(event.target.value)}
-        placeholder="Buscar pedido, cliente, contrato, cobrança..."
+        placeholder="Buscar tarefa, pedido, cliente, contrato, cobrança..."
         className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100" />
       {query && <button type="button" aria-label="Limpar busca" onClick={() => { setQuery(''); setResultState(null); }}
         className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-700">

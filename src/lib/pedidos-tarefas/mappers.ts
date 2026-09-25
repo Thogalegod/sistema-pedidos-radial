@@ -70,6 +70,7 @@ const subtaskSchema = z.object({
 });
 const commentSchema = z.object({
   id: z.string(), tarefa_id: z.string(), texto: z.string(), usuario: z.string(), criado_em: z.string(),
+  event_type: z.string().nullable().optional(),
 });
 const nestedTaskSchema = taskRowSchema.extend({
   subtarefas: z.array(subtaskSchema).default([]), comentarios_tarefa: z.array(commentSchema).default([]),

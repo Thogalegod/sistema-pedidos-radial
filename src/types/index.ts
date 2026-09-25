@@ -28,6 +28,7 @@ export interface ComentarioTarefa {
   texto: string;
   usuario: string;
   criado_em: string;
+  event_type?: string | null;
 }
 
 export interface Atividade {

@@ -28,6 +28,16 @@ describe('Central pending views', () => {
     expect(sections[0].items).toHaveLength(5);
     expect(sections[0].showAllHref).toBeNull();
   });
+
+  it('preserves a standalone task deep-link in task sections', () => {
+    const snapshot = makeSnapshot();
+    snapshot.tasks[0] = { ...snapshot.tasks[0], orderId: null, orderNumber: null,
+      orderTitle: 'Tarefa avulsa', customerName: null, href: '/?tarefa=task-0' };
+    snapshot.priorities[0] = snapshot.tasks[0];
+
+    expect(getCentralPendingSections(snapshot, 'overdue-tasks')[0].items[0])
+      .toMatchObject({ orderId: null, href: '/?tarefa=task-0' });
+  });
 });
 
 function makeSnapshot(): CentralOperationalSnapshot {

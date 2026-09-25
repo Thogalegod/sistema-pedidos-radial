@@ -42,7 +42,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ### Lote 3 — Dashboard operacional
 
-- [ ] 3A — Tarefa avulsa e leituras compatíveis (M08).
+- [x] **3A — Tarefa avulsa e leituras compatíveis (M08): M08 aplicada e verificada no IURQ; regressão manual aprovada pelo usuário em 25/09/2026. Fechamento Git autorizado.**
 - [ ] 3B — Quatro filas, filtros reais e criação rápida.
 
 ### Lote 4 — Templates
@@ -75,7 +75,18 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: 2C aceito manualmente; fechar seu Git e iniciar 3A até o hard gate de aplicação da M08. Não antecipar o redesign de UX anotado acima. M07 permanece aplicada somente no IURQ; 2C não tem migration. Sem deploy do 2B/2C.
+Prioridade atual: fechar 3A seletivamente após aceite humano e seguir para 3B. Não antecipar o redesign de UX anotado acima. M08 foi aplicada somente no IURQ. Sem deploy.
+
+### Preparação de 3A — tarefa avulsa e leituras compatíveis (25/09/2026)
+
+- Gate 2C fechado e publicado seletivamente no commit `af9db52` da branch `codex/controle-locacoes`; `ai:gate:staged` havia passado antes do commit. Nenhum deploy foi feito.
+- M08 `20260923200700_pedidos_v1_quick_tasks.sql` criada pela CLI como arquivo vazio `20260925125615_pedidos_v1_quick_tasks.sql` e renomeada ao timestamp reservado antes da edição. Implementação local mantém tarefa de Pedido com par Pedido/Frente e permite avulsa somente null/null com responsável explícito válido; eventos de sistema da avulsa usam `comentarios_tarefa.event_type` protegido.
+- Leitores da Central, busca, navegação, detalhe e notas foram preparados para `pedido_id` nulo. Última atualização manual ignora eventos de sistema; tarefa avulsa não oferece Frente/dependências; notas passam a carregar/refazer por `taskId`, sem depender do Pedido.
+- RED focal comprovou módulo de notas ausente, null enviado ao lote de Pedidos e contexto inventado para avulsa. GREEN do cliente: **60/60** em 9 arquivos; TypeScript e lint focal passaram; `git diff --check` passou.
+- Após reiniciar o Docker, o banco Supabase local de testes foi resetado com autorização humana e todas as migrations locais foram reaplicadas sem seed. pgTAP focal `pedidos_v1_quick_tasks.test.sql`: **21/21**. Verificação SQL local: rollout `v1/legacy`, zero pares Pedido/Frente inconsistentes, avulsas sem responsável ou dependências com avulsa; constraints/FKs validadas, colunas nullable esperadas e grants diretos/execução do guard privados preservados. Banco remoto não foi alterado.
+- Target explicitamente vinculado ao IURQ `iurqgskfuupslrghgtej`. Autorização humana recebida; dry-run com `--skip-vault` listou somente `20260923200700_pedidos_v1_quick_tasks.sql`, sem seeds ou roles, e a aplicação concluiu exclusivamente a M08. Histórico pós-aplicação: **39 migrations locais / 39 remotas**.
+- Pós-M08 no IURQ: rollout `v1/legacy`, 11 tarefas existentes preservadas e nenhuma avulsa real criada pelo agente; zero par Pedido/Frente inconsistente, avulsa sem responsável, dependência envolvendo avulsa ou constraint inválida. SELECT autenticado preservado; INSERT/UPDATE/DELETE diretos e execução do guard privado continuam revogados. QA remoto transacional `QA-M08-ROLLBACK-*` passou criação avulsa com responsável, conclusão, reabertura em espera, eventos de sistema, nota humana com autoria/proveniência, exclusão da nota e proteção do evento de sistema; `ROLLBACK` deixou zero resíduos, 11 tarefas e 2 comentários originais. QA visual não executado; MISFY não acessado.
+- Aceite humano recebido em 25/09/2026 após conferir a regressão do Controle de Pedidos. Correção de linguagem: não há “áreas financeiras” dentro do Pedido; a cobertura automatizada citada em 3A preserva as leituras independentes da Central (cobranças/locações), não uma seção financeira da tela do Pedido.
 
 ### Evidências de 2C — Frentes e detalhe de tarefa (25/09/2026)
 

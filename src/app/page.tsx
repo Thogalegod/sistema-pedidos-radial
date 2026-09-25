@@ -48,6 +48,7 @@ import { blockedCount, chooseNextAction, summarizeTasks } from '../lib/pedidos-t
 import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation';
 import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecentActivity,
   loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
+import { addTaskNote, deleteTaskNote } from '../lib/pedidos-tarefas/task-notes';
 import type { Dependency, Front, OrderV1, Subtask, TaskV1 } from '../lib/pedidos-tarefas/types';
 
 type SelectedDetail = { id: string; organizationId: string; revision: number; order: Order; canonicalOrder: OrderV1;
@@ -786,18 +787,12 @@ export default function Home() {
     return true;
   };
 
-  const handleAddComentarioTarefa = async (orderId: string, taskId: string, texto: string) => {
+  const handleAddComentarioTarefa = async (taskId: string, texto: string) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return false;
 
-    const { data, error } = await supabase.from('comentarios_tarefa').insert({
-      organization_id: currentOrganizationId,
-      tarefa_id: taskId,
-      texto,
-      usuario: currentUser
-    }).select().single();
-
-    if (!error && data) {
+    const result = await addTaskNote(supabase, currentOrganizationId, taskId, texto);
+    if (result.ok) {
       setDetailRevision(previous => previous + 1);
       return true;
     } else {
@@ -806,22 +801,13 @@ export default function Home() {
     }
   };
 
-  const handleDeleteComentarioTarefa = async (orderId: string, taskId: string, comentarioId: string) => {
+  const handleDeleteComentarioTarefa = async (comentarioId: string) => {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return false;
 
-    try {
-      await deleteOrderDetail(
-        supabase,
-        'comentarios_tarefa',
-        currentOrganizationId,
-        comentarioId
-      );
-    } catch (error) {
-      reportMutationError(
-        error instanceof Error ? error : { message: 'Falha desconhecida' },
-        'Erro ao remover nota'
-      );
+    const result = await deleteTaskNote(supabase, currentOrganizationId, comentarioId);
+    if (!result.ok) {
+      reportCommandFailure(result, 'Erro ao remover nota');
       return false;
     }
 
@@ -1174,8 +1160,8 @@ export default function Home() {
           onDeleteTask: id => handleDeleteTask(selectedOrder.id, id),
           onSaveSubtask: handleSaveSubtaskV1,
           onDeleteSubtask: (taskId, id) => handleDeleteSubtarefa(selectedOrder.id, taskId, id),
-          onAddNote: (taskId, text) => handleAddComentarioTarefa(selectedOrder.id, taskId, text),
-          onDeleteNote: (taskId, id) => handleDeleteComentarioTarefa(selectedOrder.id, taskId, id),
+          onAddNote: (taskId, text) => handleAddComentarioTarefa(taskId, text),
+          onDeleteNote: (_taskId, id) => handleDeleteComentarioTarefa(id),
           onAddDependency: (taskId, predecessorId) => handleDependencyV1('add', taskId, predecessorId),
           onRemoveDependency: (taskId, predecessorId) => handleDependencyV1('remove', taskId, predecessorId),
           onSaveFront: handleSaveFrontV1,

@@ -7,7 +7,7 @@ import type { ComentarioTarefa } from '@/types';
 import { blockedCount, subtaskProgress } from '@/lib/pedidos-tarefas/indicators';
 import { TaskSignals } from './TaskSignals';
 
-type Props = { taskId: string; orderId: string; task: TaskV1;
+type Props = { taskId: string; orderId: string | null; task: TaskV1;
   fronts: Front[]; members: Member[]; subtasks: Subtask[]; comments: ComentarioTarefa[];
   dependencies: Dependency[]; orderTasks: TaskV1[]; today: string;
   onClose: () => void; onChanged: () => void;
@@ -61,7 +61,8 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
   const predecessorIds = new Set(dependencies.filter(edge => edge.taskId === taskId)
     .map(edge => edge.predecessorId));
   const candidates = orderTasks.filter(item => item.id !== taskId && !predecessorIds.has(item.id));
-  const lastNote = [...comments].sort((a, b) => b.criado_em.localeCompare(a.criado_em))[0];
+  const lastNote = comments.filter(note => !note.event_type)
+    .sort((a, b) => b.criado_em.localeCompare(a.criado_em))[0];
 
   async function run(action: () => Promise<boolean>, message: string) {
     if (busy) return false;
@@ -82,13 +83,13 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
 
   async function saveTask(event: React.FormEvent) {
     event.preventDefault();
-    if (!title.trim() || !frontId || (status === 'Aguardando' &&
+    if (!title.trim() || (orderId && !frontId) || (status === 'Aguardando' &&
       (!waitingType || (waitingType === 'internal_user' && !waitingUserId)))) {
       setError('Preencha título, Frente e os dados obrigatórios de espera.');
       return;
     }
     const patch: TaskPatch = { title: title.trim(), description: description.trim() || null,
-      frontId, status, priority, assigneeId: assigneeId || null,
+      frontId: orderId ? frontId : null, status, priority, assigneeId: assigneeId || null,
       dueDate: dueDate || null, followUpDate: followUpDate || null,
       waiting: status === 'Aguardando' && waitingType
         ? { type: waitingType, userId: waitingType === 'internal_user' ? waitingUserId : null,
@@ -108,7 +109,8 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
       className="h-full w-full max-w-3xl overflow-y-auto bg-white p-5 shadow-2xl space-y-5"
       onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <header className="flex items-start justify-between gap-3">
-        <div><p className="text-xs uppercase tracking-wide text-slate-500">Pedido · Tarefa</p>
+        <div><p className="text-xs uppercase tracking-wide text-slate-500">
+          {orderId ? 'Pedido · Tarefa' : 'Tarefa avulsa'}</p>
           <h3 className="text-xl font-semibold text-slate-900">{task.title}</h3></div>
         <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Fechar detalhe da tarefa"
           className="rounded-md border px-3 py-1.5 text-sm">Fechar</button>
@@ -134,11 +136,11 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
       <form onSubmit={event => void saveTask(event)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="sm:col-span-2 text-sm font-medium">Título da tarefa
           <input className={field} value={title} onChange={event => setTitle(event.target.value)} required /></label>
-        <label className="text-sm font-medium">Frente da tarefa
+        {orderId ? <label className="text-sm font-medium">Frente da tarefa
           <select className={field} value={frontId} onChange={event => setFrontId(event.target.value)} required>
             <option value="">Escolha uma Frente</option>
             {fronts.map(front => <option key={front.id} value={front.id}>{front.name}</option>)}
-          </select></label>
+          </select></label> : <p className="text-sm text-slate-600">Sem vínculo com Pedido ou Frente.</p>}
         <label className="text-sm font-medium">Status da tarefa
           <select className={field} value={status} disabled={task.status === 'Concluída'}
             onChange={event => setStatus(event.target.value as TaskV1['status'])}>
@@ -184,7 +186,7 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
         <label className="sm:col-span-2 text-sm font-medium">Descrição
           <textarea className={field} rows={3} value={description}
             onChange={event => setDescription(event.target.value)} /></label>
-        <button type="submit" disabled={busy || !title.trim() || !frontId}
+        <button type="submit" disabled={busy || !title.trim() || Boolean(orderId && !frontId)}
           className="sm:col-span-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {busy ? 'Salvando...' : 'Salvar tarefa'}</button>
       </form>
@@ -222,7 +224,7 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
           <button type="submit" disabled={busy || !newSubtask.trim()} className="rounded-md border px-3 text-sm">Adicionar</button>
         </form>
       </section>
-      <section aria-label="Predecessoras" className="space-y-2 border-t pt-4">
+      {orderId && <section aria-label="Predecessoras" className="space-y-2 border-t pt-4">
         <h4 className="font-semibold">Depende de</h4>
         {dependencies.filter(edge => edge.taskId === taskId).map(edge => {
           const predecessor = orderTasks.find(item => item.id === edge.predecessorId);
@@ -243,15 +245,16 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
             .then(ok => { if (ok) setPredecessorId(''); })}
             className="rounded-md border px-3 text-sm">Vincular</button>
         </div>}
-      </section>
+      </section>}
       <section aria-label="Notas de campo" className="space-y-2 border-t pt-4">
         <h4 className="font-semibold">Notas de campo</h4>
         {comments.map(note => <div key={note.id} className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm">
           <div className="flex justify-between gap-2"><span>{note.usuario} · {note.criado_em}</span>
+            {note.event_type ? <span className="text-xs font-medium uppercase text-amber-800">Sistema</span> :
             <button type="button" disabled={busy} aria-label={`Excluir nota de campo ${note.texto}`}
               onClick={() => { if (window.confirm(`Excluir nota de campo "${note.texto}"?`))
                 void run(() => onDeleteNote(note.id), 'Não foi possível excluir a nota.'); }}
-              className="text-red-700">Excluir</button></div>
+              className="text-red-700">Excluir</button>}</div>
           <p>{note.texto}</p></div>)}
         <form onSubmit={event => { event.preventDefault(); if (newNote.trim())
           void run(() => onAddNote(newNote.trim()), 'Não foi possível salvar a nota.')
@@ -261,7 +264,7 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
           <button type="submit" disabled={busy || !newNote.trim()} className="rounded-md border px-3 py-1.5 text-sm">Salvar nota</button>
         </form>
       </section>
-      <p className="sr-only">Pedido {orderId}</p>
+      {orderId && <p className="sr-only">Pedido {orderId}</p>}
     </section>
   </div>;
 }

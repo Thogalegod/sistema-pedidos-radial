@@ -110,6 +110,12 @@ export async function createTask(
   org: Id,
   input: TaskInput,
 ): Promise<WriteResult<Id>> {
+  if (input.orderId === null && input.frontId !== null) {
+    return { ok: false, code: 'invalid', message: 'Tarefa avulsa não pode ter Frente' };
+  }
+  if (input.orderId === null && !input.assigneeId) {
+    return { ok: false, code: 'invalid', message: 'Tarefa avulsa exige responsável' };
+  }
   const { data, error } = await client.rpc('create_pedido_task', { p_org: org, p_input: input });
   if (error) return failure(error);
   const parsed = z.string().min(1).safeParse(data);

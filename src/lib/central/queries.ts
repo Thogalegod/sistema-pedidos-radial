@@ -45,7 +45,8 @@ export async function loadCentralOperationalSnapshot(
     client.listOverdueBillingCandidates(organizationId, today),
   ]);
 
-  const orderIds = unique(tasks.map((task) => task.pedido_id));
+  const orderIds = unique(tasks.map((task) => task.pedido_id)
+    .filter((orderId): orderId is string => orderId !== null));
   const periodContractIds = unique(periodContracts.map((contract) => contract.id));
   const overdueBillingIds = unique(overdueCandidates.map((billing) => billing.id));
   const knownContractIds = new Set(periodContractIds);

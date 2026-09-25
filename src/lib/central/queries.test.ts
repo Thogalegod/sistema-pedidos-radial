@@ -37,6 +37,22 @@ describe('loadCentralOperationalSnapshot', () => {
     expect(client.listCustomersByIds).not.toHaveBeenCalled();
     expect(snapshot.priorities).toEqual([]);
   });
+
+  it('does not send standalone task nulls to the Pedido batch query', async () => {
+    const client = makeClient();
+    vi.mocked(client.listDueTasks).mockResolvedValue([
+      { id: 'quick-1', pedido_id: null, descricao: 'Tarefa avulsa', vencimento: '2026-09-21', concluido: false },
+      { id: 'task-1', pedido_id: 'order-1', descricao: 'Tarefa do Pedido', vencimento: '2026-09-21', concluido: false },
+    ]);
+
+    const snapshot = await loadCentralOperationalSnapshot(client, TODAY);
+
+    expect(client.listOrdersByIds).toHaveBeenCalledWith('org-1', ['order-1']);
+    expect(snapshot.tasks.find((task) => task.id === 'quick-1')).toMatchObject({
+      orderId: null,
+      href: '/?tarefa=quick-1',
+    });
+  });
 });
 
 function makeClient(options: { empty?: boolean } = {}): CentralOperationalReadClient & Record<string, ReturnType<typeof vi.fn>> {

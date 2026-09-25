@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
-import { buildOrderHref } from '@/lib/pedidos-tarefas/navigation';
+import { buildOrderHref, buildTaskHref } from '@/lib/pedidos-tarefas/navigation';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 
@@ -32,9 +32,16 @@ export interface CentralSearchBillingRow {
   total_amount: string;
 }
 
+export interface CentralSearchTaskRow {
+  id: string;
+  pedido_id: string | null;
+  descricao: string;
+}
+
 export interface CentralSearchReadClient {
   getCurrentOrganizationId(): Promise<string>;
   searchOrders(organizationId: string, query: string, limit: number): Promise<CentralSearchOrderRow[]>;
+  searchTasks(organizationId: string, query: string, limit: number): Promise<CentralSearchTaskRow[]>;
   searchCustomers(organizationId: string, query: string, limit: number): Promise<CentralSearchCustomerRow[]>;
   searchContracts(organizationId: string, query: string, customerIds: string[], limit: number): Promise<CentralSearchContractRow[]>;
   searchBillings(organizationId: string, query: string, contractIds: string[], limit: number): Promise<CentralSearchBillingRow[]>;
@@ -51,13 +58,14 @@ export interface CentralSearchResultItem {
 }
 
 export interface CentralSearchResults {
+  tasks: CentralSearchResultItem[];
   orders: CentralSearchResultItem[];
   customers: CentralSearchResultItem[];
   contracts: CentralSearchResultItem[];
   billings: CentralSearchResultItem[];
 }
 
-const EMPTY_RESULTS: CentralSearchResults = { orders: [], customers: [], contracts: [], billings: [] };
+const EMPTY_RESULTS: CentralSearchResults = { tasks: [], orders: [], customers: [], contracts: [], billings: [] };
 
 export async function searchCentral(
   client: CentralSearchReadClient,
@@ -68,7 +76,8 @@ export async function searchCentral(
   if (query.length < 2) return EMPTY_RESULTS;
 
   const organizationId = await client.getCurrentOrganizationId();
-  const [orders, matchedCustomers] = await Promise.all([
+  const [tasks, orders, matchedCustomers] = await Promise.all([
+    client.searchTasks(organizationId, query, limit),
     client.searchOrders(organizationId, query, limit),
     client.searchCustomers(organizationId, query, limit),
   ]);
@@ -101,6 +110,12 @@ export async function searchCentral(
   const contractsById = new Map(allContracts.map((contract) => [contract.id, contract]));
 
   return {
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      title: task.descricao,
+      detail: task.pedido_id ? 'Tarefa de Pedido' : 'Tarefa avulsa',
+      href: buildTaskHref(task.id, task.pedido_id),
+    })),
     orders: orders.map((order) => ({
       id: order.id,
       title: `Pedido #${order.numero_pedido}`,
@@ -136,6 +151,16 @@ export async function searchCentral(
 export function createSupabaseCentralSearchReadClient(client: SupabaseClient): CentralSearchReadClient {
   return {
     getCurrentOrganizationId: () => getCurrentOrganizationId(client),
+
+    async searchTasks(organizationId, query, limit) {
+      const term = normalizeFilterTerm(query);
+      const { data, error } = await client.from('tarefas')
+        .select('id, pedido_id, descricao')
+        .eq('organization_id', organizationId)
+        .ilike('descricao', `%${term}%`)
+        .limit(limit);
+      return rowsOrThrow(data, error, 'Não foi possível buscar tarefas');
+    },
 
     async searchOrders(organizationId, query, limit) {
       const term = normalizeFilterTerm(query);

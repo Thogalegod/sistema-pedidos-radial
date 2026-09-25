@@ -23,6 +23,20 @@ describe('Central operational snapshot', () => {
     expect(snapshot.tasks.map((item) => item.id)).toEqual(['late', 'today']);
   });
 
+  it('keeps a standalone task visible without inventing Pedido context', () => {
+    const snapshot = buildCentralOperationalSnapshot(makeInput({ tasks: [{
+      ...task('quick-1', '2026-09-21'), pedido_id: null,
+    }] }));
+
+    expect(snapshot.tasks[0]).toMatchObject({
+      orderId: null,
+      orderNumber: null,
+      orderTitle: 'Tarefa avulsa',
+      customerName: null,
+      href: '/?tarefa=quick-1',
+    });
+  });
+
   it.each(['active', 'closing_requested', 'awaiting_return'] as const)(
     'flags a finished period without its next cycle while %s equipment is not returned',
     (status) => {
