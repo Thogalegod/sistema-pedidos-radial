@@ -54,7 +54,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 ### Lote 5 — Timeline e Arquivos
 
 - [x] 5A — Expansão de atividades e captura de deltas (M12): aplicada e verificada no IURQ; criação/remoção de nota sem duplicação visual aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
-- [ ] 5B — Backfill verificável de comentários (M13).
+- [x] 5B — Backfill verificável de comentários (M13): aplicada e verificada no IURQ; notas antigas sem duplicação visual aceitas pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [ ] 5C — Troca da fonte canônica e vínculos (M14).
 - [ ] 5D — Interface única de Atualizações e Arquivos.
 
@@ -75,7 +75,17 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente a M12/5A após aceite humano. Próximo gate é a preparação local da M13/5B; não aplicar M13 remotamente sem autorização explícita. Sem deploy.
+Prioridade atual: fechar seletivamente a M13/5B após aceite humano. Próximo gate é a preparação local da M14/5C; não aplicar M14 remotamente sem autorização explícita. Sem deploy.
+
+### Preparação de 5B — backfill verificável de comentários (25/09/2026)
+
+- Predecessor 5A fechado e publicado seletivamente no commit `23e5195`; M12 aplicada e verificada no IURQ, com aceite humano.
+- M13 `20260923201200_pedidos_v1_timeline_backfill.sql` preparada localmente. Um projetor privado e idempotente é compartilhado pelo backfill e pela captura de deltas; preserva identidade, texto, autoria, horário e vínculo de tarefa/Pedido, inclusive para tarefas avulsas. A nota legada continua canônica durante `copying`, e sua exclusão remove somente a projeção correspondente.
+- Reset local sem seed aplicou as **44 migrations** do zero. pgTAP M13: **8/8**; regressão focal M13+M12+M11: **34/34**. Verificação local retornou zero projeções ausentes, divergências de conteúdo ou comentários irrecuperáveis. `git diff --check` passou. O lint de banco global ficou poluído por objetos da extensão pgTAP criada pelos testes e preserva avisos antigos; nenhum aviso novo foi identificado na função da M13.
+- Target explicitamente confirmado como IURQ `iurqgskfuupslrghgtej`. Dry-run autenticado listou exclusivamente `20260923201200_pedidos_v1_timeline_backfill.sql`, sem seeds ou roles: **44 migrations locais / 43 remotas**.
+- Preflight read-only no IURQ: **2 comentários legados**, **0 projeções**, **2 projeções pendentes**, zero divergências de conteúdo e zero comentários irrecuperáveis.
+- Após autorização humana explícita, M13 foi aplicada exclusivamente no IURQ. Pós-M13: **44/44 migrations** sincronizadas; **2 comentários legados / 2 projeções**, zero projeções ausentes, divergências de conteúdo, vínculos divergentes ou comentários irrecuperáveis. Nenhuma das duas notas remotas é de tarefa avulsa ou possui `user_id` nulo; esses casos permanecem comprovados pelo pgTAP local. O dry-run posterior não encontrou migration, seed ou role pendente. Sem commit, push ou deploy; MISFY não acessado. Aguardar aceite humano do gate antes do fechamento Git e da M14.
+- Aceite humano recebido em 25/09/2026 após a conferência solicitada de nota única e persistente no Pedido. Fechamento Git seletivo do 5B autorizado; M14 ainda não iniciada.
 
 ### Preparação de 5A — expansão da timeline e captura de deltas (25/09/2026)
 
