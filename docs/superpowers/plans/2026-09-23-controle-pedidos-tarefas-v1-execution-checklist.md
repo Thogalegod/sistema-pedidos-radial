@@ -2,7 +2,7 @@
 
 Fonte de escopo e ordem: [master plan](2026-09-23-controle-pedidos-tarefas-v1-implementation-plan.md). Este checklist registra execução; não substitui a spec nem autoriza migrations remotas.
 
-Atualizado em 24/09/2026. Worktree: `C:\tmp\Sistema_Pedidos_Radial-unificar-transformador`; branch: `codex/controle-locacoes`.
+Atualizado em 25/09/2026. Worktree: `C:\tmp\Sistema_Pedidos_Radial-unificar-transformador`; branch: `codex/controle-locacoes`.
 
 ## Protocolo de cada gate
 
@@ -37,7 +37,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 ### Lote 2 — Tela do Pedido
 
 - [x] **2A — Indicadores e próxima ação puros: implementação e testes focais concluídos; aceite humano recebido, sem mudança visual ou remota.**
-- [ ] 2B — Consultas focadas, Resumo e navegação.
+- [x] **2B — Consultas focadas, Resumo e navegação: implementação e testes focais concluídos; teste manual realizado e aprovado pelo usuário em 25/09/2026. Fechamento Git autorizado.**
 - [ ] 2C — Frentes, agrupamento e detalhe de tarefa.
 
 ### Lote 3 — Dashboard operacional
@@ -69,10 +69,21 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - Controle de Pedidos: deixar as seções detalhadas de **Histórico** e **Resumos** no fim da página do Pedido, depois das informações e ações principais. Revisar o posicionamento quando a tela for trabalhada; não alterar este gate para isso.
 - Prioridade do Pedido: avaliar um seletor mais visual para **Baixa / Normal / Alta**, por exemplo 1 / 2 / 3 ícones de chama, em vez da apresentação atual. Manter o nome escrito junto do ícone (inclusive para acessibilidade), sem mudar os valores gravados.
 - Sugestão para a revisão visual: oferecer atalhos “Ver resumo” e “Ver histórico” perto do topo, levando às seções no fim da página; distinguir a prioridade do Pedido da prioridade/urgência das tarefas para não gerar leitura ambígua.
+- **Detalhe do Pedido/Tarefa no desktop:** o drawer lateral atual deixa pouco espaço e dificulta a leitura. Estudar uma página própria em largura total ao clicar no Pedido, com espaço para Resumo, Tarefas, Atualizações e Arquivos; decidir separadamente o comportamento em telas pequenas. Não tratar a página inteira como layout aprovado sem uma revisão visual com o usuário. O 2C melhora o detalhe da tarefa, mas não autoriza sozinho substituir o drawer.
+- **Lista Inteligente:** os cartões atuais mostram pouco contexto operacional. Propor uma hierarquia enxuta: número/projeto/cliente; estado do Pedido; contagem explícita de tarefas vencidas e que vencem hoje; “próxima ação” com prazo; quem precisa agir (eu, membro da equipe, cliente, fornecedor/concessionária) e a última atualização manual com autor/data. Quando não houver informação, mostrar “Não registrado”, sem inventar que está tudo em dia. Usar texto junto de cor/ícone, limitar o cartão a poucos sinais prioritários e deixar o restante no detalhe; considerar filtros rápidos por atraso, espera e responsável. Validar o desenho com Pedidos reais antes de implementar.
+- **Sequência sugerida:** aproveitar os sinais de tarefa do 2C e as filas/leituras do 3B como base de dados, mas tratar página inteira de Pedido e novo cartão da Lista Inteligente como um gate de UX próprio após desenho e aceite. Não acoplar estas melhorias automaticamente a 2C ou 3B.
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: 2A aprovado; próximo gate do plano é 2B, ainda não iniciado. O 1D foi fechado no commit/push `4733c77370de6b4e9bfe192723b5112a77405fbd`; M07 permanece aplicada somente no IURQ. Sem deploy.
+Prioridade atual: 2B aceito manualmente; fechar somente seu Git e depois iniciar 2C conforme o master plan, sem antecipar o redesign de UX anotado acima. HEAD anterior ao 2B: `b5e9aaedb23057dfded3747e8583ea8d706568a2`; M07 permanece aplicada somente no IURQ. Sem deploy do 2B.
+
+### Evidências de 2B — leitura focada e Resumo (25/09/2026)
+
+- Lista seleciona Pedido e campos escalares das tarefas, sem subtarefas, notas, histórico ou anexos globais; detalhe consulta Pedido/Frentes/tarefas/subtarefas/dependências por organização e ID. Atualizações e anexos só são carregados nas respectivas abas; URL assinada só é criada na aba Arquivos.
+- Resumo padrão mostra progresso geral/por Frente, alertas, próxima ação e atualização recente. Central aponta para `/?pedido=id&tarefa=id`; `/?pedido=id` e busca continuam abrindo Pedido; Calendário permanece indisponível até 6C. Resposta atrasada de outro Pedido e Pedido ausente não exibem detalhe antigo.
+- RED observado em navegação, consultas, componentes e foco assíncrono; GREEN focal 57/57 em 10 arquivos de teste, incluindo fluxos legados de tarefa/subtarefa/nota, Central e reload de URL. TypeScript passou; lint focal sem erros (1 warning legado de `<img>` no drawer); `git diff --check` passou.
+- `npm test` completo foi executado e **não está verde**: 824 passaram, 3 falharam em `manutencao-preventiva/page.test.tsx` (fora do Pedido), 7 skipped; duas suites falharam por `.e2e-run-smoke/m04/current-readers.test.tsx` exigir leitura autenticada IURQ e por `scripts/ai/staged-gate.test.mjs` usar `node:test` incompatível com Vitest. Esses arquivos/fluxos não foram alterados neste gate; não reabrir como auditoria de 2B sem regressão concreta.
+- QA visual e navegação real em localhost/IURQ não foram executados pelo agente; o usuário informou que testou e aprovou o 2B em 25/09/2026. Até esse aceite, nenhuma escrita remota, migration, commit, push ou deploy havia sido feita; MISFY não acessado.
 
 ### Evidências de 2A — cálculo puro (25/09/2026)
 

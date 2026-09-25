@@ -3,7 +3,7 @@ import { calculateBillingBalance, buildBillingStatus } from '@/lib/contratos-loc
 import { resolveEffectiveBillingStatus } from '@/lib/contratos-locacoes/billing-status-presentation';
 import { hasPendingPhysicalReturns } from '@/lib/contratos-locacoes/rental-closure';
 import type { BillingStatus, ContractKind, ContractStatus } from '@/lib/contratos-locacoes/types';
-import { buildOrderHref } from '@/lib/pedidos-tarefas/navigation';
+import { buildTaskHref } from '@/lib/pedidos-tarefas/navigation';
 import { getTaskDueStatus } from '@/lib/pedidos-tarefas/task-due';
 import { resolveTaskStatus } from '@/lib/pedidos-tarefas/mappers';
 import type { Capabilities } from '@/lib/pedidos-tarefas/types';
@@ -139,7 +139,7 @@ export function buildCentralOperationalSnapshot(input: CentralOperationalInput) 
       customerName: order?.cliente ?? 'Cliente não identificado',
       title: task.descricao,
       dueDate: task.vencimento,
-      href: buildOrderHref(task.pedido_id),
+      href: buildTaskHref(task.id, task.pedido_id),
     }];
   });
 

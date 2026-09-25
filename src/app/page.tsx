@@ -41,11 +41,28 @@ import { getCurrentTaskDateKey, getTaskDueStatus } from '../lib/pedidos-tarefas/
 import { deleteOrderDetail } from '../lib/pedidos-tarefas/detail-deletion';
 import { isMyTask } from '../lib/pedidos-tarefas/mine';
 import { MemberNameEditor } from '../components/pedidos-tarefas/MemberNameEditor';
+import type { OrderTab } from '../components/pedidos-tarefas/OrderTabs';
+import { blockedCount, chooseNextAction, summarizeTasks } from '../lib/pedidos-tarefas/indicators';
+import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation';
+import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecentActivity,
+  loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
+import type { Dependency, Front, OrderV1, TaskV1 } from '../lib/pedidos-tarefas/types';
+
+type SelectedDetail = { id: string; organizationId: string; revision: number; order: Order; canonicalOrder: OrderV1;
+  fronts: Front[]; tasks: TaskV1[]; dependencies: Dependency[];
+  recent: { text: string; at: string; author: string } | null };
 
 export default function Home() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<SelectedDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [sectionLoading, setSectionLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<OrderTab>('summary');
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [detailRevision, setDetailRevision] = useState(0);
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'todos' | 'meus'>('todos');
@@ -76,13 +93,13 @@ export default function Home() {
         readCapabilities(supabase, currentOrganizationId),
         listMembers(supabase, currentOrganizationId),
         supabase.from('pedidos')
-          .select('*, tarefas(*, subtarefas(*), comentarios_tarefa(*)), atividades(*), anexos(*)')
+          .select('id,organization_id,numero_pedido,projeto,cliente,endereco,status,prioridade,data_criacao,prazo_concessionaria,tarefas(id,organization_id,pedido_id,descricao,concluido,responsavel,responsavel_user_id,vencimento,concluida_em,status,prioridade,frente_id,descricao_detalhada,follow_up_date,waiting_type,waiting_user_id,waiting_note,updated_at)')
           .eq('organization_id', currentOrganizationId),
       ]);
       if (error) throw error;
       if (!data) throw new Error('Resposta de Pedidos ausente');
       const directoryById = new Map(directory.map(member => [member.userId, member]));
-      const mappedOrders = await Promise.all(data.map(async row => {
+      const mappedOrders = data.map(row => {
         const order = mapOrder(row, mode.statusMode);
         const tasks = order.tasks.map(task => {
           if (!task.assigneeUserId) return task;
@@ -94,18 +111,13 @@ export default function Home() {
               : task.assignee ?? `Membro sem nome · ${task.assigneeUserId.slice(0, 8)}`,
           };
         });
-        const anexos = await Promise.all((order.anexos ?? []).map(async attachment => {
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from('anexos-pedidos').createSignedUrl(attachment.storage_path, 3600);
-          if (signedError) throw signedError;
-          return { ...attachment, signed_url: signedData?.signedUrl };
-        }));
-        return { ...order, tasks, anexos };
-      }));
+        return { ...order, tasks };
+      });
       if (request !== ordersRequestRef.current) return;
       setCapabilities(mode);
       setMembers(directory);
       setOrders(mappedOrders);
+      setDetailRevision(previous => previous + 1);
     } catch (error) {
       if (request !== ordersRequestRef.current) return;
       console.error('Error fetching orders:', error);
@@ -145,6 +157,9 @@ export default function Home() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
         ordersRequestRef.current++;
+        setOrganizationId(null);
+        setSelectedOrderId(null);
+        setSelectedDetail(null);
         setCapabilities(null);
         setMembers([]);
         setMembershipRole(null);
@@ -159,6 +174,81 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
+    if (!selectedOrderId || !organizationId || !capabilities) return;
+    let active = true;
+    const orderId = selectedOrderId;
+    const org = organizationId;
+    queueMicrotask(() => {
+      if (active) { setSelectedDetail(null); setDetailError(null); setSectionError(null); }
+    });
+    Promise.all([
+      loadOrder(supabase, org, orderId),
+      loadOrderTasks(supabase, org, orderId),
+      loadOrderRecentActivity(supabase, org, orderId),
+      loadLegacyOrderDetail(supabase, org, orderId, capabilities.statusMode),
+    ]).then(([canonicalOrder, taskData, recent, order]) => {
+      if (!active) return;
+      if (!canonicalOrder || !order) {
+        setDetailError('Pedido não encontrado nesta organização.');
+        return;
+      }
+      const directoryById = new Map(members.map(member => [member.userId, member]));
+      const resolvedOrder = { ...order, tasks: order.tasks.map(task => {
+        if (!task.assigneeUserId) return task;
+        const member = directoryById.get(task.assigneeUserId);
+        return { ...task, assignee: member ? formatMemberLabel(member)
+          : task.assignee ?? `Membro sem nome · ${task.assigneeUserId.slice(0, 8)}` };
+      }) };
+      setSelectedDetail({ id: orderId, organizationId: org, revision: detailRevision, order: resolvedOrder, canonicalOrder,
+        fronts: taskData.fronts, tasks: taskData.tasks, dependencies: taskData.dependencies, recent });
+    }).catch(error => {
+      if (!active) return;
+      console.error('Error loading Pedido detail:', error);
+      setDetailError('Não foi possível carregar este Pedido. Tente novamente.');
+    });
+    return () => { active = false; };
+  }, [selectedOrderId, organizationId, capabilities, detailRevision, members]);
+
+  const loadedDetailId = selectedDetail?.id;
+  const loadedDetailOrg = selectedDetail?.organizationId;
+  const loadedDetailRevision = selectedDetail?.revision;
+  useEffect(() => {
+    if (!selectedOrderId || !organizationId || !loadedDetailId ||
+      loadedDetailId !== selectedOrderId || loadedDetailOrg !== organizationId ||
+      loadedDetailRevision !== detailRevision ||
+      (activeTab !== 'updates' && activeTab !== 'files')) return;
+    let active = true;
+    const orderId = selectedOrderId;
+    const org = organizationId;
+    queueMicrotask(() => { if (active) { setSectionError(null); setSectionLoading(true); } });
+    const read = async () => {
+      if (activeTab === 'updates') {
+        const atividades = await loadOrderUpdates(supabase, org, orderId);
+        if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
+          ? { ...previous, order: { ...previous.order, atividades } } : previous);
+      } else {
+        const attachments = await loadOrderAttachments(supabase, org, orderId);
+        const anexos = await Promise.all(attachments.map(async attachment => {
+          const { data, error } = await supabase.storage.from('anexos-pedidos')
+            .createSignedUrl(attachment.storage_path, 3600);
+          if (error) throw error;
+          return { ...attachment, signed_url: data.signedUrl };
+        }));
+        if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
+          ? { ...previous, order: { ...previous.order, anexos } } : previous);
+      }
+    };
+    void read().catch(error => {
+      if (!active) return;
+      console.error('Error loading Pedido section:', error);
+      setSectionError('Não foi possível carregar esta seção.');
+    }).finally(() => {
+      if (active) setSectionLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeTab, selectedOrderId, organizationId, loadedDetailId, loadedDetailOrg, loadedDetailRevision, detailRevision]);
+
+  useEffect(() => {
     if (isLoading || typeof window === 'undefined') return;
     const search = window.location.search;
     if (!search || handledIntentRef.current === search) return;
@@ -170,6 +260,8 @@ export default function Home() {
       if (!active) return;
       if (intent.orderId && orders.some((order) => order.id === intent.orderId)) {
         setSelectedOrderId(intent.orderId);
+        setFocusedTaskId(intent.taskId);
+        setActiveTab(intent.taskId ? 'tasks' : 'summary');
       }
       if (intent.openNewOrder) {
         setIsNewOrderOpen(true);
@@ -177,6 +269,50 @@ export default function Home() {
     });
     return () => { active = false; };
   }, [isLoading, orders]);
+
+  useEffect(() => {
+    const handleHistory = () => {
+      const intent = resolveOrdersPageIntent(new URLSearchParams(window.location.search));
+      setSelectedOrderId(intent.orderId);
+      setFocusedTaskId(intent.taskId);
+      setActiveTab(intent.taskId ? 'tasks' : 'summary');
+    };
+    window.addEventListener('popstate', handleHistory);
+    return () => window.removeEventListener('popstate', handleHistory);
+  }, []);
+
+  const openOrder = (orderId: string, taskId: string | null = null) => {
+    setSelectedOrderId(orderId);
+    setFocusedTaskId(taskId);
+    setActiveTab(taskId ? 'tasks' : 'summary');
+    setSectionError(null);
+    setSectionLoading(false);
+    const href = taskId ? buildTaskHref(taskId, orderId) : buildOrderHref(orderId);
+    window.history.pushState(null, '', href);
+    handledIntentRef.current = window.location.search;
+  };
+
+  const closeOrder = () => {
+    setSelectedOrderId(null);
+    setSelectedDetail(null);
+    setFocusedTaskId(null);
+    setActiveTab('summary');
+    setSectionError(null);
+    setSectionLoading(false);
+    window.history.pushState(null, '', '/');
+    handledIntentRef.current = window.location.search;
+  };
+
+  const changeOrderTab = (tab: OrderTab) => {
+    setActiveTab(tab);
+    setSectionError(null);
+    setSectionLoading(false);
+    if (tab !== 'tasks' && focusedTaskId && selectedOrderId) {
+      setFocusedTaskId(null);
+      window.history.replaceState(null, '', buildOrderHref(selectedOrderId));
+      handledIntentRef.current = window.location.search;
+    }
+  };
 
   const processedOrders = useMemo(() => {
     let filtered = orders;
@@ -202,8 +338,23 @@ export default function Home() {
   }, [orders, today, searchQuery, filterMode, viewerId]);
 
   const selectedOrder = useMemo(() => {
-    return orders.find(o => o.id === selectedOrderId) || null;
-  }, [orders, selectedOrderId]);
+    return !loadError && selectedDetail?.id === selectedOrderId &&
+      selectedDetail?.organizationId === organizationId &&
+      selectedDetail?.revision === detailRevision &&
+      orders.some(order => order.id === selectedOrderId) ? selectedDetail.order : null;
+  }, [orders, selectedOrderId, selectedDetail, organizationId, detailRevision, loadError]);
+
+  const overview = useMemo(() => {
+    if (!selectedOrder || !selectedDetail) return null;
+    const { canonicalOrder, tasks, dependencies, fronts, recent } = selectedDetail;
+    return { order: canonicalOrder, summary: summarizeTasks(tasks, dependencies, todayISO),
+      frontSummaries: fronts.map(front => {
+        const frontTasks = tasks.filter(task => task.frontId === front.id);
+        return { front, summary: { ...summarizeTasks(frontTasks, [], todayISO),
+          blocked: frontTasks.filter(task => blockedCount(task.id, tasks, dependencies) > 0).length } };
+      }),
+      nextAction: chooseNextAction(tasks, todayISO), recent };
+  }, [selectedOrder, selectedDetail, todayISO]);
 
   // Indicadores (Cards de Resumo)
   const todasTarefas = useMemo(() => orders.flatMap(o => o.tasks.map(t => ({...t, orderId: o.id, orderTitle: o.title, orderNumber: o.orderNumber}))), [orders]);
@@ -461,7 +612,7 @@ export default function Home() {
       return;
     }
 
-    setSelectedOrderId(null);
+    closeOrder();
     setOrders(prev => prev.filter(o => o.id !== orderId));
     toast.success('Pedido deletado');
   };
@@ -487,10 +638,10 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const subtask = orders
-      .find(order => order.id === orderId)
-      ?.tasks.find(task => task.id === taskId)
-      ?.subtarefas?.find(candidate => candidate.id === subtaskId);
+    const subtask = selectedOrder?.id === orderId
+      ? selectedOrder.tasks.find(task => task.id === taskId)
+        ?.subtarefas?.find(candidate => candidate.id === subtaskId)
+      : null;
 
     if (!subtask) return;
 
@@ -537,13 +688,7 @@ export default function Home() {
       return;
     }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => t.id === taskId ? {
-        ...t,
-        subtarefas: t.subtarefas?.filter(s => s.id !== subtaskId)
-      } : t)
-    } : o));
+    setDetailRevision(previous => previous + 1);
   };
 
   const handleAddComentarioTarefa = async (orderId: string, taskId: string, texto: string) => {
@@ -558,19 +703,7 @@ export default function Home() {
     }).select().single();
 
     if (!error && data) {
-      setOrders(prev => prev.map(o => o.id === orderId ? {
-        ...o,
-        tasks: o.tasks.map(t => t.id === taskId ? {
-          ...t,
-          comentarios: [{
-            id: data.id,
-            tarefa_id: data.tarefa_id,
-            texto: data.texto,
-            usuario: data.usuario,
-            criado_em: data.criado_em
-          }, ...(t.comentarios || [])]
-        } : t)
-      } : o));
+      setDetailRevision(previous => previous + 1);
     } else {
       toast.error('Erro ao salvar nota');
     }
@@ -595,13 +728,7 @@ export default function Home() {
       return;
     }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o,
-      tasks: o.tasks.map(t => t.id === taskId ? {
-        ...t,
-        comentarios: t.comentarios?.filter(c => c.id !== comentarioId)
-      } : t)
-    } : o));
+    setDetailRevision(previous => previous + 1);
   };
 
 
@@ -618,18 +745,7 @@ export default function Home() {
     }).select().single();
 
     if (!error && data) {
-      setOrders(prev => prev.map(o => {
-        if (o.id !== orderId) return o;
-        return {
-          ...o,
-          atividades: [...(o.atividades || []), {
-            id: data.id,
-            descricao: data.descricao,
-            usuario: data.usuario,
-            criado_em: data.criado_em
-          }]
-        };
-      }));
+      setDetailRevision(previous => previous + 1);
       toast.success('Registro salvo!', { id: toastId });
     } else {
       toast.error('Erro ao salvar', { id: toastId });
@@ -643,7 +759,7 @@ export default function Home() {
     const { error } = await supabase.from('atividades').delete().eq('organization_id', currentOrganizationId).eq('id', atividadeId);
     if (reportMutationError(error, 'Erro ao remover registro')) return;
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, atividades: o.atividades?.filter(a => a.id !== atividadeId) } : o));
+    setDetailRevision(previous => previous + 1);
     toast.success('Registro removido');
   };
 
@@ -712,28 +828,11 @@ export default function Home() {
 
       if (!dbError && anexoData) {
         uploadsSuccess++;
-        const { data: signedData, error: signedError } = await supabase.storage
-          .from('anexos-pedidos')
-          .createSignedUrl(filePath, 3600);
-
-        if (signedError) {
-          console.error('Error signing uploaded attachment URL:', signedError);
-        }
-        
-        setOrders(prev => prev.map(o => {
-          if (o.id !== orderId) return o;
-          return {
-            ...o,
-            anexos: [...(o.anexos || []), {
-              ...anexoData,
-              signed_url: signedData?.signedUrl
-            }]
-          };
-        }));
       }
     }
 
     if (uploadsSuccess > 0) {
+      setDetailRevision(previous => previous + 1);
       toast.success(`${uploadsSuccess} arquivo(s) enviado(s) com sucesso!`, { id: toastId });
     } else if (stagedFiles.length > 0 && uploadsSuccess === 0) {
       // toast is already showing the error messages
@@ -762,10 +861,11 @@ export default function Home() {
     if (storageError) {
       console.error('Storage delete error:', storageError);
       toast.error(ATTACHMENT_ORPHAN_WARNING);
+      setDetailRevision(previous => previous + 1);
       return;
     }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, anexos: o.anexos?.filter(a => a.id !== anexoId) } : o));
+    setDetailRevision(previous => previous + 1);
     toast.success('Arquivo removido');
   };
 
@@ -861,7 +961,7 @@ export default function Home() {
                   <div 
                     key={tarefa.id} 
                     className="p-4 flex items-center justify-between gap-4 hover:bg-gray-50 transition-colors cursor-pointer" 
-                    onClick={() => setSelectedOrderId(tarefa.orderId)}
+                    onClick={() => openOrder(tarefa.orderId, tarefa.id)}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{tarefa.title}</p>
@@ -929,7 +1029,7 @@ export default function Home() {
               <OrderCard 
                 key={order.id} 
                 order={order} 
-                onClick={() => setSelectedOrderId(order.id)} 
+                onClick={() => openOrder(order.id)}
                 today={today}
               />
             ))
@@ -947,7 +1047,19 @@ export default function Home() {
         key={selectedOrderId ?? 'closed'}
         order={selectedOrder} 
         isOpen={selectedOrderId !== null} 
-        onClose={() => setSelectedOrderId(null)}
+        onClose={closeOrder}
+        activeTab={activeTab}
+        onTabChange={changeOrderTab}
+        overview={overview}
+        detailError={detailError ?? loadError}
+        sectionError={activeTab === 'tasks' && focusedTaskId && selectedDetail &&
+          !selectedDetail.tasks.some(task => task.id === focusedTaskId)
+          ? 'Tarefa não encontrada neste Pedido.' : sectionError}
+        sectionLoading={sectionLoading}
+        focusedTaskId={focusedTaskId}
+        onFocusTask={taskId => {
+          if (selectedOrderId) openOrder(selectedOrderId, taskId);
+        }}
         onToggleTask={handleToggleTask}
         onChangePriority={handleChangePriority}
         onAddTask={handleAddTask}

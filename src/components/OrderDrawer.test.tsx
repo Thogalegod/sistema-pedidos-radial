@@ -58,6 +58,7 @@ function renderDrawerProps(overrides: Partial<React.ComponentProps<typeof OrderD
   return {
     order,
     isOpen: true,
+    activeTab: 'tasks' as const,
     onClose: vi.fn(),
     onToggleTask: vi.fn(),
     onChangePriority: vi.fn(),

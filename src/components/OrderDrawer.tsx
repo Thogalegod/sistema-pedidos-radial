@@ -5,7 +5,11 @@ import { StatusBadge, cn, memberColor } from './StatusBadge';
 import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { NextAction, TaskSummary } from '../lib/pedidos-tarefas/indicators';
+import type { Front, OrderV1 } from '../lib/pedidos-tarefas/types';
+import { OrderSummary } from './pedidos-tarefas/OrderSummary';
+import { OrderTabs, type OrderTab } from './pedidos-tarefas/OrderTabs';
 
 type SpeechRecognitionResultEvent = {
   results: { [index: number]: { [index: number]: { transcript: string } } };
@@ -54,9 +58,19 @@ interface OrderDrawerProps {
   onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<void>;
   today?: Date;
   canManageOrder?: boolean;
+  activeTab?: OrderTab;
+  onTabChange?: (tab: OrderTab) => void;
+  overview?: { order: OrderV1; summary: TaskSummary;
+    frontSummaries: Array<{ front: Front; summary: TaskSummary }>;
+    nextAction: NextAction | null; recent: { text: string; at: string; author: string } | null } | null;
+  onFocusTask?: (taskId: string) => void;
+  focusedTaskId?: string | null;
+  detailError?: string | null;
+  sectionError?: string | null;
+  sectionLoading?: boolean;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
@@ -82,6 +96,27 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   const [isRecording, setIsRecording] = useState<{ [taskId: string]: boolean }>({});
   const [deletingSubtaskId, setDeletingSubtaskId] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const hasOrder = Boolean(order);
+
+  useEffect(() => {
+    let active = true;
+    if (focusedTaskId && order?.tasks.some(task => task.id === focusedTaskId)) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setExpandedTasks(previous => previous.includes(focusedTaskId) ? previous : [...previous, focusedTaskId]);
+        if (activeTab === 'tasks') document.getElementById(`task-${focusedTaskId}`)?.focus();
+      });
+    }
+    return () => { active = false; };
+  }, [focusedTaskId, order, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => { previousFocus?.focus(); };
+  }, [isOpen, hasOrder]);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
@@ -167,11 +202,11 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (isOpen && e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, isOpen]);
 
   // Prevent scroll on body when drawer is open
   useEffect(() => {
@@ -198,6 +233,10 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
 
       {/* Drawer */}
       <div 
+        role="dialog"
+        aria-modal={isOpen}
+        aria-hidden={!isOpen}
+        aria-label="Detalhes do Pedido"
         className={cn(
           "fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col",
           isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
@@ -219,6 +258,8 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   </button>
                 )}
                 <button 
+                  ref={closeButtonRef}
+                  aria-label="Fechar Pedido"
                   onClick={onClose}
                   className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
                 >
@@ -476,7 +517,15 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 </div>
               </div>
 
+              <OrderTabs active={activeTab} onChange={onTabChange ?? (() => {})} calendarEnabled={false} />
+              {sectionLoading && (activeTab === 'updates' || activeTab === 'files') &&
+                <p role="status" className="text-sm text-gray-600">Carregando seção...</p>}
+              {sectionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{sectionError}</p>}
+              {activeTab === 'summary' && overview && <OrderSummary {...overview}
+                onOpenTask={onFocusTask ?? (() => {})} />}
+
               {/* Checklist section */}
+              {activeTab === 'tasks' && <>
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <CheckSquare className="w-5 h-5 text-blue-600" />
@@ -489,7 +538,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     const subtasksTotal = task.subtarefas?.length || 0;
                     const subtasksCompleted = task.subtarefas?.filter(s => s.concluida).length || 0;
                     return (
-                    <div key={task.id} className="flex flex-col gap-1">
+                    <div key={task.id} id={`task-${task.id}`} tabIndex={-1} className="flex flex-col gap-1">
                       <div 
                         className={cn(
                           "group flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
@@ -861,8 +910,10 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   </form>
                 </div>
               </div>
+              </>}
 
               {/* Atividades / Resumo de Reunião */}
+              {activeTab === 'updates' && !sectionLoading && !sectionError && <>
               <div className="space-y-4 pt-4 border-t border-gray-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-purple-600" />
@@ -925,8 +976,10 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   </button>
                 </form>
               </div>
+              </>}
 
               {/* Documentos e Fotos */}
+              {activeTab === 'files' && !sectionLoading && !sectionError && <>
               <div className="space-y-4 pt-4 border-t border-gray-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <Paperclip className="w-5 h-5 text-blue-600" />
@@ -1074,6 +1127,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   <p className="text-sm text-gray-400 italic">Nenhum anexo salvo.</p>
                 )}
               </div>
+              </>}
 
             </div>
             
@@ -1088,8 +1142,9 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            Carregando...
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-gray-500">
+            {detailError ? <p role="alert" className="text-center text-sm text-red-700">{detailError}</p> : 'Carregando...'}
+            {detailError && <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">Fechar</button>}
           </div>
         )}
       </div>

@@ -20,7 +20,7 @@ const order: Order = {
 
 function drawerProps(overrides: Partial<React.ComponentProps<typeof OrderDrawer>> = {}) {
   return {
-    order, isOpen: true, onClose: vi.fn(), onToggleTask: vi.fn().mockResolvedValue(true),
+    order, isOpen: true, activeTab: 'tasks' as const, onClose: vi.fn(), onToggleTask: vi.fn().mockResolvedValue(true),
     onChangePriority: vi.fn(), onAddTask: vi.fn().mockResolvedValue(true),
     onDeleteTask: vi.fn(), onDeleteOrder: vi.fn(), onAddAtividade: vi.fn(),
     onDeleteAtividade: vi.fn(), onEditTaskTitle: vi.fn(),
