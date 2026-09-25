@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCalendarDays } from './template-dates';
+import { addCalendarDays, pendingRuleLabel } from './template-dates';
 
 describe('addCalendarDays', () => {
   it.each([
@@ -15,5 +15,25 @@ describe('addCalendarDays', () => {
     expect(() => addCalendarDays('2026-02-30', 1)).toThrow('Data civil inválida');
     expect(() => addCalendarDays('2026-09-23', -1)).toThrow('Offset inválido');
     expect(() => addCalendarDays('2026-09-23', 1.5)).toThrow('Offset inválido');
+  });
+});
+
+describe('pendingRuleLabel', () => {
+  it('describes a completion-relative date without inventing a calendar date', () => {
+    expect(pendingRuleLabel({
+      sourceTaskId: 'task-source', offsetDays: 2, timeZone: 'America/Sao_Paulo',
+      state: 'pending', materializedAt: null,
+    }, 'Vistoria')).toBe('2 dias após concluir Vistoria');
+  });
+
+  it('uses singular wording and rejects non-pending rules', () => {
+    expect(pendingRuleLabel({
+      sourceTaskId: 'task-source', offsetDays: 1, timeZone: 'America/Sao_Paulo',
+      state: 'pending', materializedAt: null,
+    }, 'Aprovação')).toBe('1 dia após concluir Aprovação');
+    expect(() => pendingRuleLabel({
+      sourceTaskId: 'task-source', offsetDays: 1, timeZone: 'America/Sao_Paulo',
+      state: 'materialized', materializedAt: '2026-09-25T12:00:00Z',
+    }, 'Aprovação')).toThrow('Regra não está pendente');
   });
 });

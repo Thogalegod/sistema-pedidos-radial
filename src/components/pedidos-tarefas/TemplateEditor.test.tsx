@@ -74,6 +74,32 @@ describe('TemplateEditor', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/recarregue/i);
     expect(screen.getByLabelText('Nome do template')).toHaveValue('Meu rascunho');
   });
+
+  it('configures a deadline relative to another task completion', async () => {
+    const user = userEvent.setup();
+    const withSource: TemplateRecord = { ...template, definition: {
+      ...template.definition,
+      tasks: [
+        template.definition.tasks[0],
+        { key: 'entrega', frontKey: 'geral', title: 'Entrega', description: null,
+          priority: 'Normal', dueRule: null, followUpRule: null },
+      ],
+    } };
+    const onSave = vi.fn().mockResolvedValue({ ok: true, value: withSource });
+    render(<TemplateEditor template={withSource} onSave={onSave} onDuplicate={vi.fn()} onClose={vi.fn()} />);
+
+    await user.selectOptions(screen.getByLabelText('Tipo de prazo da tarefa 2'), 'completion');
+    await user.selectOptions(screen.getByLabelText('Tarefa de origem do prazo 2'), 'visita');
+    await user.clear(screen.getByLabelText('Dias após conclusão do prazo 2'));
+    await user.type(screen.getByLabelText('Dias após conclusão do prazo 2'), '3');
+    await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ definition: expect.objectContaining({
+      tasks: expect.arrayContaining([expect.objectContaining({
+        key: 'entrega', dueRule: { kind: 'completion', sourceTaskKey: 'visita', offsetDays: 3 },
+      })]),
+    }) }));
+  });
 });
 
 describe('NewOrderDrawer template flow', () => {

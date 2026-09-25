@@ -37,12 +37,6 @@ function creationOffset(rule: TemplateDefinition['tasks'][number]['dueRule']) {
   return rule?.kind === 'creation' ? String(rule.offsetDays) : '';
 }
 
-function completionRuleExists(definition: TemplateDefinition) {
-  return definition.tasks.some(task => task.dueRule?.kind === 'completion'
-    || task.followUpRule?.kind === 'completion')
-    || definition.subtasks.some(subtask => subtask.dueRule?.kind === 'completion');
-}
-
 export function TemplateEditor({
   template,
   templates = [],
@@ -117,10 +111,6 @@ export function TemplateEditor({
 
   const handleSave = async () => {
     setError('');
-    if (completionRuleExists(definition)) {
-      setError('Regras após concluir outra tarefa serão liberadas no próximo gate.');
-      return;
-    }
     const parsed = templateDefinitionSchema.safeParse(definition);
     if (!name.trim() || !parsed.success) {
       setError('Revise o nome, as referências e os campos obrigatórios do template.');
@@ -226,18 +216,73 @@ export function TemplateEditor({
                 placeholder="Descrição opcional"
                 onChange={event => updateTask(index, { description: event.target.value || null })}
                 className="rounded-lg border border-slate-300 px-3 py-2 md:col-span-2" />
-              <label className="text-xs text-slate-600">Prazo D+
+              <label className="text-xs text-slate-600">Tipo de prazo
+                <select aria-label={`Tipo de prazo da tarefa ${index + 1}`} value={task.dueRule?.kind ?? 'none'}
+                  onChange={event => {
+                    const kind = event.target.value;
+                    const source = definition.tasks.find(item => item.key !== task.key);
+                    updateTask(index, { dueRule: kind === 'creation' ? { kind, offsetDays: 0 }
+                      : kind === 'completion' && source ? { kind, sourceTaskKey: source.key, offsetDays: 0 } : null });
+                  }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                  <option value="none">Sem prazo</option><option value="creation">Após criar Pedido</option>
+                  <option value="completion" disabled={definition.tasks.length < 2}>Após concluir tarefa</option>
+                </select>
+              </label>
+              {task.dueRule?.kind === 'creation' && <label className="text-xs text-slate-600">Prazo D+
                 <input type="number" min="0" aria-label={`Prazo D+ da tarefa ${index + 1}`}
                   value={creationOffset(task.dueRule)} onChange={event => updateTask(index, {
-                    dueRule: event.target.value === '' ? null : { kind: 'creation', offsetDays: Number(event.target.value) },
+                    dueRule: { kind: 'creation', offsetDays: Number(event.target.value || 0) },
                   })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+              </label>}
+              {task.dueRule?.kind === 'completion' && <>
+                <label className="text-xs text-slate-600">Tarefa de origem
+                  <select aria-label={`Tarefa de origem do prazo ${index + 1}`} value={task.dueRule.sourceTaskKey}
+                    onChange={event => updateTask(index, { dueRule: {
+                      kind: 'completion', sourceTaskKey: event.target.value, offsetDays: task.dueRule?.offsetDays ?? 0,
+                    } })}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                    {definition.tasks.filter(item => item.key !== task.key).map(item =>
+                      <option key={item.key} value={item.key}>{item.title || 'Tarefa sem título'}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs text-slate-600">Dias após conclusão
+                  <input type="number" min="0" aria-label={`Dias após conclusão do prazo ${index + 1}`}
+                    value={task.dueRule.offsetDays} onChange={event => updateTask(index, {
+                      dueRule: { ...task.dueRule!, offsetDays: Number(event.target.value || 0) },
+                    })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+              </>}
+              <label className="text-xs text-slate-600">Tipo de follow-up
+                <select aria-label={`Tipo de follow-up da tarefa ${index + 1}`} value={task.followUpRule?.kind ?? 'none'}
+                  onChange={event => {
+                    const kind = event.target.value; const source = definition.tasks.find(item => item.key !== task.key);
+                    updateTask(index, { followUpRule: kind === 'creation' ? { kind, offsetDays: 0 }
+                      : kind === 'completion' && source ? { kind, sourceTaskKey: source.key, offsetDays: 0 } : null });
+                  }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                  <option value="none">Sem follow-up</option><option value="creation">Após criar Pedido</option>
+                  <option value="completion" disabled={definition.tasks.length < 2}>Após concluir tarefa</option>
+                </select>
               </label>
-              <label className="text-xs text-slate-600">Follow-up D+
+              {task.followUpRule?.kind === 'creation' && <label className="text-xs text-slate-600">Follow-up D+
                 <input type="number" min="0" aria-label={`Follow-up D+ da tarefa ${index + 1}`}
                   value={creationOffset(task.followUpRule)} onChange={event => updateTask(index, {
-                    followUpRule: event.target.value === '' ? null : { kind: 'creation', offsetDays: Number(event.target.value) },
+                    followUpRule: { kind: 'creation', offsetDays: Number(event.target.value || 0) },
                   })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-              </label>
+              </label>}
+              {task.followUpRule?.kind === 'completion' && <>
+                <select aria-label={`Tarefa de origem do follow-up ${index + 1}`} value={task.followUpRule.sourceTaskKey}
+                  onChange={event => updateTask(index, { followUpRule: {
+                    kind: 'completion', sourceTaskKey: event.target.value, offsetDays: task.followUpRule?.offsetDays ?? 0,
+                  } })}
+                  className="rounded-lg border border-slate-300 px-3 py-2">
+                  {definition.tasks.filter(item => item.key !== task.key).map(item =>
+                    <option key={item.key} value={item.key}>{item.title || 'Tarefa sem título'}</option>)}
+                </select>
+                <input type="number" min="0" aria-label={`Dias após conclusão do follow-up ${index + 1}`}
+                  value={task.followUpRule.offsetDays} onChange={event => updateTask(index, {
+                    followUpRule: { ...task.followUpRule!, offsetDays: Number(event.target.value || 0) },
+                  })} className="rounded-lg border border-slate-300 px-3 py-2" />
+              </>}
               <button type="button" onClick={() => setDefinition(current => ({
                 ...current,
                 tasks: current.tasks.filter(item => item.key !== task.key),
@@ -268,10 +313,32 @@ export function TemplateEditor({
                 <option value="">Sem prioridade sugerida</option>
                 {priorities.map(priority => <option key={priority}>{priority}</option>)}
               </select>
-              <input type="number" min="0" aria-label={`Prazo D+ da subtarefa ${index + 1}`}
+              <select aria-label={`Tipo de prazo da subtarefa ${index + 1}`} value={subtask.dueRule?.kind ?? 'none'}
+                onChange={event => {
+                  const kind = event.target.value; const source = definition.tasks[0];
+                  updateSubtask(index, { dueRule: kind === 'creation' ? { kind, offsetDays: 0 }
+                    : kind === 'completion' && source ? { kind, sourceTaskKey: source.key, offsetDays: 0 } : null });
+                }} className="rounded-lg border border-slate-300 px-3 py-2">
+                <option value="none">Sem prazo</option><option value="creation">Após criar Pedido</option>
+                <option value="completion">Após concluir tarefa</option>
+              </select>
+              {subtask.dueRule?.kind === 'creation' && <input type="number" min="0" aria-label={`Prazo D+ da subtarefa ${index + 1}`}
                 value={creationOffset(subtask.dueRule)} onChange={event => updateSubtask(index, {
-                  dueRule: event.target.value === '' ? null : { kind: 'creation', offsetDays: Number(event.target.value) },
-                })} className="rounded-lg border border-slate-300 px-3 py-2" />
+                  dueRule: { kind: 'creation', offsetDays: Number(event.target.value || 0) },
+                })} className="rounded-lg border border-slate-300 px-3 py-2" />}
+              {subtask.dueRule?.kind === 'completion' && <>
+                <select aria-label={`Tarefa de origem do prazo da subtarefa ${index + 1}`} value={subtask.dueRule.sourceTaskKey}
+                  onChange={event => updateSubtask(index, { dueRule: {
+                    kind: 'completion', sourceTaskKey: event.target.value, offsetDays: subtask.dueRule?.offsetDays ?? 0,
+                  } })}
+                  className="rounded-lg border border-slate-300 px-3 py-2">
+                  {definition.tasks.map(item => <option key={item.key} value={item.key}>{item.title || 'Tarefa sem título'}</option>)}
+                </select>
+                <input type="number" min="0" aria-label={`Dias após conclusão do prazo da subtarefa ${index + 1}`}
+                  value={subtask.dueRule.offsetDays} onChange={event => updateSubtask(index, {
+                    dueRule: { ...subtask.dueRule!, offsetDays: Number(event.target.value || 0) },
+                  })} className="rounded-lg border border-slate-300 px-3 py-2" />
+              </>}
               <button type="button" onClick={() => setDefinition(current => ({
                 ...current, subtasks: current.subtasks.filter(item => item.key !== subtask.key),
               }))} className="text-sm text-red-700">Remover subtarefa</button>

@@ -159,12 +159,58 @@ async function runTemplateRequest() {
   }
 }
 
+async function runManualRelativeDate() {
+  const source = '11000003-0000-4000-8000-000000000001';
+  const target = '11000003-0000-4000-8000-000000000002';
+  const orderId = '11000004-0000-4000-8000-000000000001';
+  const front = '11000005-0000-4000-8000-000000000001';
+  assert.equal(await templateSql(`SELECT count(*) FROM public.organizations WHERE id='${templateOrg}'`), '0', 'Relative fixture tenant collision');
+  await templateSql(`BEGIN;
+    INSERT INTO auth.users(id) VALUES('${templateActor}');
+    INSERT INTO public.organizations(id,name,slug) VALUES('${templateOrg}','Relative concurrency QA','relative-concurrency-qa');
+    INSERT INTO public.organization_members(organization_id,user_id,role,display_name)
+      VALUES('${templateOrg}','${templateActor}','admin','Relative Admin');
+    INSERT INTO public.pedidos(id,organization_id,numero_pedido,projeto,cliente,endereco,prioridade,status,created_by)
+      VALUES('${orderId}','${templateOrg}','QA-M11-C','Concorrência','Cliente','Rua','Normal','Em andamento','${templateActor}');
+    INSERT INTO public.pedido_frentes(id,organization_id,pedido_id,nome,ordem,is_legacy_default)
+      VALUES('${front}','${templateOrg}','${orderId}','Geral',0,false);
+    INSERT INTO public.tarefas(id,organization_id,pedido_id,frente_id,descricao,status,prioridade,responsavel_user_id,concluido,created_by)
+      VALUES('${source}','${templateOrg}','${orderId}','${front}','Origem','Aberta','Normal','${templateActor}',false,'${templateActor}');
+    INSERT INTO public.tarefas(id,organization_id,pedido_id,frente_id,descricao,status,prioridade,responsavel_user_id,concluido,created_by,vencimento_rule)
+      VALUES('${target}','${templateOrg}','${orderId}','${front}','Destino','Aberta','Normal','${templateActor}',false,'${templateActor}',
+        jsonb_build_object('sourceTaskId','${source}','offsetDays',1,'timeZone','America/Sao_Paulo','state','pending','materializedAt',NULL));
+    COMMIT;`);
+  const sessions = [];
+  try {
+    const manual = templateQuery(`BEGIN; SET LOCAL statement_timeout='15s'; SET LOCAL application_name='gate4c-manual';
+      ${templateAuth} SELECT public.update_pedido_task('${templateOrg}','${target}','{"dueDate":"2026-12-24"}'::jsonb);
+      SELECT pg_sleep(6); COMMIT;`);
+    sessions.push(manual);
+    await until(async () => await templateSql("SELECT count(*) FROM pg_stat_activity WHERE application_name='gate4c-manual' AND wait_event='PgSleep'") === '1', 'Manual edit never reached barrier');
+    const completing = templateQuery(`BEGIN; SET LOCAL statement_timeout='15s'; SET LOCAL application_name='gate4c-complete';
+      ${templateAuth} SELECT public.update_pedido_task('${templateOrg}','${source}','{"status":"Concluída"}'::jsonb); COMMIT;`);
+    sessions.push(completing);
+    await until(async () => await templateSql("SELECT count(*) FROM pg_stat_activity WHERE application_name='gate4c-complete' AND cardinality(pg_blocking_pids(pid))>0") === '1', 'Completion did not wait for the order lock');
+    const [a, b] = await Promise.all(sessions);
+    assert.equal(a.code, 0, a.stderr); assert.equal(b.code, 0, b.stderr);
+    assert.equal(await templateSql(`SELECT vencimento::text||'|'||(vencimento_rule->>'state') FROM public.tarefas WHERE id='${target}'`), '2026-12-24|overridden');
+    console.log('PASS: concurrent completion waited for the manual edit; the manual date remained authoritative.');
+  } finally {
+    await Promise.allSettled(sessions);
+    await templateSql(`BEGIN; DELETE FROM public.organizations WHERE id='${templateOrg}'; DELETE FROM auth.users WHERE id='${templateActor}'; COMMIT;`);
+  }
+}
+
 async function main() {
   const mode = process.argv[2];
-  assert.ok(['dependencies', 'order-close', 'template-request'].includes(mode), 'Usage: node scripts/tests/pedidos-concurrency.mjs dependencies|order-close|template-request');
+  assert.ok(['dependencies', 'order-close', 'template-request', 'manual-relative-date'].includes(mode), 'Usage: node scripts/tests/pedidos-concurrency.mjs dependencies|order-close|template-request|manual-relative-date');
   assert.equal(process.argv.length, 3, 'Exactly one concurrency mode is required');
   if (mode === 'template-request') {
     await runTemplateRequest();
+    return;
+  }
+  if (mode === 'manual-relative-date') {
+    await runManualRelativeDate();
     return;
   }
   if (mode === 'order-close') {

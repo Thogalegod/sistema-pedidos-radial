@@ -1,5 +1,5 @@
 import { compareCivilDateKeys } from './task-due';
-import type { DateKey } from './types';
+import type { DateKey, InstanceDateRule } from './types';
 
 export function addCalendarDays(date: DateKey, days: number): DateKey {
   compareCivilDateKeys(date, date);
@@ -9,4 +9,10 @@ export function addCalendarDays(date: DateKey, days: number): DateKey {
   const key = result.toISOString().slice(0, 10);
   compareCivilDateKeys(key, key);
   return key;
+}
+
+export function pendingRuleLabel(rule: InstanceDateRule, sourceTitle: string): string {
+  if (rule.state !== 'pending') throw new Error('Regra não está pendente');
+  const amount = rule.offsetDays === 1 ? '1 dia' : `${rule.offsetDays} dias`;
+  return `${amount} após concluir ${sourceTitle}`;
 }

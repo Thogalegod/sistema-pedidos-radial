@@ -111,4 +111,14 @@ describe('TaskDetailDrawer', () => {
     expect(screen.getByText('Sistema')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Excluir nota de campo/ })).not.toBeInTheDocument();
   });
+
+  it('explains a pending relative date using the source task title', () => {
+    const source = taskFixture({ id: 'source-a', title: 'Aprovação técnica' });
+    render(<TaskDetailDrawer {...base} task={{ ...task, dueRule: {
+      sourceTaskId: 'source-a', offsetDays: 2, timeZone: 'America/Sao_Paulo',
+      state: 'pending', materializedAt: null,
+    } }} orderTasks={[source, task]} />);
+
+    expect(screen.getByText('2 dias após concluir Aprovação técnica')).toBeInTheDocument();
+  });
 });

@@ -49,7 +49,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 - [x] 4A — Blueprint, versões e datas civis (M09): aplicada e verificada no IURQ; aceite humano recebido em 25/09/2026.
 - [x] 4B — Instanciação atômica, edição e duplicação (M10): aplicada e verificada no IURQ; criação, edição, duplicação e instanciação de template aceitas manualmente pelo usuário em 25/09/2026. Fechamento Git autorizado.
-- [ ] 4C — Materialização após primeira conclusão (M11).
+- [x] 4C — Materialização após primeira conclusão (M11): aplicada e verificada no IURQ; evidência automatizada aceita pelo usuário em 25/09/2026, sem QA visual manual. Fechamento Git autorizado.
 
 ### Lote 5 — Timeline e Arquivos
 
@@ -75,7 +75,17 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente a M10/4B após aceite humano e iniciar a preparação local da M11/4C. Parar antes de qualquer aplicação remota da M11. Sem deploy.
+Prioridade atual: fechar seletivamente a M11/4C após aceite humano e iniciar a preparação local da M12/5A. Parar antes de qualquer aplicação remota da M12. Sem deploy.
+
+### Preparação de 4C — regras após primeira conclusão (25/09/2026)
+
+- Predecessor 4B fechado e publicado seletivamente no commit `6c72dcd` da branch `codex/controle-locacoes`; M10 aplicada e verificada no IURQ, com aceite manual do usuário.
+- M11 `20260923201000_pedidos_v1_relative_dates.sql` materializa prazo/follow-up de tarefa e prazo de subtarefa somente na primeira conclusão da origem, usando o fuso IANA da instância. Reabrir/reconcluir não recalcula; edição manual marca regra pendente como `overridden`; materialização grava data e proveniência atomicamente. Função materializadora e funções M10 renomeadas permanecem privadas; índices parciais cobrem origens pendentes.
+- Editor de template libera regras após criação ou após conclusão para prazo, follow-up e subtarefa. Detalhe da tarefa explica datas ainda pendentes sem inventar data de calendário. RED foi comprovado antes da implementação.
+- Reset local sem seed aplicou as **42 migrations** do zero. pgTAP M11: **14/14**; regressão focal M11+M09+M08: **71/71**. Concorrência manual×conclusão passou: a conclusão aguardou o lock do Pedido e preservou a data manual como `overridden`. Verificação SQL local retornou zero pendências inválidas, zero materializadas sem data e zero referências cruzadas; `anon` não executa o materializador.
+- Cliente focal: **32/32**; TypeScript e lint focal sem erros; `git diff --check` passou. Lint de banco não apontou aviso novo no código M11; preserva avisos antigos, inclusive o `actor` não lido na função M08 renomeada.
+- Target confirmado como IURQ `iurqgskfuupslrghgtej`. Após autorização humana explícita, o dry-run listou exclusivamente `20260923201000_pedidos_v1_relative_dates.sql`, sem seeds ou roles, e a M11 foi aplicada somente no IURQ. Pós-M11: **42/42 migrations** sincronizadas; verificação remota retornou zero regras pendentes inválidas, zero materializadas sem data, zero referências cruzadas e nenhum EXECUTE anônimo no materializador. Sem commit, push ou deploy do 4C; MISFY não acessado.
+- O usuário aceitou o gate final em 25/09/2026 com base nas evidências automatizadas e autorizou continuar. QA visual da M11 não foi executado nem declarado; fechamento Git do 4C autorizado.
 
 ### Preparação de 4B — instanciação atômica, edição e duplicação (25/09/2026)
 

@@ -5,6 +5,7 @@ import type { Dependency, Front, Member, Subtask, TaskV1, WaitingType } from '@/
 import type { TaskPatch, SubtaskInput } from '@/lib/pedidos-tarefas/commands';
 import type { ComentarioTarefa } from '@/types';
 import { blockedCount, subtaskProgress } from '@/lib/pedidos-tarefas/indicators';
+import { pendingRuleLabel } from '@/lib/pedidos-tarefas/template-dates';
 import { TaskSignals } from './TaskSignals';
 
 type Props = { taskId: string; orderId: string | null; task: TaskV1;
@@ -61,6 +62,11 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
   const predecessorIds = new Set(dependencies.filter(edge => edge.taskId === taskId)
     .map(edge => edge.predecessorId));
   const candidates = orderTasks.filter(item => item.id !== taskId && !predecessorIds.has(item.id));
+  const relativeLabel = (rule: TaskV1['dueRule']) => {
+    if (rule?.state !== 'pending') return null;
+    const source = orderTasks.find(item => item.id === rule.sourceTaskId);
+    return pendingRuleLabel(rule, source?.title ?? 'tarefa de origem');
+  };
   const lastNote = comments.filter(note => !note.event_type)
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em))[0];
 
@@ -161,10 +167,14 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
           </select></label>
         <label className="text-sm font-medium">Prazo
           <input type="date" className={field} value={dueDate}
-            onChange={event => setDueDate(event.target.value)} /></label>
+            onChange={event => setDueDate(event.target.value)} />
+          {relativeLabel(task.dueRule) && <span className="block text-xs font-normal text-blue-700">{relativeLabel(task.dueRule)}</span>}
+        </label>
         <label className="text-sm font-medium">Follow-up
           <input type="date" className={field} value={followUpDate}
-            onChange={event => setFollowUpDate(event.target.value)} /></label>
+            onChange={event => setFollowUpDate(event.target.value)} />
+          {relativeLabel(task.followUpRule) && <span className="block text-xs font-normal text-blue-700">{relativeLabel(task.followUpRule)}</span>}
+        </label>
         {status === 'Aguardando' && <>
           <label className="text-sm font-medium">Aguardando de
             <select className={field} value={waitingType} required
@@ -202,6 +212,7 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
             aria-label={`Prazo da subtarefa ${subtask.title}`}
             onChange={event => void run(() => onSaveSubtask({ id: subtask.id, taskId,
               patch: { dueDate: event.target.value || null } }), 'Não foi possível atualizar a subtarefa.')} />
+          {relativeLabel(subtask.dueRule) && <span className="text-xs text-blue-700">{relativeLabel(subtask.dueRule)}</span>}
           <select value={subtask.priority ?? ''} disabled={busy}
             aria-label={`Prioridade da subtarefa ${subtask.title}`}
             onChange={event => void run(() => onSaveSubtask({ id: subtask.id, taskId,
