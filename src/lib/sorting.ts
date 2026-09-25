@@ -2,7 +2,7 @@ import { Order } from '../types';
 import { isBefore, isSameDay, parseISO } from 'date-fns';
 
 export function getOrderSortScore(order: Order, today: Date = new Date('2026-04-29')): number {
-  if (order.status === 'Concluído') return 5; // Completed tasks at the very bottom
+  if (order.status !== 'Em andamento') return 5;
 
   if (order.dueDate) {
     const dueDate = parseISO(order.dueDate);
@@ -18,12 +18,7 @@ export function getOrderSortScore(order: Order, today: Date = new Date('2026-04-
     }
   }
 
-  // 4th: Aguardando terceiros
-  if (order.status === 'Aguardando Cliente' || order.status === 'Prazo Concessionária') {
-    return 4;
-  }
-
-  // 3rd: Normais em andamento (inclui Ação Pendente)
+  // Active orders with no more urgent legacy due date.
   return 3;
 }
 

@@ -4,34 +4,23 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Camera, Eye, FileText, Search, X } from 'lucide-react';
+import { ContentContainer, PageHeader } from '@/components/app-shell/PageHeader';
 import { supabase } from '@/lib/supabase';
-
-type TermografiaPontoResumo = {
-  ocorrencia?: boolean;
-};
-
-type TermografiaRelatorioRow = {
-  id: string;
-  numero_relatorio: string;
-  cliente_nome: string;
-  data_execucao: string;
-  status: string;
-  criado_em: string;
-  pontos?: TermografiaPontoResumo[];
-};
+import { listTermografiaReports, TermografiaReportListItem } from '@/lib/termografia/report-actions';
 
 export default function TermografiaListPage() {
-  const [relatorios, setRelatorios] = useState<TermografiaRelatorioRow[]>([]);
+  const [relatorios, setRelatorios] = useState<TermografiaReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
 
   useEffect(() => {
-    supabase
-      .from('relatorios_termografia')
-      .select('id, numero_relatorio, cliente_nome, data_execucao, status, criado_em, pontos')
-      .order('criado_em', { ascending: false })
-      .then(({ data }) => {
-        setRelatorios(data ?? []);
+    listTermografiaReports(supabase)
+      .then((data) => {
+        setRelatorios(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setRelatorios([]);
         setLoading(false);
       });
   }, []);
@@ -43,20 +32,17 @@ export default function TermografiaListPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <Link href="/relatorios-tecnicos" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
-            &larr; Voltar aos Relatórios Técnicos
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-2">Relatórios de Termografia</h1>
-          <p className="text-sm text-gray-500 mt-1">Inspeções termográficas com fotos digitais, imagens térmicas e ocorrências.</p>
-        </div>
-        <Link href="/termografia/nova" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+    <div className="min-h-screen bg-slate-50">
+      <ContentContainer className="pb-20">
+      <PageHeader
+        breadcrumbs={[{ label: 'Central', href: '/hub' }, { label: 'Relatórios Técnicos', href: '/relatorios-tecnicos' }, { label: 'Termografia' }]}
+        title="Relatórios de Termografia"
+        description="Inspeções termográficas com fotos digitais, imagens térmicas e ocorrências."
+        actions={<Link href="/termografia/nova" className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700">
           <Camera size={20} />
           <span>Novo Relatório</span>
-        </Link>
-      </div>
+        </Link>}
+      />
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
@@ -99,7 +85,7 @@ export default function TermografiaListPage() {
                 </tr>
               ) : (
                 filtrados.map((rel) => {
-                  const ocorrencias = (rel.pontos ?? []).filter((p) => p.ocorrencia).length;
+                  const ocorrencias = rel.ocorrencias_count;
                   return (
                     <tr key={rel.id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-4 whitespace-nowrap">
@@ -127,6 +113,7 @@ export default function TermografiaListPage() {
           </table>
         </div>
       </div>
+      </ContentContainer>
     </div>
   );
 }

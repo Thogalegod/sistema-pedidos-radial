@@ -1,9 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Camera, Eye, FileImage, Plus, Save, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabase';
+import {
+  buildFichaTransformadorSearchParams,
+  fichaTransformadorSnapshotToJson,
+  isValidFichaTransformadorId,
+  normalizeFichaTransformadorSnapshot,
+  type FichaTransformadorSnapshot,
+} from '@/lib/manutencao-preventiva/ficha-transformador';
+import {
+  createSupabaseManutencaoPreventivaClient,
+  getFichaTransformador,
+  getFichaTransformadorById,
+  saveFichaTransformador,
+} from '@/lib/manutencao-preventiva/queries-mutations';
 
 type InspectionStatus = 'C' | 'N/C' | 'N/A';
 
@@ -29,6 +44,12 @@ type Occurrence = {
 type OccurrenceDraft = {
   priority: string;
   text: string;
+};
+
+type FichaContextIds = {
+  manutencaoId: string;
+  equipamentoId: string;
+  fichaId?: string;
 };
 
 const fillOrder = [
@@ -104,6 +125,13 @@ const priorityStyles: Record<string, string> = {
 export default function FichaTransformadorManutencaoPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const savingFichaRef = useRef(false);
+  const [contextIds, setContextIds] = useState<FichaContextIds | null>(null);
+  const [fichaId, setFichaId] = useState('');
+  const [initialData, setInitialData] = useState<Record<string, string>>({});
+  const [formVersion, setFormVersion] = useState(0);
+  const [loadingFicha, setLoadingFicha] = useState(true);
+  const [savingFicha, setSavingFicha] = useState(false);
   const [photos, setPhotos] = useState({ placa: '', equipamento: '' });
   const [btVoltage, setBtVoltage] = useState('220/127');
   const [insulationClass, setInsulationClass] = useState('15');
@@ -127,6 +155,122 @@ export default function FichaTransformadorManutencaoPage() {
     { id: 'at-m', position: 'A.T. / Massa', voltage: '5 kVcc', current: '' },
     { id: 'bt-m', position: 'B.T. / Massa', voltage: '2,5 kVcc', current: '' },
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const setLoadError = (message: string) => {
+      setContextIds(null);
+      setLoadingFicha(false);
+      toast.error(message);
+    };
+
+    const load = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const fichaId = params.get('fichaId') ?? '';
+      const manutencaoId = params.get('manutencaoId') ?? '';
+      const equipamentoId = params.get('equipamentoId') ?? '';
+      const hasPairParam = Boolean(manutencaoId || equipamentoId);
+
+      if (!fichaId && !hasPairParam) {
+        setLoadError('Abra a ficha a partir de uma manutenção e um transformador selecionados.');
+        return;
+      }
+
+      if (hasPairParam && (!manutencaoId || !equipamentoId)) {
+        setLoadError('Informe manutenção e transformador juntos para abrir a ficha.');
+        return;
+      }
+
+      const invalidIds = [
+        fichaId && ['fichaId', fichaId],
+        manutencaoId && ['manutencaoId', manutencaoId],
+        equipamentoId && ['equipamentoId', equipamentoId],
+      ].filter((entry): entry is [string, string] => Boolean(entry))
+        .filter(([, value]) => !isValidFichaTransformadorId(value));
+
+      if (invalidIds.length > 0) {
+        setLoadError(`Identificador inválido: ${invalidIds[0][0]}.`);
+        return;
+      }
+
+      setLoadingFicha(true);
+
+      try {
+        const client = createSupabaseManutencaoPreventivaClient(supabase);
+        const persisted = fichaId
+          ? await getFichaTransformadorById(client, fichaId)
+          : await getFichaTransformador(client, manutencaoId, equipamentoId);
+
+        if (cancelled) return;
+
+        if (!persisted) {
+          if (fichaId) {
+            setLoadError('Ficha do transformador não encontrada.');
+            return;
+          }
+
+          setContextIds({ manutencaoId, equipamentoId });
+          return;
+        }
+
+        if (
+          hasPairParam
+          && (
+            persisted.manutencao_id !== manutencaoId
+            || persisted.equipamento_id !== equipamentoId
+          )
+        ) {
+          setLoadError('Os IDs da URL não correspondem à ficha persistida.');
+          return;
+        }
+
+        const snapshot = normalizeFichaTransformadorSnapshot(persisted.dados_ficha);
+
+        setFichaId(persisted.id);
+        setContextIds({
+          manutencaoId: persisted.manutencao_id,
+          equipamentoId: persisted.equipamento_id,
+          fichaId: persisted.id,
+        });
+        setInitialData(snapshot.data);
+        setPhotos({
+          placa: snapshot.photos.placa ?? '',
+          equipamento: snapshot.photos.equipamento ?? '',
+        });
+        setBtVoltage(snapshot.data.bt || '220/127');
+        setInsulationClass(snapshot.data.classeIsolacao || '15');
+        setCoolingType(snapshot.data.refrigeracao || snapshot.coolingType || 'Óleo isolante');
+        setSelectedTaps(snapshot.selectedTaps.length ? snapshot.selectedTaps : ['13,8', '13,2', '12,6', '12,0', '11,4']);
+        setDispatchTap(snapshot.data.tapDespacho || snapshot.selectedTaps[0] || '13,8');
+        setVisualStatus({
+          ...Object.fromEntries(baseVisualItems.map((item) => [item, 'C'])),
+          ...snapshot.visualStatus,
+        } as Record<string, InspectionStatus>);
+        setInsulationRows(snapshot.insulationRows.length ? snapshot.insulationRows : [
+          { id: 'at-bt', position: 'A.T. / B.T.', voltage: '5 kVcc', current: '' },
+          { id: 'at-m', position: 'A.T. / Massa', voltage: '5 kVcc', current: '' },
+          { id: 'bt-m', position: 'B.T. / Massa', voltage: '2,5 kVcc', current: '' },
+        ]);
+        setOccurrences(snapshot.occurrences);
+        setFormVersion((version) => version + 1);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Não foi possível carregar a ficha do transformador.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingFicha(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handlePhoto = (key: 'placa' | 'equipamento', file?: File) => {
     if (!file) return;
@@ -155,11 +299,11 @@ export default function FichaTransformadorManutencaoPage() {
     });
   };
 
-  const handlePreview = () => {
-    if (!formRef.current) return;
+  const buildSnapshot = (): FichaTransformadorSnapshot | null => {
+    if (!formRef.current) return null;
     const data = Object.fromEntries(new FormData(formRef.current).entries());
     const textData = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)]));
-    const snapshot = {
+    return {
       data: textData,
       photos,
       selectedTaps,
@@ -172,8 +316,50 @@ export default function FichaTransformadorManutencaoPage() {
       windingRows,
       oilRows,
     };
-    window.localStorage.setItem('radial:ficha-transformador-preview', JSON.stringify(snapshot));
-    router.push('/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador/visualizar');
+  };
+
+  const handleSave = async (navigateToPreview: boolean) => {
+    if (savingFichaRef.current) return;
+
+    if (!contextIds) {
+      toast.error('Abra a ficha a partir da Manutenção Preventiva para salvar.');
+      return;
+    }
+
+    const snapshot = buildSnapshot();
+    if (!snapshot) return;
+
+    savingFichaRef.current = true;
+    setSavingFicha(true);
+    try {
+      const client = createSupabaseManutencaoPreventivaClient(supabase);
+      const saved = await saveFichaTransformador(client, {
+        manutencao_id: contextIds.manutencaoId,
+        equipamento_id: contextIds.equipamentoId,
+        dados_ficha: fichaTransformadorSnapshotToJson(snapshot),
+      });
+
+      setFichaId(saved.id);
+      setContextIds({
+        manutencaoId: saved.manutencao_id,
+        equipamentoId: saved.equipamento_id,
+        fichaId: saved.id,
+      });
+      toast.success('Ficha do transformador salva.');
+
+      if (navigateToPreview) {
+        router.push(`/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador/visualizar?${buildFichaTransformadorSearchParams({
+          manutencaoId: contextIds.manutencaoId,
+          equipamentoId: contextIds.equipamentoId,
+          fichaId: saved.id,
+        })}`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar a ficha do transformador.');
+    } finally {
+      savingFichaRef.current = false;
+      setSavingFicha(false);
+    }
   };
 
   const addOccurrence = () => {
@@ -240,10 +426,15 @@ export default function FichaTransformadorManutencaoPage() {
             <p className="text-gray-500 mt-1">
               Primeira versão da ficha interna que depois fará parte do relatório completo de manutenção da cabine.
             </p>
+            <p className="text-xs text-gray-500 mt-2 break-all">
+              {contextIds
+                ? `manutencao_id: ${contextIds.manutencaoId} | equipamento_id: ${contextIds.equipamentoId}${fichaId ? ` | ficha_id: ${fichaId}` : ''}`
+                : 'Selecione uma manutenção e um transformador antes de salvar.'}
+            </p>
           </div>
         </div>
 
-        <form ref={formRef}>
+        <form ref={formRef} key={formVersion}>
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 mb-5">
           <h2 className="text-lg font-bold text-gray-900 mb-3">Ordem de preenchimento</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -289,15 +480,15 @@ export default function FichaTransformadorManutencaoPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className={labelClass}>TAG</label>
-              <input name="tag" placeholder="Ex.: TR-01 / Subestação 1" className={inputClass} />
+              <input name="tag" defaultValue={initialData.tag} placeholder="Ex.: TR-01 / Subestação 1" className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Potência [kVA]</label>
-              <input name="potencia" className={inputClass} />
+              <input name="potencia" defaultValue={initialData.potencia} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Nº Série</label>
-              <input name="serie" className={inputClass} />
+              <input name="serie" defaultValue={initialData.serie} className={inputClass} />
             </div>
             <div className="md:col-span-2">
               <label className={labelClass}>A.T. [kV]</label>
@@ -327,11 +518,11 @@ export default function FichaTransformadorManutencaoPage() {
             </div>
             <div>
               <label className={labelClass}>Fabricação</label>
-              <input name="fabricacao" className={inputClass} />
+              <input name="fabricacao" defaultValue={initialData.fabricacao} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Fabricante</label>
-              <input name="fabricante" className={inputClass} />
+              <input name="fabricante" defaultValue={initialData.fabricante} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Tap de despacho [kV]</label>
@@ -343,11 +534,11 @@ export default function FichaTransformadorManutencaoPage() {
             </div>
             <div>
               <label className={labelClass}>Volume [L]</label>
-              <input name="volume" className={inputClass} />
+              <input name="volume" defaultValue={initialData.volume} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Peso [kg]</label>
-              <input name="peso" className={inputClass} />
+              <input name="peso" defaultValue={initialData.peso} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Refrigeração</label>
@@ -422,7 +613,7 @@ export default function FichaTransformadorManutencaoPage() {
                     <td className="py-2 pr-3 font-medium">{connection}</td>
                     {selectedTaps.map((tap) => (
                       <td key={`${connection}-${tap}`} className="py-2 pr-3">
-                        <input name={`ttr-${connection}-${tap}`} className={`${inputClass} min-w-20`} />
+                        <input name={`ttr-${connection}-${tap}`} defaultValue={initialData[`ttr-${connection}-${tap}`]} className={`${inputClass} min-w-20`} />
                       </td>
                     ))}
                   </tr>
@@ -449,7 +640,7 @@ export default function FichaTransformadorManutencaoPage() {
                     <tr key={`${row.winding}-${row.connection}`} className="border-b last:border-0">
                       <td className="py-2 pr-3 font-medium">{row.winding}</td>
                       <td className="py-2 pr-3">{row.connection}</td>
-                      <td className="py-2 pr-3"><input name={`enrolamento-${row.winding}`} className={`${inputClass} min-w-24`} /></td>
+                      <td className="py-2 pr-3"><input name={`enrolamento-${row.winding}`} defaultValue={initialData[`enrolamento-${row.winding}`]} className={`${inputClass} min-w-24`} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -480,7 +671,7 @@ export default function FichaTransformadorManutencaoPage() {
                       <td className="py-2 pr-3 font-medium">{row.test}</td>
                       <td className="py-2 pr-3">{row.method}</td>
                       <td className="py-2 pr-3">{row.specified}</td>
-                      <td className="py-2 pr-3"><input name={`oleo-${row.test}`} defaultValue={row.result} className={`${inputClass} min-w-24`} /></td>
+                      <td className="py-2 pr-3"><input name={`oleo-${row.test}`} defaultValue={initialData[`oleo-${row.test}`] ?? row.result} className={`${inputClass} min-w-24`} /></td>
                     </tr>
                 ))}
               </tbody>
@@ -573,7 +764,7 @@ export default function FichaTransformadorManutencaoPage() {
             </div>
             <div className="md:col-span-3">
               <label className={labelClass}>Comentários internos do equipamento</label>
-              <textarea name="comentariosInternos" className={inputClass} rows={3} placeholder="Anotações internas da equipe para conferência posterior." />
+              <textarea name="comentariosInternos" defaultValue={initialData.comentariosInternos} className={inputClass} rows={3} placeholder="Anotações internas da equipe para conferência posterior." />
               <p className="text-xs text-gray-500 mt-1">
                 Este campo não vai para o relatório final do cliente. Fica salvo apenas para consulta interna posterior.
               </p>
@@ -584,13 +775,13 @@ export default function FichaTransformadorManutencaoPage() {
         </form>
 
         <div className="sticky bottom-0 bg-gray-50/95 backdrop-blur border-t border-gray-200 py-4 flex justify-end gap-3">
-          <button type="button" onClick={handlePreview} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md font-medium">
+          <button type="button" onClick={() => handleSave(true)} disabled={loadingFicha || savingFicha || !contextIds} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-5 py-2 rounded-md font-medium">
             <Eye size={18} />
-            Gerar ficha completa
+            Salvar e visualizar
           </button>
-          <button disabled className="inline-flex items-center gap-2 bg-gray-300 text-gray-600 px-5 py-2 rounded-md font-medium cursor-not-allowed">
+          <button type="button" onClick={() => handleSave(false)} disabled={loadingFicha || savingFicha || !contextIds} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white px-5 py-2 rounded-md font-medium">
             <Save size={18} />
-            Salvar ficha será a próxima etapa
+            Salvar ficha
           </button>
         </div>
       </div>

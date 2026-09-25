@@ -1,8 +1,7 @@
 import { Order } from '../types';
 import { StatusBadge, cn } from './StatusBadge';
 import { MapPin, ChevronRight } from 'lucide-react';
-import { format, parseISO, isBefore, isSameDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { parseISO, isBefore, isSameDay } from 'date-fns';
 
 interface OrderCardProps {
   order: Order;
@@ -33,8 +32,8 @@ export function OrderCard({ order, onClick, today = new Date('2026-04-29') }: Or
         }
       }}
       className={cn(
-        "group relative bg-white border border-gray-200 rounded-xl p-4 md:p-5 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500",
-        isOverdue && order.status !== 'Concluído' ? "border-red-300 bg-red-50/30" : ""
+        "group relative cursor-pointer rounded-xl border border-radial-border bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-radial-primary md:p-5",
+        isOverdue && order.status === 'Em andamento' ? "border-red-300 bg-red-50/30" : ""
       )}
     >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -45,7 +44,7 @@ export function OrderCard({ order, onClick, today = new Date('2026-04-29') }: Or
               <span className="text-xs font-bold text-blue-600 tracking-wider">
                 #{order.orderNumber}
               </span>
-              <h3 className="font-semibold text-gray-900 text-lg leading-tight group-hover:text-blue-700 transition-colors">
+              <h3 className="text-lg font-semibold leading-tight text-radial-ink transition-colors group-hover:text-radial-primary">
                 {order.title}
               </h3>
             </div>
@@ -89,7 +88,7 @@ export function OrderCard({ order, onClick, today = new Date('2026-04-29') }: Or
               </div>
             </div>
             
-            <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors hidden md:flex">
+            <div className="hidden size-8 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition-colors group-hover:bg-emerald-50 group-hover:text-radial-primary md:flex">
               <ChevronRight className="w-5 h-5" />
             </div>
           </div>

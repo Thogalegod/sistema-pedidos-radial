@@ -7,8 +7,9 @@ import { ArrowLeft, Camera, Check, Edit3, FileImage, Loader2, Plus, Save, Trash2
 import { Toaster, toast } from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
-import { uploadArquivo } from '@/lib/storage';
 import { conclusoesPadrao, gerarIdPonto, TermografiaClassificacao, TermografiaPonto, TermografiaRisco } from '@/lib/termografia/types';
+import { createTermografiaPoint, createTermografiaReport } from '@/lib/termografia/report-actions';
+import { uploadTermografiaPhoto } from '@/lib/termografia/storage';
 
 type TermografiaPontoDraft = TermografiaPonto & {
   _fotoDigitalFile?: File;
@@ -25,13 +26,6 @@ async function prepararImagem(file: File) {
     maxWidthOrHeight: 1800,
     useWebWorker: true,
   });
-}
-
-function limparPontoUpload(ponto: TermografiaPontoDraft) {
-  const limpo = { ...ponto };
-  delete limpo._fotoDigitalFile;
-  delete limpo._fotoTermicaFile;
-  return limpo;
 }
 
 export default function NovaTermografiaPage() {
@@ -117,61 +111,58 @@ export default function NovaTermografiaPage() {
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+      const data = await createTermografiaReport(supabase, {
+        cliente_nome: clienteNome,
+        cliente_cnpj: clienteCnpj,
+        cliente_endereco: clienteEndereco,
+        cliente_cidade: clienteCidade,
+        cliente_uf: clienteUf,
+        cliente_cep: clienteCep,
+        data_execucao: dataExecucao,
+        objetivo: 'Estudo Termográfico da subestação primária e dos painéis elétricos',
+        equipamento: 'Flir InfraCAM SD',
+        responsavel_nome: responsavelNome,
+        responsavel_crea: responsavelCrea,
+        revisao: 0,
+        status: 'gerado',
+      });
 
-      const agora = new Date();
-      const mes = String(agora.getMonth() + 1).padStart(2, '0');
-      const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString();
-      const { count } = await supabase
-        .from('relatorios_termografia')
-        .select('*', { count: 'exact', head: true })
-        .gte('criado_em', inicioMes);
-      const numeroRelatorio = `RT-${agora.getFullYear()}${mes}-${String((count ?? 0) + 1).padStart(3, '0')}`;
+      for (const [index, ponto] of pontos.entries()) {
+        const pontoCriado = await createTermografiaPoint(supabase, data.id, {
+          setor: ponto.setor.trim(),
+          local: ponto.local.trim(),
+          inspecionado: ponto.inspecionado,
+          ocorrencia: ponto.ocorrencia,
+          componente: ponto.componente,
+          temperatura: ponto.temperatura,
+          data_hora_foto: ponto.dataHoraFoto,
+          classificacao: ponto.classificacao,
+          risco: ponto.risco,
+          conclusao: ponto.conclusao,
+        }, index + 1);
 
-      const pontosUpload = await Promise.all(pontos.map(async (ponto, index) => {
-        let fotoDigitalUrl = null;
-        let fotoTermicaUrl = null;
         if (ponto._fotoDigitalFile) {
           const file = await prepararImagem(ponto._fotoDigitalFile);
-          fotoDigitalUrl = await uploadArquivo(file, `termografia/${numeroRelatorio}`, `oc-${index + 1}-digital.jpg`);
+          await uploadTermografiaPhoto(supabase, {
+            organizationId: data.organization_id,
+            reportId: data.id,
+            pointId: pontoCriado.id,
+            kind: 'digital',
+            file,
+          });
         }
         if (ponto._fotoTermicaFile) {
           const file = await prepararImagem(ponto._fotoTermicaFile);
-          fotoTermicaUrl = await uploadArquivo(file, `termografia/${numeroRelatorio}`, `oc-${index + 1}-termica.jpg`);
+          await uploadTermografiaPhoto(supabase, {
+            organizationId: data.organization_id,
+            reportId: data.id,
+            pointId: pontoCriado.id,
+            kind: 'termica',
+            file,
+          });
         }
-        const limpo = limparPontoUpload(ponto);
-        return {
-          ...limpo,
-          fotoDigitalUrl: fotoDigitalUrl ?? (limpo.fotoDigitalUrl?.startsWith('blob:') ? null : limpo.fotoDigitalUrl ?? null),
-          fotoTermicaUrl: fotoTermicaUrl ?? (limpo.fotoTermicaUrl?.startsWith('blob:') ? null : limpo.fotoTermicaUrl ?? null),
-        };
-      }));
+      }
 
-      const { data, error } = await supabase
-        .from('relatorios_termografia')
-        .insert({
-          numero_relatorio: numeroRelatorio,
-          criado_por: user.id,
-          cliente_nome: clienteNome,
-          cliente_cnpj: clienteCnpj,
-          cliente_endereco: clienteEndereco,
-          cliente_cidade: clienteCidade,
-          cliente_uf: clienteUf,
-          cliente_cep: clienteCep,
-          data_execucao: dataExecucao,
-          objetivo: 'Estudo Termográfico da subestação primária e dos painéis elétricos',
-          equipamento: 'Flir InfraCAM SD',
-          responsavel_nome: responsavelNome,
-          responsavel_crea: responsavelCrea,
-          revisao: 0,
-          pontos: pontosUpload,
-          status: 'gerado',
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
       toast.success('Relatório de termografia criado.');
       router.push(`/termografia/${data.id}`);
     } catch (error: unknown) {

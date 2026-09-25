@@ -1,0 +1,26 @@
+export type Id = string;
+export type DateKey = string;
+export type TaskStatus = 'Aberta' | 'Em andamento' | 'Aguardando' | 'Concluída';
+export type OrderStatusV1 = 'Em andamento' | 'Finalizado' | 'Cancelado';
+export type TaskPriority = 'Urgente' | 'Alta' | 'Normal' | 'Baixa';
+export type WaitingType = 'customer' | 'utility' | 'supplier' | 'internal_user' | 'other';
+export type Waiting = { type: WaitingType; userId: Id | null; note: string | null };
+export type Member = { userId: Id; displayName: string | null };
+export type InstanceDateRule = { sourceTaskId: Id; offsetDays: number; timeZone: string;
+  state: 'pending' | 'materialized' | 'overridden'; materializedAt: string | null };
+export type Front = { id: Id; orderId: Id; name: string; position: number };
+export type Subtask = { id: Id; taskId: Id; title: string; completed: boolean;
+  dueDate: DateKey | null; priority: TaskPriority | null; dueRule?: InstanceDateRule | null };
+export type TaskV1 = { id: Id; organizationId: Id; orderId: Id | null; frontId: Id | null;
+  title: string; description: string | null; status: TaskStatus; priority: TaskPriority;
+  assigneeId: Id | null; legacyAssignee: string | null; dueDate: DateKey | null;
+  followUpDate: DateKey | null; waiting: Waiting | null; updatedAt: string | null;
+  completedAt: string | null; dueRule?: InstanceDateRule | null;
+  followUpRule?: InstanceDateRule | null };
+export type OrderV1 = { id: Id; organizationId: Id; number: string; title: string;
+  client: string; address: string; status: OrderStatusV1; createdAt: string;
+  legacyPriority: 'Baixa' | 'Normal' | 'Alta'; utilityDueDate: DateKey | null };
+export type Dependency = { taskId: Id; predecessorId: Id };
+export type Capabilities = { statusMode: 'legacy' | 'v1'; timelineMode: 'legacy' | 'copying' | 'v1' };
+export type WriteResult<T> = { ok: true; value: T } |
+  { ok: false; code: 'forbidden' | 'conflict' | 'invalid' | 'reload'; message: string };

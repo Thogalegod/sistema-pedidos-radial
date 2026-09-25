@@ -3,9 +3,10 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getUrlArquivo } from '@/lib/storage';
 import { creaBase64 } from '@/lib/creaBase64';
 import { formatarDataHora, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio } from '@/lib/termografia/types';
+import { loadTermografiaReport } from '@/lib/termografia/report-actions';
+import { createTermografiaSignedUrl } from '@/lib/termografia/storage';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -43,14 +44,9 @@ export default function TermografiaPrintViewer(props: { params: Promise<{ id: st
   const [pontos, setPontos] = useState<PontoComFotos[]>([]);
 
   useEffect(() => {
-    supabase
-      .from('relatorios_termografia')
-      .select('*')
-      .eq('id', params.id)
-      .single()
-      .then(({ data: rel, error }) => {
-        setData(error ? false : rel as TermografiaRelatorio);
-      });
+    loadTermografiaReport(supabase, params.id)
+      .then((rel) => setData(rel))
+      .catch(() => setData(false));
   }, [params.id]);
 
   useEffect(() => {
@@ -58,8 +54,8 @@ export default function TermografiaPrintViewer(props: { params: Promise<{ id: st
     let ativo = true;
     Promise.all((data.pontos ?? []).map(async (ponto) => ({
       ...ponto,
-      fotoDigitalSrc: ponto.fotoDigitalUrl ? await getUrlArquivo(ponto.fotoDigitalUrl) : null,
-      fotoTermicaSrc: ponto.fotoTermicaUrl ? await getUrlArquivo(ponto.fotoTermicaUrl) : null,
+      fotoDigitalSrc: ponto.fotoDigitalUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoDigitalUrl) : null,
+      fotoTermicaSrc: ponto.fotoTermicaUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoTermicaUrl) : null,
     }))).then((res) => {
       if (ativo) setPontos(res);
     });

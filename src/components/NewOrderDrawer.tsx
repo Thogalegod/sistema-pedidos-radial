@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { Priority, OrderStatus } from '../types';
 import { X, Save, Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from './StatusBadge';
+import type { TemplateRecord } from '@/lib/pedidos-tarefas/templates';
+import { TemplatePicker } from './pedidos-tarefas/TemplatePicker';
 
-interface NewOrderDrawerProps {
+export type NewOrderTemplateSelection = {
+  templateId: string;
+  expectedVersion: number;
+  requestId: string;
+  timeZone: string;
+};
+
+export interface NewOrderDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (order: {
@@ -13,9 +22,14 @@ interface NewOrderDrawerProps {
     title: string;
     client: string;
     address: string;
+    cep: string;
     priority: Priority;
     status: OrderStatus;
-  }) => void;
+    template: NewOrderTemplateSelection | null;
+  }) => boolean | Promise<boolean>;
+  templates?: TemplateRecord[];
+  templatesError?: string | null;
+  onManageTemplates?: () => void;
 }
 
 interface ViaCepResponse {
@@ -26,7 +40,14 @@ interface ViaCepResponse {
   erro?: boolean;
 }
 
-export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps) {
+export function NewOrderDrawer({
+  isOpen,
+  onClose,
+  onSave,
+  templates = [],
+  templatesError = null,
+  onManageTemplates,
+}: NewOrderDrawerProps) {
   const [orderNumber, setOrderNumber] = useState('');
   const [title, setTitle] = useState('');
   const [client, setClient] = useState('');
@@ -37,39 +58,45 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
   const [city, setCity] = useState('');
   const [uf, setUf] = useState('');
   const [priority, setPriority] = useState<Priority>('Normal');
-  const [status, setStatus] = useState<OrderStatus>('Ação Pendente');
+  const status: OrderStatus = 'Em andamento';
   const [isFetchingCep, setIsFetchingCep] = useState(false);
   const [cepError, setCepError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const requestIdRef = useRef<string | null>(null);
 
   // Monta o endereço completo para salvar
   const fullAddress = [street, number, neighborhood, city, uf].filter(Boolean).join(', ');
 
-  // Reset form when opened
-  useEffect(() => {
-    if (isOpen) {
-      setOrderNumber('');
-      setTitle('');
-      setClient('');
-      setCep('');
-      setStreet('');
-      setNumber('');
-      setNeighborhood('');
-      setCity('');
-      setUf('');
-      setPriority('Normal');
-      setStatus('Ação Pendente');
-      setCepError('');
-    }
-  }, [isOpen]);
+  const resetForm = useCallback(() => {
+    setOrderNumber('');
+    setTitle('');
+    setClient('');
+    setCep('');
+    setStreet('');
+    setNumber('');
+    setNeighborhood('');
+    setCity('');
+    setUf('');
+    setPriority('Normal');
+    setCepError('');
+    setSelectedTemplateId(null);
+    requestIdRef.current = null;
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [onClose, resetForm]);
 
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeDrawer();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [closeDrawer]);
 
   const fetchCep = async (rawCep: string) => {
     const cleaned = rawCep.replace(/\D/g, '');
@@ -106,19 +133,36 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderNumber || !title || !client || !street) return;
+    if (!orderNumber || !title || !client || !street || isSaving) return;
 
-    onSave({
-      orderNumber,
-      title,
-      client,
-      address: fullAddress || street,
-      priority,
-      status,
-    });
-    onClose();
+    setIsSaving(true);
+    try {
+      const succeeded = await onSave({
+        orderNumber,
+        title,
+        client,
+        address: fullAddress || street,
+        cep,
+        priority,
+        status,
+        template: (() => {
+          const selected = templates.find(template => template.id === selectedTemplateId);
+          if (!selected) return null;
+          requestIdRef.current ??= crypto.randomUUID();
+          return {
+            templateId: selected.id,
+            expectedVersion: selected.version,
+            requestId: requestIdRef.current,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          };
+        })(),
+      });
+      if (succeeded !== false) closeDrawer();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const inputClass = "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all";
@@ -131,7 +175,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
           "fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300",
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
-        onClick={onClose}
+        onClick={closeDrawer}
       />
 
       {/* Drawer */}
@@ -145,7 +189,7 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <h2 className="text-lg font-semibold text-gray-900">Novo Pedido</h2>
           <button
-            onClick={onClose}
+            onClick={closeDrawer}
             className="p-2 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -154,6 +198,18 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 flex flex-col">
+
+          <TemplatePicker
+            templates={templates}
+            selectedId={selectedTemplateId}
+            onSelect={id => {
+              setSelectedTemplateId(id);
+              requestIdRef.current = null;
+            }}
+            disabled={isSaving}
+            onManage={onManageTemplates}
+            error={templatesError}
+          />
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700">Número do Pedido *</label>
@@ -318,22 +374,21 @@ export function NewOrderDrawer({ isOpen, onClose, onSave }: NewOrderDrawerProps)
             <label className="text-sm font-medium text-gray-700">Status Inicial</label>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as OrderStatus)}
+              disabled
               className={inputClass}
             >
-              <option value="Ação Pendente">Ação Pendente</option>
-              <option value="Aguardando Cliente">Aguardando Cliente</option>
-              <option value="Prazo Concessionária">Prazo Concessionária</option>
+              <option value="Em andamento">Em andamento</option>
             </select>
           </div>
 
           <div className="mt-auto pt-6">
             <button
               type="submit"
+              disabled={isSaving}
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              Salvar Pedido
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {isSaving ? 'Salvando...' : 'Salvar Pedido'}
             </button>
           </div>
 

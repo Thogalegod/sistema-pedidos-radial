@@ -1,12 +1,13 @@
 export type Priority = 'Baixa' | 'Normal' | 'Alta';
-export type OrderStatus = 'Ação Pendente' | 'Aguardando Cliente' | 'Prazo Concessionária' | 'Concluído';
-export type TeamMember = 'Thomás' | 'Roberto' | 'Katlyn' | 'Equipe de Campo';
+export type OrderStatus = import('@/lib/pedidos-tarefas/types').OrderStatusV1;
+export type TeamMember = string;
 
 export interface Task {
   id: string;
   title: string;
   completed: boolean;
   assignee?: TeamMember;
+  assigneeUserId?: string | null;
   dueDate?: string; // ISO format YYYY-MM-DD
   completedAt?: string; // ISO timestamp
   subtarefas?: Subtarefa[];
@@ -27,6 +28,7 @@ export interface ComentarioTarefa {
   texto: string;
   usuario: string;
   criado_em: string;
+  event_type?: string | null;
 }
 
 export interface Atividade {
@@ -34,14 +36,19 @@ export interface Atividade {
   descricao: string;
   usuario: string;
   criado_em: string;
+  kind?: 'manual' | 'system';
 }
 
 export interface Anexo {
   id: string;
   pedido_id: string;
+  frente_id?: string | null;
+  tarefa_id?: string | null;
+  atividade_id?: string | null;
   nome_arquivo: string;
   legenda?: string;
-  url: string;
+  storage_path: string;
+  signed_url?: string;
   tipo: string;
   criado_em: string;
 }

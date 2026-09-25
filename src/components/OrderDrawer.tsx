@@ -1,9 +1,46 @@
-import { Order, Priority, TeamMember, Anexo } from '../types';
+import { Order, Priority, OrderStatus, type Anexo } from '../types';
+import { formatMemberLabel } from '../lib/pedidos-tarefas/members';
+import type { Member } from '../lib/pedidos-tarefas/types';
 import { StatusBadge, cn, memberColor } from './StatusBadge';
-import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
+import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { NextAction, TaskSummary } from '../lib/pedidos-tarefas/indicators';
+import type { Front, OrderV1 } from '../lib/pedidos-tarefas/types';
+import { OrderSummary } from './pedidos-tarefas/OrderSummary';
+import { OrderTabs, type OrderTab } from './pedidos-tarefas/OrderTabs';
+import { OrderTasksSection, type OrderTasksSectionProps } from './pedidos-tarefas/OrderTasksSection';
+import { OrderTimeline } from './pedidos-tarefas/OrderTimeline';
+import { UpdateComposer } from './pedidos-tarefas/UpdateComposer';
+import { OrderFiles } from './pedidos-tarefas/OrderFiles';
+import type { AttachmentContext, StagedAttachment } from '../lib/pedidos-tarefas/attachments';
+import type { TimelineEntry, UpdateInput } from '../lib/pedidos-tarefas/timeline';
+import type { WriteResult } from '../lib/pedidos-tarefas/types';
+import type { CalendarEntry } from '../lib/pedidos-tarefas/calendar';
+import { CalendarView } from './pedidos-tarefas/CalendarView';
+
+type SpeechRecognitionResultEvent = {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+};
+
+type SpeechRecognitionErrorEvent = { error: string };
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+};
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionInstance;
+  webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+};
 
 interface OrderDrawerProps {
   order: Order | null;
@@ -11,39 +48,56 @@ interface OrderDrawerProps {
   onClose: () => void;
   onToggleTask: (orderId: string, taskId: string) => void;
   onChangePriority: (orderId: string, priority: Priority) => void;
-  onAddTask: (orderId: string, title: string, assignee: TeamMember, dueDate?: string) => void;
+  onAddTask: (orderId: string, title: string, assigneeId: string | null, dueDate?: string) => boolean | Promise<boolean>;
+  onSetOrderStatus?: (orderId: string, status: OrderStatus) => boolean | Promise<boolean>;
+  members?: Member[];
   onDeleteTask: (orderId: string, taskId: string) => void;
   onDeleteOrder: (orderId: string) => void;
   onAddAtividade: (orderId: string, descricao: string) => void;
-  onDeleteAtividade: (orderId: string, atividadeId: string) => void;
+  onDeleteAtividade: (orderId: string, atividadeId: string) => boolean | Promise<boolean>;
+  timelineEntries?: TimelineEntry[];
+  onSaveUpdate?: (input: UpdateInput) => Promise<WriteResult<string>>;
   onEditOrderField?: (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => Promise<void>;
-  onUploadFiles?: (orderId: string, stagedFiles: { file: File, legenda: string }[]) => Promise<void>;
-  onDeleteAnexo?: (orderId: string, anexoId: string, url: string) => Promise<void>;
+  onUploadFiles?: (context: AttachmentContext, stagedFiles: StagedAttachment[]) => Promise<boolean>;
+  onDeleteAnexo?: (orderId: string, anexoId: string, storagePath: string) => Promise<boolean>;
+  onOpenAnexo?: (anexo: Anexo) => Promise<string | null>;
+  onDetailChanged?: () => void;
   onEditTaskTitle: (orderId: string, taskId: string, newTitle: string) => Promise<void>;
   onEditTaskDueDate?: (orderId: string, taskId: string, newDueDate: string | undefined) => Promise<void>;
   onAddSubtarefa?: (orderId: string, taskId: string, descricao: string) => Promise<void>;
   onToggleSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
-  onDeleteSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<void>;
-  onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<void>;
-  onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<void>;
+  onDeleteSubtarefa?: (orderId: string, taskId: string, subtaskId: string) => Promise<boolean | void>;
+  onAddComentarioTarefa?: (orderId: string, taskId: string, texto: string) => Promise<boolean | void>;
+  onDeleteComentarioTarefa?: (orderId: string, taskId: string, comentarioId: string) => Promise<boolean | void>;
   today?: Date;
-  currentUser: TeamMember;
+  canManageOrder?: boolean;
+  activeTab?: OrderTab;
+  onTabChange?: (tab: OrderTab) => void;
+  overview?: { order: OrderV1; summary: TaskSummary;
+    frontSummaries: Array<{ front: Front; summary: TaskSummary }>;
+    nextAction: NextAction | null; recent: { text: string; at: string; author: string } | null } | null;
+  onFocusTask?: (taskId: string) => void;
+  focusedTaskId?: string | null;
+  detailError?: string | null;
+  sectionError?: string | null;
+  sectionLoading?: boolean;
+  taskSection?: OrderTasksSectionProps | null;
+  onOpenCalendarEntry?: (entry: CalendarEntry) => void;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), currentUser }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onDeleteAtividade, timelineEntries, onSaveUpdate, onUploadFiles, onDeleteAnexo, onOpenAnexo, onDetailChanged, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null, onOpenCalendarEntry }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember>('Thomás');
+  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [newAtividade, setNewAtividade] = useState('');
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
   const [editingTaskDueDateId, setEditingTaskDueDateId] = useState<string | null>(null);
   const [editingTaskDueDateValue, setEditingTaskDueDateValue] = useState('');
-  
-  const [stagedFiles, setStagedFiles] = useState<{ file: File, legenda: string }[]>([]);
   
   const [editingOrderField, setEditingOrderField] = useState<'orderNumber' | 'title' | 'client' | 'address' | null>(null);
   const [editingOrderValue, setEditingOrderValue] = useState('');
@@ -52,19 +106,82 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
   const [newSubtarefaText, setNewSubtarefaText] = useState<{ [taskId: string]: string }>({});
   const [newComentarioText, setNewComentarioText] = useState<{ [taskId: string]: string }>({});
   const [isRecording, setIsRecording] = useState<{ [taskId: string]: boolean }>({});
+  const [deletingSubtaskId, setDeletingSubtaskId] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const hasOrder = Boolean(order);
+
+  useEffect(() => {
+    let active = true;
+    if (focusedTaskId && order?.tasks.some(task => task.id === focusedTaskId)) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setExpandedTasks(previous => previous.includes(focusedTaskId) ? previous : [...previous, focusedTaskId]);
+        if (activeTab === 'tasks') document.getElementById(`task-${focusedTaskId}`)?.focus();
+      });
+    }
+    return () => { active = false; };
+  }, [focusedTaskId, order, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!taskSection?.focusedTaskId) closeButtonRef.current?.focus();
+    return () => { previousFocus?.focus(); };
+  }, [isOpen, hasOrder, taskSection?.focusedTaskId]);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTasks(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
   };
 
+  const requestOrderStatus = async (status: OrderStatus) => {
+    if (!order || !onSetOrderStatus) return;
+    if (status === 'Finalizado' && !window.confirm(
+      'Finalizar este Pedido? A conclusão das tarefas não será alterada.'
+    )) return;
+    if (status === 'Cancelado' && !window.confirm(
+      'Cancelar este Pedido? As tarefas existentes serão preservadas.'
+    )) return;
+    setIsChangingStatus(true);
+    try {
+      await onSetOrderStatus(order.id, status);
+    } finally {
+      setIsChangingStatus(false);
+    }
+  };
+
+  const requestDeleteSubtask = async (taskId: string, subtaskId: string, description: string) => {
+    if (!order || !onDeleteSubtarefa) return;
+    if (!window.confirm(`Deseja excluir a subtarefa "${description}"?`)) return;
+
+    setDeletingSubtaskId(subtaskId);
+    try {
+      await onDeleteSubtarefa(order.id, taskId, subtaskId);
+    } finally {
+      setDeletingSubtaskId(current => current === subtaskId ? null : current);
+    }
+  };
+
+  const requestDeleteComment = async (taskId: string, commentId: string, text: string) => {
+    if (!order || !onDeleteComentarioTarefa) return;
+    if (!window.confirm(`Deseja excluir a nota de campo "${text}"?`)) return;
+
+    setDeletingCommentId(commentId);
+    try {
+      await onDeleteComentarioTarefa(order.id, taskId, commentId);
+    } finally {
+      setDeletingCommentId(current => current === commentId ? null : current);
+    }
+  };
+
   const startVoiceInput = (taskId: string) => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
       alert('Seu navegador não suporta reconhecimento de voz.');
       return;
     }
-    
-    // @ts-ignore
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
     recognition.interimResults = false;
@@ -74,7 +191,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
       setIsRecording(prev => ({ ...prev, [taskId]: true }));
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setNewComentarioText(prev => ({
         ...prev,
@@ -82,7 +199,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
       }));
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
       setIsRecording(prev => ({ ...prev, [taskId]: false }));
     };
@@ -94,24 +211,14 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
     recognition.start();
   };
 
-  // Reset input when order changes
-  useEffect(() => {
-    setNewTaskTitle('');
-    setNewTaskDueDate('');
-    setNewAtividade('');
-    setIsDeleting(false);
-    setStagedFiles([]);
-    setEditingOrderField(null);
-  }, [order?.id]);
-  
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (isOpen && e.key === 'Escape' && !taskSection?.focusedTaskId) onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, isOpen, taskSection?.focusedTaskId]);
 
   // Prevent scroll on body when drawer is open
   useEffect(() => {
@@ -138,6 +245,10 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
 
       {/* Drawer */}
       <div 
+        role="dialog"
+        aria-modal={isOpen}
+        aria-hidden={!isOpen}
+        aria-label="Detalhes do Pedido"
         className={cn(
           "fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col",
           isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
@@ -149,7 +260,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Detalhes do Pedido</h2>
               <div className="flex items-center gap-2">
-                {currentUser === 'Thomás' && (
+                {canManageOrder && (
                   <button 
                     onClick={() => setIsDeleting(true)}
                     className="p-2 rounded-full hover:bg-red-50 text-red-500 transition-colors"
@@ -159,6 +270,8 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   </button>
                 )}
                 <button 
+                  ref={closeButtonRef}
+                  aria-label="Fechar Pedido"
                   onClick={onClose}
                   className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
                 >
@@ -275,6 +388,39 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge order={order} today={today} />
                 </div>
+                {onSetOrderStatus && (
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === 'Em andamento' ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={isChangingStatus}
+                          onClick={() => void requestOrderStatus('Finalizado')}
+                          className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          Finalizar pedido
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isChangingStatus}
+                          onClick={() => void requestOrderStatus('Cancelado')}
+                          className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
+                        >
+                          Cancelar pedido
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isChangingStatus}
+                        onClick={() => void requestOrderStatus('Em andamento')}
+                        className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Reabrir pedido
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Info section */}
@@ -383,7 +529,19 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 </div>
               </div>
 
+              <OrderTabs active={activeTab} onChange={onTabChange ?? (() => {})} calendarEnabled />
+              {sectionLoading && (activeTab === 'updates' || activeTab === 'files') &&
+                <p role="status" className="text-sm text-gray-600">Carregando seção...</p>}
+              {sectionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{sectionError}</p>}
+              {activeTab === 'summary' && overview && <OrderSummary {...overview}
+                onOpenTask={onFocusTask ?? (() => {})} />}
+              {activeTab === 'calendar' && <CalendarView
+                scope={{ orderId: order.id, ...calendarMonth(today) }}
+                onOpenEntry={onOpenCalendarEntry ?? (entry => window.location.assign(entry.href))} />}
+
               {/* Checklist section */}
+              {activeTab === 'tasks' && taskSection && <OrderTasksSection {...taskSection} />}
+              {activeTab === 'tasks' && !taskSection && <>
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <CheckSquare className="w-5 h-5 text-blue-600" />
@@ -396,7 +554,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     const subtasksTotal = task.subtarefas?.length || 0;
                     const subtasksCompleted = task.subtarefas?.filter(s => s.concluida).length || 0;
                     return (
-                    <div key={task.id} className="flex flex-col gap-1">
+                    <div key={task.id} id={`task-${task.id}`} tabIndex={-1} className="flex flex-col gap-1">
                       <div 
                         className={cn(
                           "group flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
@@ -479,6 +637,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                 memberColor(task.assignee).badge
                               )}>
                                 {task.assignee}
+                                {!task.assigneeUserId && <span className="ml-1 normal-case font-normal">· não vinculado</span>}
                               </span>
                             )}
                             {editingTaskDueDateId === task.id ? (
@@ -535,7 +694,7 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                           </div>
                         </div>
                         <div className="flex items-center gap-1 no-accordion" onClick={(e) => e.stopPropagation()}>
-                          {currentUser === 'Thomás' && (
+                          {canManageOrder && (
                             <button 
                               onClick={(e) => { 
                                 e.preventDefault(); 
@@ -585,12 +744,19 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                     {sub.descricao}
                                   </span>
                                 </label>
-                                <button
-                                  onClick={() => onDeleteSubtarefa && onDeleteSubtarefa(order.id, task.id, sub.id)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                                {onDeleteSubtarefa && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void requestDeleteSubtask(task.id, sub.id, sub.descricao)}
+                                    disabled={deletingSubtaskId !== null}
+                                    aria-busy={deletingSubtaskId === sub.id}
+                                    aria-label={`Excluir subtarefa ${sub.descricao}`}
+                                    title="Excluir subtarefa"
+                                    className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                  >
+                                    <Trash2 className={cn("w-3 h-3", deletingSubtaskId === sub.id && "animate-pulse")} />
+                                  </button>
+                                )}
                               </div>
                             ))}
                             <form 
@@ -631,12 +797,17 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-700">{com.texto}</p>
-                                  {currentUser === 'Thomás' && (
+                                  {onDeleteComentarioTarefa && (
                                     <button
-                                      onClick={() => onDeleteComentarioTarefa && onDeleteComentarioTarefa(order.id, task.id, com.id)}
-                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-yellow-600 hover:text-red-500 transition-all bg-yellow-50 rounded-md"
+                                      type="button"
+                                      onClick={() => void requestDeleteComment(task.id, com.id, com.texto)}
+                                      disabled={deletingCommentId !== null}
+                                      aria-busy={deletingCommentId === com.id}
+                                      aria-label={`Excluir nota de campo ${com.texto}`}
+                                      title="Excluir nota de campo"
+                                      className="absolute top-1 right-1 p-1 text-yellow-600 hover:text-red-500 transition-colors bg-yellow-50 rounded-md disabled:opacity-50 disabled:cursor-wait"
                                     >
-                                      <Trash2 className="w-3 h-3" />
+                                      <Trash2 className={cn("w-3 h-3", deletingCommentId === com.id && "animate-pulse")} />
                                     </button>
                                   )}
                                 </div>
@@ -666,7 +837,6 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                                   type="button"
                                   onClick={() => {
                                     if (isRecording[task.id]) {
-                                      // @ts-ignore
                                       // We can't stop it directly without the recognition instance reference, but it will auto-stop when speech ends.
                                       // Ideally we store the instance, but for now we rely on auto-end or toggle.
                                     } else {
@@ -697,12 +867,24 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   )})}
                   
                   <form 
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
-                      if (!newTaskTitle.trim()) return;
-                      onAddTask(order.id, newTaskTitle.trim(), newTaskAssignee, newTaskDueDate || undefined);
-                      setNewTaskTitle('');
-                      setNewTaskDueDate('');
+                      if (!newTaskTitle.trim() || isSavingTask) return;
+                      setIsSavingTask(true);
+                      try {
+                        const succeeded = await onAddTask(
+                          order.id,
+                          newTaskTitle.trim(),
+                          newTaskAssigneeId || null,
+                          newTaskDueDate || undefined
+                        );
+                        if (succeeded !== false) {
+                          setNewTaskTitle('');
+                          setNewTaskDueDate('');
+                        }
+                      } finally {
+                        setIsSavingTask(false);
+                      }
                     }} 
                     className="flex items-center gap-1.5 mt-3 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200"
                   >
@@ -714,15 +896,17 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                       className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     />
                     <select
-                      value={newTaskAssignee}
-                      onChange={(e) => setNewTaskAssignee(e.target.value as TeamMember)}
-                      className="w-24 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
+                      value={newTaskAssigneeId}
+                      onChange={(e) => setNewTaskAssigneeId(e.target.value)}
+                      className="w-36 px-1.5 py-1.5 bg-white border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-500 transition-all text-gray-600 flex-shrink-0"
                       title="Responsável"
                     >
-                      <option value="Thomás">Thomás</option>
-                      <option value="Roberto">Roberto</option>
-                      <option value="Katlyn">Katlyn</option>
-                      <option value="Equipe de Campo">Equipe de Campo</option>
+                      <option value="">Sem responsável</option>
+                      {members.map(member => (
+                        <option key={member.userId} value={member.userId}>
+                          {formatMemberLabel(member)}
+                        </option>
+                      ))}
                     </select>
                     <input 
                       type="date"
@@ -733,7 +917,8 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                     />
                     <button 
                       type="submit"
-                      disabled={!newTaskTitle.trim()}
+                      aria-label="Adicionar tarefa"
+                      disabled={!newTaskTitle.trim() || isSavingTask}
                       className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                     >
                       <Plus className="w-4 h-4" />
@@ -741,207 +926,47 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   </form>
                 </div>
               </div>
+              </>}
 
               {/* Atividades / Resumo de Reunião */}
+              {activeTab === 'updates' && !sectionLoading && !sectionError && <>
               <div className="space-y-4 pt-4 border-t border-gray-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-purple-600" />
-                  Histórico e Resumos
+                  Atualizações
                 </h3>
-                
-                <div className="space-y-3">
-                  {order.atividades && order.atividades.length > 0 ? (
-                    order.atividades.map(atividade => (
-                      <div key={atividade.id} className="group bg-purple-50/50 border border-purple-100 rounded-lg p-3 relative">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-purple-700">{atividade.usuario}</span>
-                          <span className="text-xs text-purple-400">
-                            {format(parseISO(atividade.criado_em), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700 pr-6">{atividade.descricao}</p>
-                        {currentUser === 'Thomás' && (
-                          <button 
-                            onClick={() => {
-                              if (window.confirm('Deseja excluir este registro permanentemente?')) {
-                                onDeleteAtividade(order.id, atividade.id);
-                              }
-                            }}
-                            className="absolute right-2 top-2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                            title="Deletar registro"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">Nenhum registro ainda.</p>
-                  )}
-                </div>
-
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!newAtividade.trim()) return;
-                    onAddAtividade(order.id, newAtividade.trim());
-                    setNewAtividade('');
-                  }} 
-                  className="mt-3 flex flex-col gap-2"
-                >
-                  <textarea 
-                    placeholder="Adicionar resumo de reunião ou observação..." 
-                    value={newAtividade}
-                    onChange={(e) => setNewAtividade(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none"
-                  />
-                  <button 
-                    type="submit"
-                    disabled={!newAtividade.trim()}
-                    className="self-end px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Salvar Registro
-                  </button>
-                </form>
+                <OrderTimeline entries={timelineEntries ?? (order.atividades ?? []).map(atividade => ({
+                  id: atividade.id, orderId: order.id, frontId: null, taskId: null,
+                  kind: atividade.kind ?? 'manual', text: atividade.descricao, authorId: null,
+                  authorName: atividade.usuario, at: atividade.criado_em, followUpDate: null,
+                }))} fronts={taskSection?.fronts} tasks={taskSection?.tasks}
+                  attachments={order.anexos ?? []} onOpenAttachment={onOpenAnexo}
+                  onDeleteAttachment={onDeleteAnexo
+                    ? anexo => onDeleteAnexo(order.id, anexo.id, anexo.storage_path) : undefined}
+                  onChanged={onDetailChanged}
+                  onDelete={async id => await onDeleteAtividade(order.id, id)} />
+                {onSaveUpdate ? <UpdateComposer context={{ orderId: order.id, frontId: null, taskId: null }}
+                  onSave={onSaveUpdate} onUpload={onUploadFiles}
+                  onSaved={() => onDetailChanged?.()} /> : null}
               </div>
+              </>}
 
               {/* Documentos e Fotos */}
+              {activeTab === 'files' && !sectionLoading && !sectionError && <>
               <div className="space-y-4 pt-4 border-t border-gray-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <Paperclip className="w-5 h-5 text-blue-600" />
                   Documentos e Fotos
                 </h3>
-
-                <div className="flex gap-2 mb-4">
-                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
-                    <input 
-                      type="file" 
-                      className="sr-only" 
-                      multiple 
-                      accept="image/*,application/pdf"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
-                          setStagedFiles(prev => [...prev, ...newFiles]);
-                          e.target.value = ''; // reset input
-                        }
-                      }}
-                    />
-                    <UploadCloud className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
-                    <span className="text-xs font-semibold text-gray-600">Anexar Arquivos</span>
-                  </label>
-                  
-                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
-                    <input 
-                      type="file" 
-                      className="sr-only" 
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
-                          setStagedFiles(prev => [...prev, ...newFiles]);
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                    <Camera className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
-                    <span className="text-xs font-semibold text-gray-600">Tirar Foto</span>
-                  </label>
-                </div>
-
-                {/* Staging Area for new files */}
-                {stagedFiles.length > 0 && (
-                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-3 mb-4">
-                    <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Arquivos para Envio</h4>
-                    {stagedFiles.map((staged, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row gap-2 bg-white p-2 rounded-lg border border-blue-100 shadow-sm">
-                        <div className="flex items-center gap-2 flex-1 overflow-hidden">
-                          {staged.file.type.includes('pdf') ? <FileText className="w-4 h-4 text-red-500 flex-shrink-0" /> : <ImageIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />}
-                          <span className="text-xs font-medium text-gray-600 truncate">{staged.file.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                          <input 
-                            type="text"
-                            placeholder="Legenda (ex: Fundação...)"
-                            value={staged.legenda}
-                            onChange={(e) => {
-                              const newArr = [...stagedFiles];
-                              newArr[idx].legenda = e.target.value;
-                              setStagedFiles(newArr);
-                            }}
-                            className="flex-1 sm:w-48 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                          />
-                          <button 
-                            onClick={() => setStagedFiles(prev => prev.filter((_, i) => i !== idx))}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-end pt-2">
-                      <button 
-                        onClick={() => {
-                          if (onUploadFiles) {
-                            onUploadFiles(order.id, stagedFiles);
-                            setStagedFiles([]);
-                          }
-                        }}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                      >
-                        Enviar {stagedFiles.length} arquivo(s)
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {order.anexos && order.anexos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {order.anexos.map(anexo => {
-                      const isPdf = anexo.tipo.includes('pdf');
-                      return (
-                        <div key={anexo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
-                          <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="block w-full aspect-square relative">
-                            {isPdf ? (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white">
-                                <FileText className="w-10 h-10 text-red-500 mb-2" />
-                                <span className="text-[10px] font-medium text-gray-600 text-center truncate w-full px-2">{anexo.nome_arquivo}</span>
-                              </div>
-                            ) : (
-                              <img src={anexo.url} alt={anexo.nome_arquivo} className="absolute inset-0 w-full h-full object-cover" />
-                            )}
-                          </a>
-                          {anexo.legenda && (
-                            <div className="p-2 bg-white border-t border-gray-100 flex-1 flex items-center">
-                              <p className="text-xs font-medium text-gray-700 line-clamp-2">{anexo.legenda}</p>
-                            </div>
-                          )}
-                          
-                          {currentUser === 'Thomás' && onDeleteAnexo && (
-                            <button 
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (window.confirm('Deseja excluir este anexo permanentemente?')) {
-                                  onDeleteAnexo(order.id, anexo.id, anexo.url);
-                                }
-                              }}
-                              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-600 text-white rounded-full transition-colors shadow-sm z-10 backdrop-blur-sm"
-                              title="Excluir anexo"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 italic">Nenhum anexo salvo.</p>
-                )}
+                <OrderFiles attachments={order.anexos ?? []}
+                  context={{ orderId: order.id, frontId: null, taskId: null, updateId: null }}
+                  showAllContexts onUpload={onUploadFiles}
+                  onOpen={onOpenAnexo ?? (async anexo => anexo.signed_url ?? null)}
+                  onDelete={onDeleteAnexo
+                    ? anexo => onDeleteAnexo(order.id, anexo.id, anexo.storage_path) : undefined}
+                  onChanged={onDetailChanged} />
               </div>
+              </>}
 
             </div>
             
@@ -956,11 +981,19 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            Carregando...
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-gray-500">
+            {detailError ? <p role="alert" className="text-center text-sm text-red-700">{detailError}</p> : 'Carregando...'}
+            {detailError && <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">Fechar</button>}
           </div>
         )}
       </div>
     </>
   );
+}
+
+function calendarMonth(date: Date) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+  return { from: `${prefix}-01`, to: `${prefix}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}` };
 }

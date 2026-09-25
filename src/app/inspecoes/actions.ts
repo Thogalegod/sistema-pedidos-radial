@@ -1,91 +1,69 @@
 'use server';
 
 import { supabase } from '@/lib/supabase';
-import { calcularRelatorio, formatarNumeroRelatorio, tensaoBtLabel, TransformerInput } from '@/lib/transformer-calc';
+import { TransformerInput } from '@/lib/transformer-calc';
+import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
+import {
+  buildTransformadorInsert,
+  buildTransformadorRevisionInput,
+} from '@/lib/transformador/report-actions';
 import { revalidatePath } from 'next/cache';
 
-export async function criarRelatorioTransformador(input: TransformerInput, access_token?: string, refresh_token?: string) {
-  console.log('[ACTION] criarRelatorioTransformador chamada com input:', input.potenciaKva, 'kVA');
-  
+async function setSession(access_token?: string, refresh_token?: string) {
   if (access_token && refresh_token) {
-    await supabase.auth.setSession({ access_token, refresh_token });
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) throw new Error(`Não foi possível autenticar a sessão: ${error.message}`);
   }
+}
+
+async function getTransformadorContext(access_token?: string, refresh_token?: string) {
+  await setSession(access_token, refresh_token);
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (!user) {
-    console.error('[ACTION] Usuário não autenticado no servidor. Erro:', userError);
-    throw new Error('Não autenticado. Sessão não encontrada no servidor.');
+    throw new Error(`Não autenticado${userError?.message ? `: ${userError.message}` : ''}`);
   }
 
-  // 1. Gera os valores calculados AGORA e salva fixos
-  const valoresCalculados = calcularRelatorio(input);
+  const organizationId = await getCurrentOrganizationId(supabase);
+  return { user, organizationId };
+}
 
-  // 2. Gera número sequencial do relatório
-  // Conta os relatórios do mês atual para sequencial
-  const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString();
+async function insertRelatorioTransformador(
+  input: TransformerInput,
+  context: { organizationId: string; userId: string; revisedFromId?: string }
+) {
+  const payload = buildTransformadorInsert(input, context);
 
-  const { count } = await supabase
-    .from('relatorios_transformador')
-    .select('*', { count: 'exact', head: true })
-    .gte('criado_em', inicioMes);
-
-  const sequencial = (count ?? 0) + 1;
-  const numeroRelatorio = formatarNumeroRelatorio(sequencial);
-
-  // 3. Salva no banco — valores nunca serão recalculados automaticamente
   const { data, error } = await supabase
     .from('relatorios_transformador')
-    .insert({
-      numero_relatorio: numeroRelatorio,
-      criado_por: user.id,
-
-      cliente_nome: input.clienteNome,
-      cliente_endereco: input.clienteEndereco,
-      cliente_cidade: input.clienteCidade,
-      cliente_uf: input.clienteUf,
-      cliente_cnpj: input.clienteCnpj,
-      cliente_ie: input.clienteIe,
-      observacoes: input.observacoes,
-
-      fabricante: input.fabricante,
-      numero_serie: input.numeroSerie,
-      potencia_kva: input.potenciaKva,
-      tensao_at_nominal: input.tensaoAtNominal,
-      tensao_bt: input.tensaoBt,
-      tensao_bt_label: tensaoBtLabel(input.tensaoBt),
-      resfriamento: input.resfriamento ?? 'LN',
-      grupo_ligacao: input.grupoLigacao ?? 'Subtrativa',
-      tipo_oleo: input.tipoOleo ?? 'Mineral',
-      procedencia_oleo: input.procedenciaOleo ?? 'BR',
-      tap_despacho: input.tapDespacho,
-      taps: input.taps,
-
-      responsavel_nome: input.responsavelNome ?? 'Roberto Fontes Lopes',
-      responsavel_crea: input.responsavelCrea ?? 'CREA 060.104.922.9',
-      data_relatorio: input.dataRelatorio,
-      temperatura_c: input.temperaturaC ?? 26,
-      umidade_relativa: input.umidadeRelativa,
-
-      valores_calculados: valoresCalculados, // FIXO — nunca se altera
-      status: 'gerado',
-    })
-    .select()
+    .insert(payload)
+    .select('id, numero_relatorio')
     .single();
 
   if (error) {
-    console.error('[ACTION ERROR] Erro detalhado do Supabase:', JSON.stringify(error, null, 2));
     throw new Error(`Erro ao salvar relatório: ${error.message}`);
   }
 
+  return data;
+}
+
+export async function criarRelatorioTransformador(input: TransformerInput, access_token?: string, refresh_token?: string) {
+  const { user, organizationId } = await getTransformadorContext(access_token, refresh_token);
+  const data = await insertRelatorioTransformador(input, {
+    organizationId,
+    userId: user.id,
+  });
+
   revalidatePath('/inspecoes');
-  return { numeroRelatorio, id: data.id };
+  return { numeroRelatorio: data.numero_relatorio, id: data.id, organizationId };
 }
 
 export async function listarRelatorios() {
+  const organizationId = await getCurrentOrganizationId(supabase);
   const { data, error } = await supabase
     .from('relatorios_transformador')
     .select('id, numero_relatorio, cliente_nome, potencia_kva, tensao_bt_label, data_relatorio, status, criado_em')
+    .eq('organization_id', organizationId)
     .order('criado_em', { ascending: false });
 
   if (error) throw error;
@@ -93,9 +71,11 @@ export async function listarRelatorios() {
 }
 
 export async function buscarRelatorio(id: string) {
+  const organizationId = await getCurrentOrganizationId(supabase);
   const { data, error } = await supabase
     .from('relatorios_transformador')
     .select('*')
+    .eq('organization_id', organizationId)
     .eq('id', id)
     .single();
 
@@ -104,58 +84,105 @@ export async function buscarRelatorio(id: string) {
 }
 
 export async function cancelarRelatorio(id: string, access_token?: string, refresh_token?: string) {
-  if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
+  const { organizationId } = await getTransformadorContext(access_token, refresh_token);
   
-  const { error } = await supabase.from('relatorios_transformador').update({ status: 'cancelado' }).eq('id', id);
-  if (error) throw new Error(`Erro ao cancelar: ${error.message}`);
+  const { data, error } = await supabase
+    .from('relatorios_transformador')
+    .update({ status: 'cancelado' })
+    .eq('organization_id', organizationId)
+    .eq('id', id)
+    .select('id, status')
+    .single();
+  if (error || !data) {
+    throw new Error(`Erro ao cancelar: ${error?.message ?? 'relatório não encontrado na organização'}`);
+  }
   
   revalidatePath('/inspecoes');
   revalidatePath(`/inspecoes/${id}`);
+  return { id: data.id, status: data.status };
 }
 
 export async function deletarRelatorio(id: string, access_token?: string, refresh_token?: string) {
-  if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
-  
-  const { error } = await supabase.from('relatorios_transformador').delete().eq('id', id);
-  if (error) throw new Error(`Erro ao deletar: ${error.message}`);
+  const { organizationId } = await getTransformadorContext(access_token, refresh_token);
+
+  const { data: report, error: readError } = await supabase
+    .from('relatorios_transformador')
+    .select('id, status, revised_from_id, superseded_by_id')
+    .eq('organization_id', organizationId)
+    .eq('id', id)
+    .single();
+
+  if (readError || !report) {
+    throw new Error(`Erro ao localizar relatório: ${readError?.message ?? 'não encontrado na organização'}`);
+  }
+
+  if (report.status !== 'cancelado') {
+    throw new Error('Somente relatórios cancelados podem ser excluídos');
+  }
+
+  if (report.status === 'revisado' || report.revised_from_id || report.superseded_by_id) {
+    throw new Error('Relatórios vinculados ao histórico de revisão não podem ser excluídos');
+  }
+
+  const { data, error } = await supabase
+    .from('relatorios_transformador')
+    .delete()
+    .eq('organization_id', organizationId)
+    .eq('id', id)
+    .select('id')
+    .single();
+  if (error || !data) {
+    throw new Error(`Erro ao deletar: ${error?.message ?? 'relatório não encontrado na organização'}`);
+  }
   
   revalidatePath('/inspecoes');
+  return { id: data.id };
 }
 
 export async function criarRevisao(idOrigem: string, input: TransformerInput, access_token?: string, refresh_token?: string) {
-  if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
+  const { user, organizationId } = await getTransformadorContext(access_token, refresh_token);
   
-  // Buscar relatório antigo
   const { data: relAntigo, error: errAntigo } = await supabase
     .from('relatorios_transformador')
-    .select('numero_relatorio, observacoes')
+    .select('id, numero_relatorio, observacoes, status')
+    .eq('organization_id', organizationId)
     .eq('id', idOrigem)
     .single();
     
   if (errAntigo || !relAntigo) throw new Error('Relatório antigo não encontrado');
+  if (relAntigo.status === 'revisado') throw new Error('Este relatório já possui revisão');
   
-  // Adicionar anotação de revisão no NOVO
-  const novaObs = input.observacoes 
-    ? `${input.observacoes}\n(Revisão do relatório ${relAntigo.numero_relatorio})`
-    : `Revisão do relatório ${relAntigo.numero_relatorio}`;
-  
-  const novoInput = { ...input, observacoes: novaObs };
-  
-  // Criar o NOVO
-  const novoRelatorio = await criarRelatorioTransformador(novoInput, access_token, refresh_token);
-  
-  // Cancelar o ANTIGO e anotar a substituição
-  const obsAntiga = relAntigo.observacoes 
-    ? `${relAntigo.observacoes}\n(Substituído pelo relatório ${novoRelatorio.numeroRelatorio})`
-    : `Substituído pelo relatório ${novoRelatorio.numeroRelatorio}`;
-    
-  await supabase.from('relatorios_transformador').update({
-    status: 'cancelado',
-    observacoes: obsAntiga
-  }).eq('id', idOrigem);
+  const revision = buildTransformadorRevisionInput(input, {
+    originalId: idOrigem,
+    originalNumber: relAntigo.numero_relatorio,
+  });
+
+  const payload = buildTransformadorInsert(revision.input, {
+    organizationId,
+    userId: user.id,
+    revisedFromId: revision.revisedFromId,
+  });
+
+  const { data: revisionData, error: revisionError } = await supabase
+    .rpc('create_transformador_revision', {
+      p_organization_id: organizationId,
+      p_original_id: idOrigem,
+      p_report: payload,
+    })
+    .single();
+
+  const novoRelatorio = revisionData as { id: string; numero_relatorio: string } | null;
+
+  if (revisionError || !novoRelatorio) {
+    throw new Error(`Erro ao criar revisão: ${revisionError?.message ?? 'relatório revisado não retornado'}`);
+  }
   
   revalidatePath('/inspecoes');
   revalidatePath(`/inspecoes/${idOrigem}`);
   
-  return novoRelatorio;
+  return {
+    numeroRelatorio: novoRelatorio.numero_relatorio,
+    id: novoRelatorio.id,
+    organizationId,
+  };
 }

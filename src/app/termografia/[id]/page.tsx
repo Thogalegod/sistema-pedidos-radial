@@ -1,15 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Camera, Edit3, Eye, FileText, Plus, Printer, Save, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast, Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
-import { getUrlArquivo } from '@/lib/storage';
-import { uploadArquivo } from '@/lib/storage';
-import { conclusoesPadrao, gerarIdPonto, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio, TermografiaRisco } from '@/lib/termografia/types';
+import { conclusoesPadrao, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio, TermografiaRisco } from '@/lib/termografia/types';
+import { createTermografiaPoint, loadTermografiaReport, updateTermografiaPoint } from '@/lib/termografia/report-actions';
+import { createTermografiaSignedUrl, removeRegisteredTermografiaFile, uploadTermografiaPhoto } from '@/lib/termografia/storage';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -45,13 +45,6 @@ async function prepararImagem(file: File) {
   });
 }
 
-function removerFotosAssinadas(ponto: PontoComFotos): TermografiaPonto {
-  const limpo = { ...ponto };
-  delete limpo.fotoDigitalSrc;
-  delete limpo.fotoTermicaSrc;
-  return limpo;
-}
-
 export default function TermografiaViewer(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
@@ -66,16 +59,19 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   const [salvando, setSalvando] = useState(false);
   const [carregandoFotos, setCarregandoFotos] = useState(false);
 
-  useEffect(() => {
-    supabase
-      .from('relatorios_termografia')
-      .select('*')
-      .eq('id', params.id)
-      .single()
-      .then(({ data: rel, error }) => {
-        setData(error ? false : rel as TermografiaRelatorio);
-      });
+  const carregarRelatorio = useCallback(async () => {
+    try {
+      const rel = await loadTermografiaReport(supabase, params.id);
+      setData(rel);
+      setPontos(rel.pontos);
+    } catch {
+      setData(false);
+    }
   }, [params.id]);
+
+  useEffect(() => {
+    carregarRelatorio();
+  }, [carregarRelatorio]);
 
   if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
   if (!data) return <div className="p-8 text-center">Carregando relatório...</div>;
@@ -133,8 +129,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
     try {
       const assinados = await Promise.all(pontosDaLinha.map(async (ponto) => ({
         ...ponto,
-        fotoDigitalSrc: ponto.fotoDigitalUrl ? await getUrlArquivo(ponto.fotoDigitalUrl) : null,
-        fotoTermicaSrc: ponto.fotoTermicaUrl ? await getUrlArquivo(ponto.fotoTermicaUrl) : null,
+        fotoDigitalSrc: ponto.fotoDigitalUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoDigitalUrl) : null,
+        fotoTermicaSrc: ponto.fotoTermicaUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoTermicaUrl) : null,
       })));
 
       setPontos((atuais) => atuais.map((item) => {
@@ -173,56 +169,52 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
 
     setSalvando(true);
     try {
-      const novoId = gerarIdPonto();
       const index = adicionandoPonto ? pontosBase.length : pontosBase.findIndex((p) => p.id === ponto.id);
-      let fotoDigitalUrl = draft.fotoDigitalUrl ?? ponto.fotoDigitalUrl ?? null;
-      let fotoTermicaUrl = draft.fotoTermicaUrl ?? ponto.fotoTermicaUrl ?? null;
-
-      if (fotoDigitalFile) {
-        const file = await prepararImagem(fotoDigitalFile);
-        fotoDigitalUrl = await uploadArquivo(file, `termografia/${data.numero_relatorio}`, `oc-${index + 1}-digital.jpg`);
-      }
-      if (fotoTermicaFile) {
-        const file = await prepararImagem(fotoTermicaFile);
-        fotoTermicaUrl = await uploadArquivo(file, `termografia/${data.numero_relatorio}`, `oc-${index + 1}-termica.jpg`);
-      }
-
-      const pontoSalvo: TermografiaPonto = {
-        id: adicionandoPonto ? novoId : ponto.id,
+      const pontoPayload = {
         setor,
         local,
         inspecionado: Boolean(draft.inspecionado),
         ocorrencia: Boolean(draft.ocorrencia),
         componente: draft.componente,
         temperatura: draft.temperatura,
+        data_hora_foto: draft.dataHoraFoto,
         classificacao: draft.classificacao,
         risco: draft.risco,
         conclusao: draft.conclusao,
-        fotoDigitalUrl,
-        fotoTermicaUrl,
       };
 
-      const atualizados = adicionandoPonto
-        ? [...pontosBase.map((item) => removerFotosAssinadas(item as PontoComFotos)), pontoSalvo]
-        : pontosBase.map((item) => {
-          if (item.id !== ponto.id) return removerFotosAssinadas(item as PontoComFotos);
-          return pontoSalvo;
+      const pontoSalvo = adicionandoPonto
+        ? await createTermografiaPoint(supabase, data.id, pontoPayload, index + 1)
+        : await updateTermografiaPoint(supabase, data.id, ponto.id, pontoPayload);
+
+      if (fotoDigitalFile) {
+        if (ponto.fotoDigitalArquivoId && ponto.fotoDigitalUrl) {
+          await removeRegisteredTermografiaFile(supabase, { id: ponto.fotoDigitalArquivoId, storage_path: ponto.fotoDigitalUrl });
+        }
+        const file = await prepararImagem(fotoDigitalFile);
+        await uploadTermografiaPhoto(supabase, {
+          organizationId: data.organization_id,
+          reportId: data.id,
+          pointId: pontoSalvo.id,
+          kind: 'digital',
+          file,
         });
+      }
+      if (fotoTermicaFile) {
+        if (ponto.fotoTermicaArquivoId && ponto.fotoTermicaUrl) {
+          await removeRegisteredTermografiaFile(supabase, { id: ponto.fotoTermicaArquivoId, storage_path: ponto.fotoTermicaUrl });
+        }
+        const file = await prepararImagem(fotoTermicaFile);
+        await uploadTermografiaPhoto(supabase, {
+          organizationId: data.organization_id,
+          reportId: data.id,
+          pointId: pontoSalvo.id,
+          kind: 'termica',
+          file,
+        });
+      }
 
-      const { error } = await supabase
-        .from('relatorios_termografia')
-        .update({ pontos: atualizados })
-        .eq('id', data.id);
-
-      if (error) throw error;
-
-      const assinados = await Promise.all(atualizados.map(async (item) => ({
-        ...item,
-        fotoDigitalSrc: `${setor}|||${local}` === `${item.setor}|||${item.local}` && item.fotoDigitalUrl ? await getUrlArquivo(item.fotoDigitalUrl) : null,
-        fotoTermicaSrc: `${setor}|||${local}` === `${item.setor}|||${item.local}` && item.fotoTermicaUrl ? await getUrlArquivo(item.fotoTermicaUrl) : null,
-      })));
-      setPontos(assinados);
-      setData({ ...data, pontos: atualizados });
+      await carregarRelatorio();
       setLinhaSelecionada(`${setor}|||${local}`);
       cancelarEdicao();
       toast.success(adicionandoPonto ? 'Ponto adicionado.' : 'Registro atualizado.');
