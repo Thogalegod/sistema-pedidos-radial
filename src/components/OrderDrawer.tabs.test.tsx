@@ -71,6 +71,7 @@ describe('Pedido sections', () => {
     const { rerender } = render(<OrderDrawer order={order} isOpen activeTab="summary"
       onTabChange={onTabChange} overview={overview} {...callbacks} />);
     expect(screen.getByText('Progresso do Pedido')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Calendário' })).toBeEnabled();
     expect(screen.queryByText('Checklist de Tarefas')).not.toBeInTheDocument();
     expect(screen.queryByText('Documentos e Fotos')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: 'Tarefas' }));

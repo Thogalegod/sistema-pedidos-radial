@@ -17,6 +17,8 @@ import { OrderFiles } from './pedidos-tarefas/OrderFiles';
 import type { AttachmentContext, StagedAttachment } from '../lib/pedidos-tarefas/attachments';
 import type { TimelineEntry, UpdateInput } from '../lib/pedidos-tarefas/timeline';
 import type { WriteResult } from '../lib/pedidos-tarefas/types';
+import type { CalendarEntry } from '../lib/pedidos-tarefas/calendar';
+import { CalendarView } from './pedidos-tarefas/CalendarView';
 
 type SpeechRecognitionResultEvent = {
   results: { [index: number]: { [index: number]: { transcript: string } } };
@@ -80,9 +82,10 @@ interface OrderDrawerProps {
   sectionError?: string | null;
   sectionLoading?: boolean;
   taskSection?: OrderTasksSectionProps | null;
+  onOpenCalendarEntry?: (entry: CalendarEntry) => void;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onDeleteAtividade, timelineEntries, onSaveUpdate, onUploadFiles, onDeleteAnexo, onOpenAnexo, onDetailChanged, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onDeleteAtividade, timelineEntries, onSaveUpdate, onUploadFiles, onDeleteAnexo, onOpenAnexo, onDetailChanged, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null, onOpenCalendarEntry }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
@@ -526,12 +529,15 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                 </div>
               </div>
 
-              <OrderTabs active={activeTab} onChange={onTabChange ?? (() => {})} calendarEnabled={false} />
+              <OrderTabs active={activeTab} onChange={onTabChange ?? (() => {})} calendarEnabled />
               {sectionLoading && (activeTab === 'updates' || activeTab === 'files') &&
                 <p role="status" className="text-sm text-gray-600">Carregando seção...</p>}
               {sectionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{sectionError}</p>}
               {activeTab === 'summary' && overview && <OrderSummary {...overview}
                 onOpenTask={onFocusTask ?? (() => {})} />}
+              {activeTab === 'calendar' && <CalendarView
+                scope={{ orderId: order.id, ...calendarMonth(today) }}
+                onOpenEntry={onOpenCalendarEntry ?? (entry => window.location.assign(entry.href))} />}
 
               {/* Checklist section */}
               {activeTab === 'tasks' && taskSection && <OrderTasksSection {...taskSection} />}
@@ -983,4 +989,11 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
       </div>
     </>
   );
+}
+
+function calendarMonth(date: Date) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+  return { from: `${prefix}-01`, to: `${prefix}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}` };
 }

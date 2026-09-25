@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
-import { deleteEvent, saveEvent, type EventV1 } from './events';
+import { deleteEvent, loadEvent, loadEventEditorOptions, saveEvent, type EventV1 } from './events';
 
 function clientFor(response: unknown, status = 200) {
   const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -73,5 +73,41 @@ describe('Eventos do Pedido', () => {
     const absent = clientFor([]);
     await expect(deleteEvent(absent.client, 'org-a', 'event-a'))
       .resolves.toMatchObject({ ok: false, code: 'reload' });
+  });
+
+  it('loads a guessed event only through its organization-scoped identity', async () => {
+    const { client, requests } = clientFor({ id: 'event-a', tipo: 'meeting', titulo: 'Reunião',
+      data: '2026-10-15', horario: '09:30:00', responsavel_user_id: 'user-a',
+      observacao: null, customer_id: null, pedido_id: null, frente_id: null, tarefa_id: null });
+
+    await expect(loadEvent(client, 'org-a', 'event-a')).resolves.toMatchObject({
+      id: 'event-a', title: 'Reunião', time: '09:30',
+    });
+    expect(requests[0].url).toContain('organization_id=eq.org-a');
+    expect(requests[0].url).toContain('id=eq.event-a');
+  });
+
+  it('scopes every editor option list to the authenticated organization', async () => {
+    const urls: string[] = [];
+    const client = createClient('https://example.test', 'test-public-key', {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (url) => {
+        const value = String(url);
+        urls.push(value);
+        if (value.includes('/pedidos?')) return Response.json([{ id: 'p1', numero_pedido: '10', projeto: 'Projeto' }]);
+        if (value.includes('/pedido_frentes?')) return Response.json([{ id: 'f1', pedido_id: 'p1', nome: 'Instalação' }]);
+        if (value.includes('/tarefas?')) return Response.json([{ id: 't1', pedido_id: 'p1', frente_id: 'f1', descricao: 'Vistoria' }]);
+        return Response.json([{ id: 'c1', trade_name: 'Cliente', legal_name: 'Cliente Ltda.' }]);
+      } },
+    });
+
+    await expect(loadEventEditorOptions(client, 'org-a')).resolves.toEqual({
+      orders: [{ id: 'p1', label: '#10 · Projeto' }],
+      fronts: [{ id: 'f1', orderId: 'p1', label: 'Instalação' }],
+      tasks: [{ id: 't1', orderId: 'p1', frontId: 'f1', label: 'Vistoria' }],
+      customers: [{ id: 'c1', label: 'Cliente' }],
+    });
+    expect(urls).toHaveLength(4);
+    urls.forEach(url => expect(url).toContain('organization_id=eq.org-a'));
   });
 });

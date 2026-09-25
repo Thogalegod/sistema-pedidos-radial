@@ -1,6 +1,7 @@
 import {
   Building2,
   Camera,
+  CalendarDays,
   ClipboardList,
   FileText,
   House,
@@ -29,6 +30,7 @@ export const RENTAL_SUBMENU = [
 
 export const MODULES = [
   { id: 'orders', label: 'Controle de Pedidos', href: '/', icon: LayoutDashboard, description: 'Gerencie pedidos, tarefas e prazos da equipe.' },
+  { id: 'calendar', label: 'Calendário', href: '/calendario', icon: CalendarDays, description: 'Acompanhe prazos, follow-ups e eventos da equipe.' },
   { id: 'reports', label: 'Relatórios Técnicos', href: '/relatorios-tecnicos', icon: FileText, description: 'Acesse inspeções, termografia e relatórios de equipamentos.', children: REPORT_SUBMENU },
   { id: 'rentals', label: 'Controle de Locações', href: '/contratos-locacoes', icon: ClipboardList, description: 'Acompanhe contratos, clientes, cobranças e itens locados.', children: RENTAL_SUBMENU },
 ];
@@ -39,6 +41,7 @@ export function isNavigationActive(id: string, path: string) {
   switch (id) {
     case 'central': return path === '/hub';
     case 'orders': return path === '/';
+    case 'calendar': return within(path, '/calendario');
     case 'reports': return ['/relatorios-tecnicos', '/inspecoes', '/cabine', '/termografia'].some(root => within(path, root));
     case 'reports-cabin': return within(path, '/relatorios-tecnicos/cabine-primaria') || within(path, '/cabine');
     case 'reports-transformer': return within(path, '/relatorios-tecnicos/transformador') || within(path, '/inspecoes');
@@ -59,6 +62,6 @@ export function isNavigationActive(id: string, path: string) {
 export function usesAppShell(path: string) {
   if (path.endsWith('/imprimir') || path.endsWith('/visualizar')) return false;
   if (/^\/inspecoes\/[^/]+$/.test(path) && path !== '/inspecoes/nova') return false;
-  return path === '/' || ['/hub', '/contratos-locacoes', '/relatorios-tecnicos', '/inspecoes', '/cabine', '/termografia', '/configuracoes']
+  return path === '/' || ['/hub', '/calendario', '/contratos-locacoes', '/relatorios-tecnicos', '/inspecoes', '/cabine', '/termografia', '/configuracoes']
     .some(root => within(path, root));
 }

@@ -11,6 +11,14 @@ export function buildNewOrderHref() {
   return '/?action=new-order';
 }
 
+export function buildEventHref(eventId: string) {
+  return `/calendario?evento=${encodeURIComponent(eventId)}`;
+}
+
+export function resolveCalendarPageIntent(searchParams: Pick<URLSearchParams, 'get'>) {
+  return { eventId: searchParams.get('evento') };
+}
+
 export function resolveOrdersPageIntent(searchParams: Pick<URLSearchParams, 'get'>) {
   return {
     orderId: searchParams.get('pedido'),

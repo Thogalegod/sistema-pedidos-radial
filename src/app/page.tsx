@@ -1281,6 +1281,7 @@ export default function Home() {
         onClose={closeOrder}
         activeTab={activeTab}
         onTabChange={changeOrderTab}
+        onOpenCalendarEntry={entry => router.push(entry.href)}
         overview={overview}
         detailError={detailError ?? loadError}
         sectionError={activeTab === 'tasks' && focusedTaskId && selectedDetail &&

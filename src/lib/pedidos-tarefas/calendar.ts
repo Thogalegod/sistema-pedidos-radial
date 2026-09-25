@@ -1,5 +1,5 @@
 import type { EventKind, EventV1 } from './events';
-import { buildTaskHref } from './navigation';
+import { buildEventHref, buildTaskHref } from './navigation';
 import type { DateKey, Id, Subtask, TaskV1 } from './types';
 
 export type CalendarScope = { orderId?: Id; from: DateKey; to: DateKey };
@@ -52,7 +52,7 @@ export function projectCalendar(input: CalendarSources, scope: CalendarScope): C
     entries.push({ key: `${event.kind}:${event.id}`, kind: event.kind, sourceId: event.id,
       taskId: event.taskId, orderId: event.orderId, date: event.date, time: event.time,
       title: event.title, completed: false,
-      href: `/calendario?evento=${encodeURIComponent(event.id)}` });
+      href: buildEventHref(event.id) });
   });
 
   return [...new Map(entries.map(entry => [entry.key, entry])).values()]

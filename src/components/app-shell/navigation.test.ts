@@ -3,7 +3,7 @@ import { MODULES, REPORT_SUBMENU, RENTAL_SUBMENU, isNavigationActive, usesAppShe
 
 describe('navegação Radial', () => {
   it('conserva as rotas principais e expõe somente subáreas com rotas reais', () => {
-    expect(MODULES.map(item => item.href)).toEqual(['/', '/relatorios-tecnicos', '/contratos-locacoes']);
+    expect(MODULES.map(item => item.href)).toEqual(['/', '/calendario', '/relatorios-tecnicos', '/contratos-locacoes']);
     expect(REPORT_SUBMENU.map(item => [item.label, item.href])).toEqual([
       ['Cabine Primária', '/relatorios-tecnicos/cabine-primaria'],
       ['Transformador', '/relatorios-tecnicos/transformador'],
@@ -16,6 +16,11 @@ describe('navegação Radial', () => {
       ['Ativos', '/contratos-locacoes/ativos'],
       ['Cobranças', '/contratos-locacoes/cobrancas'],
     ]);
+  });
+  it('mantém o Calendário no shell e marca somente sua navegação como ativa', () => {
+    expect(isNavigationActive('calendar', '/calendario')).toBe(true);
+    expect(isNavigationActive('orders', '/calendario')).toBe(false);
+    expect(usesAppShell('/calendario')).toBe(true);
   });
   it.each(['/termografia/nova', '/cabine', '/inspecoes/nova', '/relatorios-tecnicos/transformador'])(
     'reconhece %s como parte de Relatórios Técnicos', path => {
