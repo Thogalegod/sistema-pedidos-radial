@@ -73,6 +73,7 @@ describe('loadDashboardTasks', () => {
       .toBe('is.null');
     expect(urls.find(url => url.pathname.endsWith('/atividades'))?.searchParams.get('or'))
       .toContain('migration_key.is.null');
+    expect(urls.find(url => url.pathname.endsWith('/atividades'))?.searchParams.get('select')).toBe('*');
   });
 });
 

@@ -5,7 +5,7 @@ import type { DateKey, Id } from './types';
 
 type OrderRow = { id: Id; numero_pedido: string; cliente: string };
 type TaskNoteRow = { tarefa_id: Id; texto: string; criado_em: string };
-type OrderActivityRow = { pedido_id: Id; descricao: string; criado_em: string };
+type OrderActivityRow = { pedido_id: Id; descricao: string; criado_em: string; source_comment_id?: Id | null };
 
 export interface DashboardReadClient {
   listRelevantTasks(org: Id, today: DateKey, filter: TaskFilter): Promise<TaskRow[]>;
@@ -85,12 +85,13 @@ export function createSupabaseDashboardReadClient(client: SupabaseClient): Dashb
 
     async listManualOrderActivities(org, orderIds) {
       const { data, error } = await client.from('atividades')
-        .select('pedido_id,descricao,criado_em')
+        .select('*')
         .eq('organization_id', org)
         .in('pedido_id', orderIds)
         .or('migration_key.is.null,migration_key.not.like.system:%')
         .order('criado_em', { ascending: false });
-      return rowsOrThrow<OrderActivityRow>(data, error, 'Não foi possível carregar as atualizações dos Pedidos');
+      return rowsOrThrow<OrderActivityRow>(data, error, 'Não foi possível carregar as atualizações dos Pedidos')
+        .filter(row => !row.source_comment_id);
     },
   };
 }

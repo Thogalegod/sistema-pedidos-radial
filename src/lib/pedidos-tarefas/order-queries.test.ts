@@ -86,4 +86,20 @@ describe('focused Pedido queries', () => {
     expect(urls.every(url => url.searchParams.get('organization_id') === 'eq.org1')).toBe(true);
     expect(urls.every(url => url.searchParams.get('pedido_id') === 'eq.p1' || url.searchParams.get('id') === 'eq.p1')).toBe(true);
   });
+
+  it('keeps legacy SQL free of the new column and hides copied notes client-side', async () => {
+    const { client, urls } = queryClient({ atividades: [
+      { id: 'a1', descricao: 'Manual', usuario: 'Ana', criado_em: '2026-09-25T11:00:00Z' },
+      { id: 'a2', descricao: 'Cópia', usuario: 'Ana', criado_em: '2026-09-25T10:00:00Z', source_comment_id: 'c1' },
+    ] });
+    await expect(loadOrderUpdates(client, 'org1', 'p1', 'legacy')).resolves.toHaveLength(1);
+    expect(urls[0].searchParams.get('select')).toBe('*');
+    expect(urls[0].searchParams.has('source_comment_id')).toBe(false);
+  });
+
+  it('filters projections in SQL after the copying capability is active', async () => {
+    const { client, urls } = queryClient({ atividades: [] });
+    await loadOrderUpdates(client, 'org1', 'p1', 'copying');
+    expect(urls[0].searchParams.get('source_comment_id')).toBe('is.null');
+  });
 });

@@ -21,7 +21,7 @@ const subtaskSchema = z.array(z.object({
 }));
 const dependencySchema = z.array(z.object({ tarefa_id: z.string(), predecessora_id: z.string() }));
 const recentSchema = z.object({ descricao: z.string(), criado_em: z.string(), usuario: z.string() });
-const updateSchema = z.array(recentSchema.extend({ id: z.string() }));
+const updateSchema = z.array(recentSchema.extend({ id: z.string(), source_comment_id: z.string().nullish() }));
 const attachmentSchema = z.array(z.object({ id: z.string(), pedido_id: z.string(),
   nome_arquivo: z.string(), legenda: z.string().nullable(), storage_path: z.string(),
   tipo: z.string(), criado_em: z.string() }));
@@ -96,12 +96,16 @@ export async function loadLegacyOrderDetail(client: SupabaseClient, org: Id, ord
   return data ? mapOrder(data, statusMode) : null;
 }
 
-export async function loadOrderUpdates(client: SupabaseClient, org: Id, orderId: Id): Promise<Atividade[]> {
-  const { data, error } = await client.from('atividades')
-    .select('id,descricao,usuario,criado_em').eq('organization_id', org).eq('pedido_id', orderId)
-    .order('criado_em', { ascending: false });
+export async function loadOrderUpdates(client: SupabaseClient, org: Id, orderId: Id,
+  timelineMode: Capabilities['timelineMode'] = 'legacy'): Promise<Atividade[]> {
+  let query = client.from('atividades').select(timelineMode === 'legacy'
+    ? '*' : 'id,descricao,usuario,criado_em,source_comment_id')
+    .eq('organization_id', org).eq('pedido_id', orderId);
+  if (timelineMode !== 'legacy') query = query.is('source_comment_id', null);
+  const { data, error } = await query.order('criado_em', { ascending: false });
   if (error) throw error;
-  return updateSchema.parse(data ?? []);
+  return updateSchema.parse(data ?? []).filter(row => !row.source_comment_id)
+    .map(row => ({ id: row.id, descricao: row.descricao, usuario: row.usuario, criado_em: row.criado_em }));
 }
 
 export async function loadOrderAttachments(client: SupabaseClient, org: Id, orderId: Id): Promise<Anexo[]> {

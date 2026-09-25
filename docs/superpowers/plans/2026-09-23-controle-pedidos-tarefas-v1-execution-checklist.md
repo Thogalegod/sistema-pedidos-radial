@@ -53,7 +53,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ### Lote 5 — Timeline e Arquivos
 
-- [ ] 5A — Expansão de atividades e captura de deltas (M12).
+- [x] 5A — Expansão de atividades e captura de deltas (M12): aplicada e verificada no IURQ; criação/remoção de nota sem duplicação visual aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [ ] 5B — Backfill verificável de comentários (M13).
 - [ ] 5C — Troca da fonte canônica e vínculos (M14).
 - [ ] 5D — Interface única de Atualizações e Arquivos.
@@ -75,7 +75,16 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente a M11/4C após aceite humano e iniciar a preparação local da M12/5A. Parar antes de qualquer aplicação remota da M12. Sem deploy.
+Prioridade atual: fechar seletivamente a M12/5A após aceite humano. Próximo gate é a preparação local da M13/5B; não aplicar M13 remotamente sem autorização explícita. Sem deploy.
+
+### Preparação de 5A — expansão da timeline e captura de deltas (25/09/2026)
+
+- Predecessor 4C fechado e publicado seletivamente no commit `73b190d`; M11 aplicada e verificada no IURQ, com aceite humano baseado em evidências automatizadas.
+- M12 `20260923201100_pedidos_v1_timeline_expand.sql` expande `atividades` sem criar tabela paralela, adicionando tipo, vínculos de Frente/tarefa, proveniência do comentário, tipo de evento e snapshot de follow-up. Atividades existentes são preservadas; vínculos incoerentes e atividades sem Pedido/tarefa são bloqueados.
+- Em modo `copying`, INSERT/DELETE de nota legada projeta/remove somente sua atividade derivada, com identidade, horário e texto preservados e idempotência por organização/comentário. Escrita direta autenticada não pode forjar atividade de sistema. Leitores legacy usam `select('*')` sem referenciar coluna ausente e filtram projeções no cliente; leitor copying filtra no SQL para evitar duplicação visual.
+- Reset local sem seed aplicou as **43 migrations** do zero. pgTAP M12: **11/11**; regressão focal M12+M11: **26/26**. Leitores: **9/9**; TypeScript e lint focal sem erros; lint de banco sem aviso novo da M12; verificação local retornou `copying`, zero atividades sem dono, fontes duplicadas/órfãs ou vínculo tarefa/Pedido divergente.
+- Target confirmado como IURQ `iurqgskfuupslrghgtej`. Após autorização explícita, M12 foi aplicada exclusivamente no IURQ: **43/43 migrations** sincronizadas. Verificação remota retornou rollout `copying`, zero atividades sem dono, fontes duplicadas/órfãs ou vínculo tarefa/Pedido divergente. Sem commit, push ou deploy do 5A; MISFY não acessado.
+- Teste final aceito pelo usuário em 25/09/2026: nota de campo permaneceu visível uma única vez e sua remoção continuou funcional. Fechamento Git do 5A autorizado.
 
 ### Preparação de 4C — regras após primeira conclusão (25/09/2026)
 

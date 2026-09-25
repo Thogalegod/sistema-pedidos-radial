@@ -260,7 +260,7 @@ export default function Home() {
     queueMicrotask(() => { if (active) { setSectionError(null); setSectionLoading(true); } });
     const read = async () => {
       if (activeTab === 'updates') {
-        const atividades = await loadOrderUpdates(supabase, org, orderId);
+        const atividades = await loadOrderUpdates(supabase, org, orderId, capabilities?.timelineMode ?? 'legacy');
         if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
           ? { ...previous, order: { ...previous.order, atividades } } : previous);
       } else {
@@ -283,7 +283,8 @@ export default function Home() {
       if (active) setSectionLoading(false);
     });
     return () => { active = false; };
-  }, [activeTab, selectedOrderId, organizationId, loadedDetailId, loadedDetailOrg, loadedDetailRevision, detailRevision]);
+  }, [activeTab, selectedOrderId, organizationId, loadedDetailId, loadedDetailOrg,
+    loadedDetailRevision, detailRevision, capabilities?.timelineMode]);
 
   useEffect(() => {
     if (isLoading || typeof window === 'undefined') return;
