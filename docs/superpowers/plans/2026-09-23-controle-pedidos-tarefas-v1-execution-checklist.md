@@ -61,7 +61,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 ### Lote 6 — Eventos e Calendário
 
 - [x] 6A — Eventos independentes e associações (M15): migration e QA técnico concluídos no IURQ; aceite humano recebido em 25/09/2026.
-- [ ] 6B — Projeção única do calendário.
+- [x] 6B — Projeção única do calendário: implementação e QA técnico concluídos; aceite humano recebido em 25/09/2026.
 - [ ] 6C — Calendário global e aba do Pedido.
 
 ### Melhorias de UX futuras — anotadas, não aprovadas para implementação
@@ -75,7 +75,17 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente 6A após aceite humano; próximo gate 6B — projeção única do calendário, sem migration. Sem deploy.
+Prioridade atual: fechar seletivamente 6B após aceite humano; próximo gate 6C — calendário global e aba do Pedido. Sem migration/deploy.
+
+### Preparação de 6B — projeção única do calendário (25/09/2026)
+
+- Criados `calendar.ts`, `calendar.test.ts`, `calendar-queries.ts` e `calendar-queries.test.ts`; nenhuma migration. A projeção reúne prazo de tarefa, prazo de subtarefa, follow-up ativo e quatro tipos de Evento, com filtro global ou por Pedido, limites civis inclusivos, deduplicação por fonte e deep link da entidade original.
+- TDD observado: os dois testes falharam primeiro porque os módulos ainda não existiam; após a implementação mínima, **5/5** passaram. A cobertura inclui prazo e follow-up distintos na mesma tarefa, subtarefa cujo pai está fora da janela, tarefa avulsa, Evento independente, limites de mês, filtro por Pedido, prazo concluído preservado, follow-up concluído omitido e ordem determinística.
+- As quatro consultas são somente leitura e filtram organização e janela no banco; o filtro opcional de Pedido alcança tarefas, pai da subtarefa e Eventos. Não há INSERT de calendário, anexos, Storage nem URL assinada. Regressão focal ampliada de Pedidos/Tarefas: **134/134** em 25 arquivos. TypeScript, lint focal e `git diff --check` passaram.
+- Baseline ampla executada antes de 6B: **932 aprovados / 4 ignorados / 2 falhos**, mais uma suíte sem testes. As falhas são externas ao lote: dois testes no diretório não rastreado `.e2e-run-smoke/m04` ainda exigem modo legado apesar do cutover V1; `scripts/ai/staged-gate.test.mjs` usa `node:test` e é coletado indevidamente pelo Vitest. Nenhum desses arquivos foi alterado.
+- Comparação read-only no IURQ para setembro/2026 encontrou **8** prazos de tarefa e zero registros nas outras três fontes. QA transacional autenticado complementou a cobertura com uma tarefa avulsa contendo prazo + follow-up e um Evento independente; as três fontes retornaram **1/1/1**, a transação terminou em `ROLLBACK` e a consulta posterior confirmou **zero resíduos**.
+- Auto-revisão do diff não encontrou finding crítico/importante ou desvio da spec. Como a interface visual chega somente em 6C, 6B ficou **PRONTO PARA TESTE MANUAL/ACEITE** pela evidência técnica.
+- Aceite humano de 6B recebido em 25/09/2026; fechamento Git seletivo autorizado conforme `AGENTS.md`. Sem deploy; MISFY não acessado.
 
 ### Aplicação de 6A — M15 no IURQ (25/09/2026)
 
