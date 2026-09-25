@@ -43,7 +43,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 ### Lote 3 — Dashboard operacional
 
 - [x] **3A — Tarefa avulsa e leituras compatíveis (M08): M08 aplicada e verificada no IURQ; regressão manual aprovada pelo usuário em 25/09/2026. Fechamento Git autorizado.**
-- [ ] 3B — Quatro filas, filtros reais e criação rápida.
+- [x] **3B — Quatro filas, filtros reais e criação rápida: implementação e testes focais concluídos; teste manual aprovado pelo usuário em 25/09/2026. Fechamento Git autorizado.**
 
 ### Lote 4 — Templates
 
@@ -75,7 +75,15 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar 3A seletivamente após aceite humano e seguir para 3B. Não antecipar o redesign de UX anotado acima. M08 foi aplicada somente no IURQ. Sem deploy.
+Prioridade atual: fechar o 3B seletivamente após aceite humano e seguir para 4A. Não antecipar o redesign de UX anotado acima. M08 foi aplicada somente no IURQ; o 3B não exige migration. Sem deploy.
+
+### Preparação de 3B — quatro filas, filtros e criação rápida (25/09/2026)
+
+- Central preparada com quatro filas independentes — atrasadas, hoje, follow-ups e aguardando — excluindo concluídas e permitindo que a mesma tarefa apareça em mais de uma fila quando os sinais coincidirem. Filtros reais por responsável, “Minhas tarefas” e tipo de espera são aplicados na consulta.
+- Cartões mostram contexto de Pedido/cliente ou “Tarefa avulsa”, responsável, prazo/espera e última atualização manual; ausência de atualização é apresentada como “Não registrada”. A criação rápida exige somente título e responsável explícito, mantém o formulário quando o comando falha e abre o detalhe do registro criado para ele não ficar invisível enquanto ainda não pertence a nenhuma fila.
+- Abertura de tarefa de Pedido mantém o foco exato no Pedido; tarefa avulsa abre detalhe próprio reutilizando os comandos, confirmações e regras existentes. As seções independentes de períodos a faturar e cobranças vencidas da Central foram preservadas; não existe nem foi criada “área financeira” dentro do Pedido.
+- TDD focal comprovado para filas, consulta/adapter, filtros, criação e detalhe avulso. Verificação final: **30/30 testes** em 7 arquivos; TypeScript sem erros; lint focal sem issues; `git diff --check` passou.
+- Aceite humano recebido em 25/09/2026 (“aprovado”) após o roteiro de criação rápida, detalhe e filas. O agente não declara QA visual próprio. Fechamento Git seletivo autorizado; sem migration ou deploy neste gate. MISFY não acessado.
 
 ### Preparação de 3A — tarefa avulsa e leituras compatíveis (25/09/2026)
 

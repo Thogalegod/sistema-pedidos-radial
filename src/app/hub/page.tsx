@@ -16,11 +16,22 @@ import {
 } from 'lucide-react';
 import { useShellUser } from '@/components/app-shell/AppShell';
 import { ContentContainer, PageHeader } from '@/components/app-shell/PageHeader';
+import { OperationalDashboard } from '@/components/pedidos-tarefas/OperationalDashboard';
+import type { QuickTaskDraft } from '@/components/pedidos-tarefas/QuickTaskForm';
 import { formatBRL } from '@/lib/contratos-locacoes/money';
 import { formatDateLabel } from '@/lib/contratos-locacoes/dates';
 import { supabase } from '@/lib/supabase';
-import { buildNewOrderHref } from '@/lib/pedidos-tarefas/navigation';
+import { createTask } from '@/lib/pedidos-tarefas/commands';
+import { buildTaskQueues, type DashboardTask, type TaskFilter } from '@/lib/pedidos-tarefas/dashboard';
+import {
+  createSupabaseDashboardReadClient,
+  loadDashboardTasks,
+} from '@/lib/pedidos-tarefas/dashboard-queries';
+import { listMembers } from '@/lib/pedidos-tarefas/members';
+import { buildNewOrderHref, buildTaskHref } from '@/lib/pedidos-tarefas/navigation';
+import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
 import { getCurrentTaskDateKey } from '@/lib/pedidos-tarefas/task-due';
+import type { Member } from '@/lib/pedidos-tarefas/types';
 import type { CentralOperationalSnapshot, CentralPriority } from '@/lib/central/operational';
 import {
   createSupabaseCentralOperationalReadClient,
@@ -58,9 +69,16 @@ function HubContent() {
   const searchParams = useSearchParams();
   const currentView = parseCentralView(searchParams.get('view'));
   const readClient = useMemo(() => createSupabaseCentralOperationalReadClient(supabase), []);
+  const dashboardClient = useMemo(() => createSupabaseDashboardReadClient(supabase), []);
   const [snapshot, setSnapshot] = useState<CentralOperationalSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [dashboardTasks, setDashboardTasks] = useState<DashboardTask[] | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>({});
+  const [taskReloadToken, setTaskReloadToken] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -80,14 +98,65 @@ function HubContent() {
     return () => { active = false; };
   }, [readClient, reloadToken, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    getCurrentOrganizationId(supabase)
+      .then(async org => {
+        const [nextMembers, nextTasks] = await Promise.all([
+          listMembers(supabase, org),
+          loadDashboardTasks(dashboardClient, org, getCurrentTaskDateKey(), taskFilter),
+        ]);
+        if (!active) return;
+        setOrganizationId(org);
+        setMembers(nextMembers);
+        setDashboardTasks(nextTasks);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setDashboardError(error instanceof Error
+          ? error.message : 'Não foi possível carregar as tarefas operacionais.');
+      });
+    return () => { active = false; };
+  }, [dashboardClient, taskFilter, taskReloadToken, user]);
+
   if (loading || !user) {
     return <p role="status" className="p-8 text-sm text-slate-500">Carregando Central…</p>;
   }
 
-  const pendingSections = snapshot ? getCentralPendingSections(snapshot, currentView, 4) : [];
+  const today = getCurrentTaskDateKey();
+  const queues = dashboardTasks ? buildTaskQueues(dashboardTasks, today) : null;
+  const pendingSections = snapshot ? getCentralPendingSections(snapshot, currentView, 4)
+    .filter(section => section.id === 'periods-to-bill' || section.id === 'overdue-billings') : [];
   const selectedLabel = currentView === 'all'
-    ? 'Itens vencidos e períodos que já pedem ação.'
+    ? 'Períodos e cobranças que já pedem ação.'
     : `Exibindo ${pendingSections[0]?.title.toLocaleLowerCase('pt-BR') ?? 'a categoria selecionada'}.`;
+
+  async function createQuickTask(input: QuickTaskDraft) {
+    if (!organizationId) return false;
+    const result = await createTask(supabase, organizationId, {
+      title: input.title,
+      orderId: null,
+      frontId: null,
+      assigneeId: input.assigneeId,
+      priority: 'Normal',
+    });
+    if (!result.ok) {
+      setDashboardError(result.message);
+      return false;
+    }
+    setDashboardTasks(null);
+    setDashboardError(null);
+    setTaskReloadToken(value => value + 1);
+    router.push(buildTaskHref(result.value, null));
+    return true;
+  }
+
+  function changeTaskFilter(nextFilter: TaskFilter) {
+    setDashboardTasks(null);
+    setDashboardError(null);
+    setTaskFilter(nextFilter);
+  }
 
   return <main>
     <ContentContainer>
@@ -128,7 +197,11 @@ function HubContent() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className={`text-xs font-medium leading-5 sm:text-sm ${active ? 'text-emerald-800' : 'text-slate-500'}`}>{label}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-slate-950">{snapshot?.summary[key] ?? '—'}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-slate-950">
+                  {key === 'overdueTasks' ? queues?.overdue.length ?? '—'
+                    : key === 'tasksToday' ? queues?.today.length ?? '—'
+                      : snapshot?.summary[key] ?? '—'}
+                </p>
               </div>
               <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${tone}`}><Icon size={17} aria-hidden="true" /></span>
             </div>
@@ -136,10 +209,18 @@ function HubContent() {
         })}
       </section>
 
+      <div className="mt-6">
+        <OperationalDashboard queues={queues} members={members} today={today}
+          error={dashboardError} filter={taskFilter} currentUserId={user.id}
+          onFilterChange={changeTaskFilter}
+          onOpenTask={(taskId, orderId) => router.push(buildTaskHref(taskId, orderId))}
+          onCreateQuick={createQuickTask} />
+      </div>
+
       <section aria-labelledby="pending-title" className="mt-6 min-w-0">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 id="pending-title" className="text-lg font-semibold tracking-tight text-slate-950">Pendências</h2>
+              <h2 id="pending-title" className="text-lg font-semibold tracking-tight text-slate-950">Pendências financeiras</h2>
               <p className="mt-1 text-sm text-slate-500">{selectedLabel}</p>
             </div>
             <Link

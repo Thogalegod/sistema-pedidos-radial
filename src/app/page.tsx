@@ -43,6 +43,7 @@ import { getCurrentTaskDateKey, getTaskDueStatus } from '../lib/pedidos-tarefas/
 import { deleteOrderDetail } from '../lib/pedidos-tarefas/detail-deletion';
 import { isMyTask } from '../lib/pedidos-tarefas/mine';
 import { MemberNameEditor } from '../components/pedidos-tarefas/MemberNameEditor';
+import { StandaloneTaskDetail } from '../components/pedidos-tarefas/StandaloneTaskDetail';
 import type { OrderTab } from '../components/pedidos-tarefas/OrderTabs';
 import { blockedCount, chooseNextAction, summarizeTasks } from '../lib/pedidos-tarefas/indicators';
 import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation';
@@ -266,6 +267,9 @@ export default function Home() {
         setSelectedOrderId(intent.orderId);
         setFocusedTaskId(intent.taskId);
         setActiveTab(intent.taskId ? 'tasks' : 'summary');
+      } else if (intent.taskId && !intent.orderId) {
+        setSelectedOrderId(null);
+        setFocusedTaskId(intent.taskId);
       }
       if (intent.openNewOrder) {
         setIsNewOrderOpen(true);
@@ -1127,6 +1131,10 @@ export default function Home() {
       </main>
 
       {/* Drawers */}
+      {focusedTaskId && !selectedOrderId && organizationId && <StandaloneTaskDetail
+        key={focusedTaskId}
+        organizationId={organizationId} taskId={focusedTaskId} members={members} today={todayISO}
+        onClose={() => router.push('/hub')} />}
       <OrderDrawer 
         key={selectedOrderId ?? 'closed'}
         order={selectedOrder} 
