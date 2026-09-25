@@ -40,6 +40,13 @@ describe('transition readers', () => {
     });
     expect(() => mapTask(row, 'v1')).toThrow();
   });
+  it('keeps legacy assignee text and unknown dates readable under v1 constraints', () => {
+    expect(mapTask({ ...row, status: 'Aberta', prioridade: null, updated_at: null }, 'v1'))
+      .toMatchObject({
+        status: 'Aberta', priority: 'Normal', assigneeId: null,
+        legacyAssignee: 'Nome legado', updatedAt: null, completedAt: null,
+      });
+  });
   it('rejects invalid civil dates instead of normalizing them across time zones', () => {
     expect(() => mapTask({ ...row, vencimento: '2026-02-30' }, 'legacy')).toThrow();
     expect(mapTask({ ...row, vencimento: '2028-02-29' }, 'legacy').dueDate).toBe('2028-02-29');

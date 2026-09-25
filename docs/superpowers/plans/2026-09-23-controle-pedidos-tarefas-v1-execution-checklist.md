@@ -32,7 +32,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [x] **1B.3 — Identidade por usuário e associação explícita: implementação e testes concluídos; dados atuais classificados como testes descartáveis, sem reconciliação; interface esclarecida e aceita manualmente pelo usuário.**
 - [x] **1C.1 — Comandos e ações humanas (M05): M05 aplicada no IURQ, 36/36; verificação, QA técnico e teste manual aprovados; fechamento Git autorizado.**
 - [x] **1C.2 — Status canônico e bloqueio de writers obsoletos (M06): aplicada e validada tecnicamente no IURQ; aceite manual final recebido; fechamento Git autorizado.**
-- [ ] 1D — Validação de constraints (M07).
+- [x] **1D — Validação de constraints (M07): aplicada exclusivamente no IURQ, 38/38 migrations; verificação técnica concluída e aceite humano para fechamento recebido. QA visual não executado pelo agente.**
 
 ### Lote 2 — Tela do Pedido
 
@@ -64,9 +64,25 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [ ] 6B — Projeção única do calendário.
 - [ ] 6C — Calendário global e aba do Pedido.
 
+### Melhorias de UX futuras — anotadas, não aprovadas para implementação
+
+- Controle de Pedidos: deixar as seções detalhadas de **Histórico** e **Resumos** no fim da página do Pedido, depois das informações e ações principais. Revisar o posicionamento quando a tela for trabalhada; não alterar este gate para isso.
+- Prioridade do Pedido: avaliar um seletor mais visual para **Baixa / Normal / Alta**, por exemplo 1 / 2 / 3 ícones de chama, em vez da apresentação atual. Manter o nome escrito junto do ícone (inclusive para acessibilidade), sem mudar os valores gravados.
+- Sugestão para a revisão visual: oferecer atalhos “Ver resumo” e “Ver histórico” perto do topo, levando às seções no fim da página; distinguir a prioridade do Pedido da prioridade/urgência das tarefas para não gerar leitura ambígua.
+
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechamento Git seletivo de 1C.2. A M06 foi aplicada somente no IURQ após autorização explícita; inventário 37 migrations locais/37 remotas e rollout `v1/legacy`. O usuário aprovou o teste manual final. Não aplicar M07 neste fechamento.
+Prioridade atual: fechamento Git seletivo de 1D; próximo gate do plano é 2A, ainda não iniciado. O 1C.2 foi fechado no commit/push `7ef6c729ab04ef290daac8a0f4cbd192f45fd844`. M07 aplicada somente no IURQ e verificada; 38 migrations locais/38 remotas. O usuário autorizou prosseguir com o aceite de 1D; sem deploy.
+
+### Evidências de 1D — preparação local e preflight (25/09/2026)
+
+- Target read-only IURQ `iurqgskfuupslrghgtej`: rollout `v1/legacy`; 2 Pedidos, 2 Frentes e 7 tarefas; 0 Pedido/tarefa sem campos obrigatórios, Frente inválida, responsável fora do membership ou status legado. Única constraint não validada: `tarefas_responsavel_member_fkey`. Nenhum dado real alterado.
+- M07 `20260923200600_pedidos_v1_validate.sql`: criada pela CLI como arquivo vazio `20260925105228_pedidos_v1_validate.sql`, depois renomeada ao timestamp reservado antes de uso. Preflight e lock transacionais; valida a FK histórica, exige status/prioridade da tarefa, Frente para tarefa de Pedido e restringe Pedido aos três status canônicos. Não remove dados nem colunas históricas.
+- RED no PostgreSQL local descartável após M06: 7 falhas esperadas em 17 asserts (FK, NOT NULL, status legado, prioridade nula e Frente ausente). GREEN após M07 somente local: pgTAP via `psql` no container 23/23 (a CLI Windows não encontra o Docker, então o mesmo SQL foi executado diretamente); regressão M06 37/37; verificação SQL local `v1/legacy`, constraints validadas, zero inconsistências e grants privados preservados. Leitura e remoção de metadados de anexo por membro autorizado passaram em rollback. O mapper histórico em modo V1 passou 15/15; TypeScript, lint focal e `git diff --check` passaram.
+- Ruling: conservar `tarefas_assign_legacy_front` nesta fase, embora o writer direto esteja revogado; o comando M05 ainda usa esse trigger para criar a Frente Geral atomicamente quando `frontId` é nulo. Removê-lo agora quebraria a criação válida; M08 tratará o par Pedido/Frente de tarefas avulsas.
+- Dry-run Supabase pré-aplicação: somente `20260923200600_pedidos_v1_validate.sql`, sem seeds/roles; projeto explícito IURQ e `--skip-vault`. Autorização humana recebida; aplicação pela CLI concluiu somente M07. Histórico remoto 38/38 e novo dry-run sem pendências.
+- Pós-M07 no IURQ: rollout `v1/legacy`; 2 Pedidos, 2 Frentes e 7 tarefas preservados. Zero status de Pedido inválido, tarefa/Frente/responsável inválido ou divergência da projeção de conclusão. FK de responsável e Frente validadas, Frente obrigatória, status/prioridade `NOT NULL` e `CHECK` canônico de Pedido ativos; colunas históricas presentes. Grants privados preservados e escritas diretas de tarefa continuam revogadas. Leitura autenticada em transação com `ROLLBACK`: 2 Pedidos, 2 Frentes e 7 tarefas visíveis. Não havia anexo remoto para testar exclusão; o fluxo de metadados foi coberto no pgTAP local. QA visual não executado; aguardar conferência rápida do usuário antes do fechamento Git. MISFY não acessado.
+- Fechamento autorizado pelo usuário em 25/09/2026 (“pode prosseguir com o aceite do M07”); não informou passos específicos do teste manual e não se declara QA visual executado pelo agente. Checagem read-only de fechamento: 38 migrations remotas até M07, rollout `v1/legacy`, 3 Pedidos e 8 tarefas, zero tarefas com vínculos/campos obrigatórios inválidos, FK de responsável validada. Os registros adicionais não foram alterados pelo agente. Mapper 15/15, TypeScript e lint focal passaram novamente; staging seletivo e `ai:gate:staged` precedem commit/push.
 
 ### Evidências de 1C.2 — ativação e QA no IURQ (24/09/2026)
 
