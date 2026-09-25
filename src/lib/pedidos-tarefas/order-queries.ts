@@ -4,6 +4,8 @@ import { mapOrder, mapTask, normalizeOrderStatus } from './mappers';
 import type { Anexo, Atividade, Order } from '@/types';
 import type { Capabilities, Dependency, Front, Id, OrderV1, Subtask, TaskV1 } from './types';
 import { instanceDateRuleSchema } from './template-schema';
+import { loadTimeline } from './timeline';
+import { listOrderAttachments as listContextualOrderAttachments } from './attachments';
 
 const orderSchema = z.object({
   id: z.string(), organization_id: z.string(), numero_pedido: z.string(), projeto: z.string(),
@@ -22,9 +24,6 @@ const subtaskSchema = z.array(z.object({
 const dependencySchema = z.array(z.object({ tarefa_id: z.string(), predecessora_id: z.string() }));
 const recentSchema = z.object({ descricao: z.string(), criado_em: z.string(), usuario: z.string() });
 const updateSchema = z.array(recentSchema.extend({ id: z.string(), source_comment_id: z.string().nullish() }));
-const attachmentSchema = z.array(z.object({ id: z.string(), pedido_id: z.string(),
-  nome_arquivo: z.string(), legenda: z.string().nullable(), storage_path: z.string(),
-  tipo: z.string(), criado_em: z.string() }));
 
 export async function loadOrder(client: SupabaseClient, org: Id, orderId: Id): Promise<OrderV1 | null> {
   const { data, error } = await client.from('pedidos')
@@ -88,16 +87,31 @@ export async function loadOrderRecentActivity(client: SupabaseClient, org: Id, o
 
 // Temporary legacy projection for the existing task editor; it never requests activity or files.
 export async function loadLegacyOrderDetail(client: SupabaseClient, org: Id, orderId: Id,
-  statusMode: Capabilities['statusMode']): Promise<Order | null> {
+  statusMode: Capabilities['statusMode'], timelineMode: Capabilities['timelineMode'] = 'legacy'): Promise<Order | null> {
   const { data, error } = await client.from('pedidos')
     .select('id,organization_id,numero_pedido,projeto,cliente,endereco,status,prioridade,data_criacao,prazo_concessionaria,tarefas(*,subtarefas(*),comentarios_tarefa(*))')
     .eq('organization_id', org).eq('id', orderId).maybeSingle();
   if (error) throw error;
-  return data ? mapOrder(data, statusMode) : null;
+  if (!data) return null;
+  const order = mapOrder(data, statusMode);
+  if (timelineMode !== 'v1') return order;
+  const timeline = await loadTimeline(client, org, { orderId });
+  return { ...order, tasks: order.tasks.map(task => ({ ...task,
+    comentarios: timeline.filter(entry => entry.taskId === task.id).map(entry => ({
+      id: entry.id, tarefa_id: task.id, texto: entry.text, usuario: entry.authorName,
+      criado_em: entry.at, event_type: entry.kind === 'system' ? 'system' : null,
+    })),
+  })) };
 }
 
 export async function loadOrderUpdates(client: SupabaseClient, org: Id, orderId: Id,
   timelineMode: Capabilities['timelineMode'] = 'legacy'): Promise<Atividade[]> {
+  if (timelineMode === 'v1') {
+    return (await loadTimeline(client, org, { orderId })).map(entry => ({
+      id: entry.id, descricao: entry.text, usuario: entry.authorName, criado_em: entry.at,
+      kind: entry.kind,
+    }));
+  }
   let query = client.from('atividades').select(timelineMode === 'legacy'
     ? '*' : 'id,descricao,usuario,criado_em,source_comment_id')
     .eq('organization_id', org).eq('pedido_id', orderId);
@@ -108,11 +122,7 @@ export async function loadOrderUpdates(client: SupabaseClient, org: Id, orderId:
     .map(row => ({ id: row.id, descricao: row.descricao, usuario: row.usuario, criado_em: row.criado_em }));
 }
 
-export async function loadOrderAttachments(client: SupabaseClient, org: Id, orderId: Id): Promise<Anexo[]> {
-  const { data, error } = await client.from('anexos')
-    .select('id,pedido_id,nome_arquivo,legenda,storage_path,tipo,criado_em')
-    .eq('organization_id', org).eq('pedido_id', orderId)
-    .order('criado_em', { ascending: false });
-  if (error) throw error;
-  return attachmentSchema.parse(data ?? []).map(row => ({ ...row, legenda: row.legenda ?? undefined }));
+export async function loadOrderAttachments(client: SupabaseClient, org: Id, orderId: Id,
+  timelineMode: Capabilities['timelineMode'] = 'legacy'): Promise<Anexo[]> {
+  return listContextualOrderAttachments(client, org, orderId, timelineMode);
 }

@@ -37,6 +37,28 @@ describe('task notes', () => {
       texto: 'Retorno do cliente', event_type: null });
   });
 
+  it('uses only canonical timeline RPCs after the v1 cutover', async () => {
+    const row = { id: 'activity-1', pedido_id: null, frente_id: null, tarefa_id: 'task-1',
+      tipo: 'manual', descricao: 'Nota avulsa', usuario: 'Ana', user_id: 'user-1',
+      criado_em: '2026-09-25T10:00:00Z', follow_up_date: null };
+    const canonical = noteClient([
+      Response.json([row]), Response.json('activity-2'), Response.json(null),
+    ]);
+
+    await expect(listTaskNotes(canonical.client, 'org-1', 'task-1', 'v1'))
+      .resolves.toMatchObject([{ id: 'activity-1', tarefa_id: 'task-1', texto: 'Nota avulsa' }]);
+    await expect(addTaskNote(canonical.client, 'org-1', 'task-1', 'Nova', 'v1'))
+      .resolves.toEqual({ ok: true, value: 'activity-2' });
+    await expect(deleteTaskNote(canonical.client, 'org-1', 'activity-1', 'v1'))
+      .resolves.toEqual({ ok: true, value: undefined });
+
+    expect(canonical.requests.map(request => request.url)).toEqual([
+      'https://example.test/rest/v1/rpc/list_pedido_timeline',
+      'https://example.test/rest/v1/rpc/add_pedido_update',
+      'https://example.test/rest/v1/rpc/delete_pedido_update',
+    ]);
+  });
+
   it('rejects an empty note locally and reports failed deletion', async () => {
     const empty = noteClient([]);
     await expect(addTaskNote(empty.client, 'org-1', 'task-1', '  '))

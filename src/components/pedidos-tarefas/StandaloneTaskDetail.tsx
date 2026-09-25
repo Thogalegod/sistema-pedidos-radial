@@ -10,17 +10,18 @@ import {
   type StandaloneTaskDetail as Detail,
 } from '@/lib/pedidos-tarefas/standalone-task';
 import { addTaskNote, deleteTaskNote } from '@/lib/pedidos-tarefas/task-notes';
-import type { Member } from '@/lib/pedidos-tarefas/types';
+import type { Capabilities, Member } from '@/lib/pedidos-tarefas/types';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 
-export function StandaloneTaskDetail({ organizationId, taskId, members, today, onClose }: {
+export function StandaloneTaskDetail({ organizationId, taskId, members, today, timelineMode, onClose }: {
   organizationId: string;
   taskId: string;
   members: Member[];
   today: string;
+  timelineMode: Capabilities['timelineMode'];
   onClose: () => void;
 }) {
-  const readClient = useMemo(() => createSupabaseStandaloneTaskReadClient(supabase), []);
+  const readClient = useMemo(() => createSupabaseStandaloneTaskReadClient(supabase, timelineMode), [timelineMode]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -66,8 +67,8 @@ export function StandaloneTaskDetail({ organizationId, taskId, members, today, o
         return true;
       } catch { return false; }
     }}
-    onAddNote={async text => (await addTaskNote(supabase, organizationId, taskId, text)).ok}
-    onDeleteNote={async id => (await deleteTaskNote(supabase, organizationId, id)).ok}
+    onAddNote={async text => (await addTaskNote(supabase, organizationId, taskId, text, timelineMode)).ok}
+    onDeleteNote={async id => (await deleteTaskNote(supabase, organizationId, id, timelineMode)).ok}
     onAddDependency={async () => false}
     onRemoveDependency={async () => false}
     onDeleteTask={async id => {

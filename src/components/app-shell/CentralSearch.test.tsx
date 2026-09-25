@@ -18,11 +18,12 @@ afterEach(cleanup);
 
 it('waits for the current term and hides results from a previous term', async () => {
   mocks.searchCentral.mockResolvedValueOnce({
+    tasks: [],
     orders: [],
     customers: [{ id: 'customer-1', title: 'Cliente QA', detail: 'Cliente', href: '/contratos-locacoes/clientes/customer-1' }],
     contracts: [],
     billings: [],
-  }).mockResolvedValueOnce({ orders: [], customers: [], contracts: [], billings: [] });
+  }).mockResolvedValueOnce({ tasks: [], orders: [], customers: [], contracts: [], billings: [] });
 
   render(<GlobalSearchDialog open onClose={vi.fn()} />);
   const input = screen.getByRole('searchbox', { name: 'Busca global' });

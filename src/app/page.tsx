@@ -51,6 +51,8 @@ import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation
 import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecentActivity,
   loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
 import { addTaskNote, deleteTaskNote } from '../lib/pedidos-tarefas/task-notes';
+import { addUpdate, deleteUpdate } from '../lib/pedidos-tarefas/timeline';
+import { saveAttachmentMetadata } from '../lib/pedidos-tarefas/attachments';
 import type { Dependency, Front, OrderV1, Subtask, TaskV1 } from '../lib/pedidos-tarefas/types';
 import {
   duplicateTemplate,
@@ -221,7 +223,7 @@ export default function Home() {
       loadOrder(supabase, org, orderId),
       loadOrderTasks(supabase, org, orderId),
       loadOrderRecentActivity(supabase, org, orderId),
-      loadLegacyOrderDetail(supabase, org, orderId, capabilities.statusMode),
+      loadLegacyOrderDetail(supabase, org, orderId, capabilities.statusMode, capabilities.timelineMode),
     ]).then(([canonicalOrder, taskData, recent, order]) => {
       if (!active) return;
       if (!canonicalOrder || !order) {
@@ -264,7 +266,8 @@ export default function Home() {
         if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
           ? { ...previous, order: { ...previous.order, atividades } } : previous);
       } else {
-        const attachments = await loadOrderAttachments(supabase, org, orderId);
+        const attachments = await loadOrderAttachments(supabase, org, orderId,
+          capabilities?.timelineMode ?? 'legacy');
         const anexos = await Promise.all(attachments.map(async attachment => {
           const { data, error } = await supabase.storage.from('anexos-pedidos')
             .createSignedUrl(attachment.storage_path, 3600);
@@ -866,7 +869,8 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return false;
 
-    const result = await addTaskNote(supabase, currentOrganizationId, taskId, texto);
+    const result = await addTaskNote(supabase, currentOrganizationId, taskId, texto,
+      capabilities?.timelineMode ?? 'legacy');
     if (result.ok) {
       setDetailRevision(previous => previous + 1);
       return true;
@@ -880,7 +884,8 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return false;
 
-    const result = await deleteTaskNote(supabase, currentOrganizationId, comentarioId);
+    const result = await deleteTaskNote(supabase, currentOrganizationId, comentarioId,
+      capabilities?.timelineMode ?? 'legacy');
     if (!result.ok) {
       reportCommandFailure(result, 'Erro ao remover nota');
       return false;
@@ -896,11 +901,18 @@ export default function Home() {
     if (!currentOrganizationId) return;
 
     const toastId = toast.loading('Salvando registro...');
+    if (capabilities?.timelineMode === 'v1') {
+      const result = await addUpdate(supabase, currentOrganizationId, {
+        orderId, frontId: null, taskId: null, text: descricao,
+      });
+      if (result.ok) {
+        setDetailRevision(previous => previous + 1);
+        toast.success('Registro salvo!', { id: toastId });
+      } else toast.error(result.message, { id: toastId });
+      return;
+    }
     const { data, error } = await supabase.from('atividades').insert({
-      organization_id: currentOrganizationId,
-      pedido_id: orderId,
-      descricao,
-      usuario: currentUser
+      organization_id: currentOrganizationId, pedido_id: orderId, descricao, usuario: currentUser,
     }).select().single();
 
     if (!error && data) {
@@ -915,7 +927,15 @@ export default function Home() {
     const currentOrganizationId = requireOrganizationId();
     if (!currentOrganizationId) return;
 
-    const { error } = await supabase.from('atividades').delete().eq('organization_id', currentOrganizationId).eq('id', atividadeId);
+    if (capabilities?.timelineMode === 'v1') {
+      const result = await deleteUpdate(supabase, currentOrganizationId, atividadeId);
+      if (!result.ok) { reportCommandFailure(result, 'Erro ao remover registro'); return; }
+      setDetailRevision(previous => previous + 1);
+      toast.success('Registro removido');
+      return;
+    }
+    const { error } = await supabase.from('atividades').delete()
+      .eq('organization_id', currentOrganizationId).eq('id', atividadeId);
     if (reportMutationError(error, 'Erro ao remover registro')) return;
 
     setDetailRevision(previous => previous + 1);
@@ -964,14 +984,19 @@ export default function Home() {
         continue;
       }
 
-      const { data: anexoData, error: dbError } = await supabase.from('anexos').insert({
-        organization_id: currentOrganizationId,
-        pedido_id: orderId,
-        nome_arquivo: originalFile.name,
-        legenda: legenda || null,
-        tipo: fileToUpload.type || 'unknown',
-        storage_path: filePath
-      }).select().single();
+      const canonicalMetadata = capabilities?.timelineMode === 'v1'
+        ? await saveAttachmentMetadata(supabase, currentOrganizationId,
+          { orderId, frontId: null, taskId: null, updateId: null },
+          { name: originalFile.name, caption: legenda || null, path: filePath,
+            type: fileToUpload.type || 'unknown' })
+        : null;
+      const legacyMetadata = canonicalMetadata === null ? await supabase.from('anexos').insert({
+        organization_id: currentOrganizationId, pedido_id: orderId, nome_arquivo: originalFile.name,
+        legenda: legenda || null, tipo: fileToUpload.type || 'unknown', storage_path: filePath,
+      }).select().single() : null;
+      const anexoData = canonicalMetadata?.ok ? { id: canonicalMetadata.value } : legacyMetadata?.data;
+      const dbError = canonicalMetadata && !canonicalMetadata.ok
+        ? { message: canonicalMetadata.message } : legacyMetadata?.error;
 
       if (dbError) {
         console.error('Database Error:', dbError);
@@ -1205,6 +1230,7 @@ export default function Home() {
       {focusedTaskId && !selectedOrderId && organizationId && <StandaloneTaskDetail
         key={focusedTaskId}
         organizationId={organizationId} taskId={focusedTaskId} members={members} today={todayISO}
+        timelineMode={capabilities?.timelineMode ?? 'legacy'}
         onClose={() => router.push('/hub')} />}
       <OrderDrawer 
         key={selectedOrderId ?? 'closed'}

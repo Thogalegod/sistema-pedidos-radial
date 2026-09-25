@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ComentarioTarefa } from '@/types';
 import { mapTask, type TaskRow } from './mappers';
-import type { Id, Subtask, TaskPriority, TaskV1 } from './types';
+import type { Capabilities, Id, Subtask, TaskPriority, TaskV1 } from './types';
+import { listTaskNotes } from './task-notes';
 
 type SubtaskRow = {
   id: Id;
@@ -51,6 +52,7 @@ export async function loadStandaloneTaskDetail(
 
 export function createSupabaseStandaloneTaskReadClient(
   client: SupabaseClient,
+  timelineMode: Capabilities['timelineMode'] = 'legacy',
 ): StandaloneTaskReadClient {
   return {
     async getTask(org, taskId) {
@@ -72,6 +74,7 @@ export function createSupabaseStandaloneTaskReadClient(
       return (data ?? []) as SubtaskRow[];
     },
     async listNotes(org, taskId) {
+      if (timelineMode === 'v1') return listTaskNotes(client, org, taskId, timelineMode);
       const { data, error } = await client.from('comentarios_tarefa')
         .select('id,tarefa_id,texto,usuario,criado_em,event_type')
         .eq('organization_id', org)

@@ -102,4 +102,29 @@ describe('focused Pedido queries', () => {
     await loadOrderUpdates(client, 'org1', 'p1', 'copying');
     expect(urls[0].searchParams.get('source_comment_id')).toBe('is.null');
   });
+
+  it('uses the canonical order timeline RPC after cutover', async () => {
+    const { client, urls } = queryClient({ list_pedido_timeline: [{ id: 'a1', pedido_id: 'p1',
+      frente_id: 'f1', tarefa_id: 't1', tipo: 'manual', descricao: 'Nota da tarefa',
+      user_id: 'u1', usuario: 'Ana', criado_em: '2026-09-25T11:00:00Z', follow_up_date: null }] });
+
+    await expect(loadOrderUpdates(client, 'org1', 'p1', 'v1')).resolves.toMatchObject([
+      { id: 'a1', descricao: 'Nota da tarefa', usuario: 'Ana', kind: 'manual' },
+    ]);
+    expect(urls[0].pathname).toContain('/rpc/list_pedido_timeline');
+  });
+
+  it('hydrates task notes from the canonical order timeline after cutover', async () => {
+    const { client, urls } = queryClient({
+      pedidos: [{ ...order, tarefas: [{ ...task, subtarefas: [], comentarios_tarefa: [] }] }],
+      list_pedido_timeline: [{ id: 'a1', pedido_id: 'p1', frente_id: 'f1', tarefa_id: 't1',
+        tipo: 'manual', descricao: 'Nota canônica', user_id: 'u1', usuario: 'Ana',
+        criado_em: '2026-09-25T11:00:00Z', follow_up_date: null }],
+    });
+
+    await expect(loadLegacyOrderDetail(client, 'org1', 'p1', 'v1', 'v1')).resolves.toMatchObject({
+      tasks: [{ id: 't1', comentarios: [{ id: 'a1', texto: 'Nota canônica' }] }],
+    });
+    expect(urls.some(url => url.pathname.endsWith('/rpc/list_pedido_timeline'))).toBe(true);
+  });
 });

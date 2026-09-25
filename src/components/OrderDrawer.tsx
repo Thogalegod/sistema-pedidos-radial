@@ -934,13 +934,14 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                           </span>
                         </div>
                         <p className="text-sm text-gray-700 pr-6">{atividade.descricao}</p>
-                        {canManageOrder && (
+                        {(atividade.kind === 'manual' || (atividade.kind === undefined && canManageOrder)) && (
                           <button 
                             onClick={() => {
                               if (window.confirm('Deseja excluir este registro permanentemente?')) {
                                 onDeleteAtividade(order.id, atividade.id);
                               }
                             }}
+                            aria-label={`Excluir atualização ${atividade.descricao}`}
                             className="absolute right-2 top-2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
                             title="Deletar registro"
                           >

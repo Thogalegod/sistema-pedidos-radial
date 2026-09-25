@@ -27,7 +27,7 @@ import {
   createSupabaseDashboardReadClient,
   loadDashboardTasks,
 } from '@/lib/pedidos-tarefas/dashboard-queries';
-import { listMembers } from '@/lib/pedidos-tarefas/members';
+import { listMembers, readCapabilities } from '@/lib/pedidos-tarefas/members';
 import { buildNewOrderHref, buildTaskHref } from '@/lib/pedidos-tarefas/navigation';
 import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
 import { getCurrentTaskDateKey } from '@/lib/pedidos-tarefas/task-due';
@@ -69,7 +69,6 @@ function HubContent() {
   const searchParams = useSearchParams();
   const currentView = parseCentralView(searchParams.get('view'));
   const readClient = useMemo(() => createSupabaseCentralOperationalReadClient(supabase), []);
-  const dashboardClient = useMemo(() => createSupabaseDashboardReadClient(supabase), []);
   const [snapshot, setSnapshot] = useState<CentralOperationalSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -103,10 +102,13 @@ function HubContent() {
     let active = true;
     getCurrentOrganizationId(supabase)
       .then(async org => {
-        const [nextMembers, nextTasks] = await Promise.all([
+        const [nextMembers, nextCapabilities] = await Promise.all([
           listMembers(supabase, org),
-          loadDashboardTasks(dashboardClient, org, getCurrentTaskDateKey(), taskFilter),
+          readCapabilities(supabase, org),
         ]);
+        const nextTasks = await loadDashboardTasks(
+          createSupabaseDashboardReadClient(supabase, nextCapabilities.timelineMode),
+          org, getCurrentTaskDateKey(), taskFilter);
         if (!active) return;
         setOrganizationId(org);
         setMembers(nextMembers);
@@ -118,7 +120,7 @@ function HubContent() {
           ? error.message : 'Não foi possível carregar as tarefas operacionais.');
       });
     return () => { active = false; };
-  }, [dashboardClient, taskFilter, taskReloadToken, user]);
+  }, [taskFilter, taskReloadToken, user]);
 
   if (loading || !user) {
     return <p role="status" className="p-8 text-sm text-slate-500">Carregando Central…</p>;

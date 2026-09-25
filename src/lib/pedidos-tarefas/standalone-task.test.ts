@@ -1,5 +1,7 @@
+import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
-import { loadStandaloneTaskDetail, type StandaloneTaskReadClient } from './standalone-task';
+import { createSupabaseStandaloneTaskReadClient, loadStandaloneTaskDetail,
+  type StandaloneTaskReadClient } from './standalone-task';
 import type { TaskRow } from './mappers';
 
 const row: TaskRow = {
@@ -30,6 +32,28 @@ describe('loadStandaloneTaskDetail', () => {
 
     await expect(loadStandaloneTaskDetail(client, 'org-1', 'quick-1')).resolves.toBeNull();
     expect(client.listSubtasks).not.toHaveBeenCalled();
+  });
+
+  it('loads standalone notes from the canonical timeline after cutover', async () => {
+    const urls: URL[] = [];
+    const client = createClient('https://example.test', 'test-public-key', {
+      auth: { persistSession: false, autoRefreshToken: false, storageKey: 'standalone-v1' },
+      global: { fetch: async input => {
+        const url = new URL(String(input)); urls.push(url);
+        if (url.pathname.endsWith('/tarefas')) return Response.json([row]);
+        if (url.pathname.endsWith('/subtarefas')) return Response.json([]);
+        return Response.json([{ id: 'a1', pedido_id: null, frente_id: null, tarefa_id: 'quick-1',
+          tipo: 'manual', descricao: 'Ligação feita', user_id: 'u1', usuario: 'Ana',
+          criado_em: '2026-09-25T12:00:00Z', follow_up_date: null }]);
+      } },
+    });
+
+    const adapter = createSupabaseStandaloneTaskReadClient(client, 'v1');
+    await expect(loadStandaloneTaskDetail(adapter, 'org-1', 'quick-1')).resolves.toMatchObject({
+      comments: [{ id: 'a1', texto: 'Ligação feita' }],
+    });
+    expect(urls.some(url => url.pathname.endsWith('/rpc/list_pedido_timeline'))).toBe(true);
+    expect(urls.some(url => url.pathname.endsWith('/comentarios_tarefa'))).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapTask, type TaskRow } from './mappers';
 import type { DashboardTask, TaskFilter } from './dashboard';
-import type { DateKey, Id } from './types';
+import type { Capabilities, DateKey, Id } from './types';
 
 type OrderRow = { id: Id; numero_pedido: string; cliente: string };
 type TaskNoteRow = { tarefa_id: Id; texto: string; criado_em: string };
@@ -41,7 +41,8 @@ export async function loadDashboardTasks(
       note && { text: note.texto, at: note.criado_em },
       activity && { text: activity.descricao, at: activity.criado_em },
     ].filter((value): value is { text: string; at: string } => Boolean(value))
-      .sort((left, right) => right.at.localeCompare(left.at))[0] ?? null;
+      .sort((left, right) => right.at.localeCompare(left.at))[0]
+      ?? (task.updatedAt ? { text: 'Última alteração da tarefa', at: task.updatedAt } : null);
     return {
       task,
       order: order ? { number: order.numero_pedido, client: order.cliente } : null,
@@ -50,7 +51,10 @@ export async function loadDashboardTasks(
   });
 }
 
-export function createSupabaseDashboardReadClient(client: SupabaseClient): DashboardReadClient {
+export function createSupabaseDashboardReadClient(
+  client: SupabaseClient,
+  timelineMode: Capabilities['timelineMode'] = 'legacy',
+): DashboardReadClient {
   return {
     async listRelevantTasks(org, today, filter) {
       let query = client.from('tarefas')
@@ -74,6 +78,13 @@ export function createSupabaseDashboardReadClient(client: SupabaseClient): Dashb
     },
 
     async listManualTaskNotes(org, taskIds) {
+      if (timelineMode === 'v1') {
+        const { data, error } = await client.from('atividades')
+          .select('tarefa_id,texto:descricao,criado_em')
+          .eq('organization_id', org).in('tarefa_id', taskIds).eq('tipo', 'manual')
+          .order('criado_em', { ascending: false });
+        return rowsOrThrow<TaskNoteRow>(data, error, 'Não foi possível carregar as atualizações das tarefas');
+      }
       const { data, error } = await client.from('comentarios_tarefa')
         .select('tarefa_id,texto,criado_em')
         .eq('organization_id', org)
@@ -84,6 +95,13 @@ export function createSupabaseDashboardReadClient(client: SupabaseClient): Dashb
     },
 
     async listManualOrderActivities(org, orderIds) {
+      if (timelineMode === 'v1') {
+        const { data, error } = await client.from('atividades')
+          .select('pedido_id,descricao,criado_em,source_comment_id')
+          .eq('organization_id', org).in('pedido_id', orderIds).eq('tipo', 'manual')
+          .order('criado_em', { ascending: false });
+        return rowsOrThrow<OrderActivityRow>(data, error, 'Não foi possível carregar as atualizações dos Pedidos');
+      }
       const { data, error } = await client.from('atividades')
         .select('*')
         .eq('organization_id', org)

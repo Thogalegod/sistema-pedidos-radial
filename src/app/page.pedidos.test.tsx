@@ -83,7 +83,8 @@ describe('Pedido page focused reads', () => {
     expect(mocks.loadOrderAttachments).not.toHaveBeenCalled();
     expect(mocks.loadOrderUpdates).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Ver arquivos' }));
-    await waitFor(() => expect(mocks.loadOrderAttachments).toHaveBeenCalledWith(expect.anything(), 'org1', 'p1'));
+    await waitFor(() => expect(mocks.loadOrderAttachments).toHaveBeenCalledWith(
+      expect.anything(), 'org1', 'p1', 'legacy'));
   });
 
   it('ignores an older Pedido response after another Pedido is selected', async () => {

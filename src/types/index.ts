@@ -36,11 +36,15 @@ export interface Atividade {
   descricao: string;
   usuario: string;
   criado_em: string;
+  kind?: 'manual' | 'system';
 }
 
 export interface Anexo {
   id: string;
   pedido_id: string;
+  frente_id?: string | null;
+  tarefa_id?: string | null;
+  atividade_id?: string | null;
   nome_arquivo: string;
   legenda?: string;
   storage_path: string;

@@ -19,6 +19,24 @@ const overview = { order: orderFixture({ id: 'p1' }), summary: empty,
   frontSummaries: [], nextAction: null, recent: null };
 
 describe('Pedido sections', () => {
+  it('lets an organization member delete only manual timeline updates', async () => {
+    const onDeleteAtividade = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<OrderDrawer order={{ ...order, atividades: [
+      { id: 'manual-1', descricao: 'Registro manual', usuario: 'Ana',
+        criado_em: '2026-09-25T11:00:00Z', kind: 'manual' },
+      { id: 'system-1', descricao: 'Pedido finalizado', usuario: 'Sistema',
+        criado_em: '2026-09-25T10:00:00Z', kind: 'system' },
+    ] }} isOpen activeTab="updates" canManageOrder={false}
+      onTabChange={vi.fn()} overview={overview} {...callbacks}
+      onDeleteAtividade={onDeleteAtividade} />);
+
+    const deleteButtons = screen.getAllByTitle('Deletar registro');
+    expect(deleteButtons).toHaveLength(1);
+    await userEvent.click(deleteButtons[0]);
+    expect(onDeleteAtividade).toHaveBeenCalledWith('p1', 'manual-1');
+  });
+
   it('opens in Summary and only exposes legacy content in its selected tab', async () => {
     const onTabChange = vi.fn();
     const { rerender } = render(<OrderDrawer order={order} isOpen activeTab="summary"

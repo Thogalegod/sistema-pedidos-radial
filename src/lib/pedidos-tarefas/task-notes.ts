@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import type { ComentarioTarefa } from '@/types';
 import type { Id, WriteResult } from './types';
+import type { Capabilities } from './types';
+import { addUpdate, deleteUpdate, loadTimeline } from './timeline';
 
 const noteSchema = z.object({
   id: z.string(),
@@ -25,7 +27,14 @@ export async function listTaskNotes(
   client: SupabaseClient,
   org: Id,
   taskId: Id,
+  timelineMode: Capabilities['timelineMode'] = 'legacy',
 ): Promise<ComentarioTarefa[]> {
+  if (timelineMode === 'v1') {
+    return (await loadTimeline(client, org, { taskId })).map(entry => ({
+      id: entry.id, tarefa_id: taskId, texto: entry.text, usuario: entry.authorName,
+      criado_em: entry.at, event_type: entry.kind === 'system' ? 'system' : null,
+    }));
+  }
   const { data, error } = await client.from('comentarios_tarefa')
     .select('id,tarefa_id,texto,usuario,criado_em,event_type')
     .eq('organization_id', org)
@@ -40,9 +49,13 @@ export async function addTaskNote(
   org: Id,
   taskId: Id,
   text: string,
+  timelineMode: Capabilities['timelineMode'] = 'legacy',
 ): Promise<WriteResult<Id>> {
   const normalized = text.trim();
   if (!normalized) return { ok: false, code: 'invalid', message: 'A nota não pode ficar vazia' };
+  if (timelineMode === 'v1') {
+    return addUpdate(client, org, { orderId: null, frontId: null, taskId, text: normalized });
+  }
   const { data, error } = await client.from('comentarios_tarefa').insert({
     organization_id: org,
     tarefa_id: taskId,
@@ -60,7 +73,9 @@ export async function deleteTaskNote(
   client: SupabaseClient,
   org: Id,
   noteId: Id,
+  timelineMode: Capabilities['timelineMode'] = 'legacy',
 ): Promise<WriteResult<void>> {
+  if (timelineMode === 'v1') return deleteUpdate(client, org, noteId);
   const { data, error } = await client.from('comentarios_tarefa')
     .delete()
     .eq('organization_id', org)

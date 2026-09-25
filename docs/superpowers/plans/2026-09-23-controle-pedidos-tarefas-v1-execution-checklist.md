@@ -55,7 +55,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 - [x] 5A — Expansão de atividades e captura de deltas (M12): aplicada e verificada no IURQ; criação/remoção de nota sem duplicação visual aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [x] 5B — Backfill verificável de comentários (M13): aplicada e verificada no IURQ; notas antigas sem duplicação visual aceitas pelo usuário em 25/09/2026. Fechamento Git autorizado.
-- [ ] 5C — Troca da fonte canônica e vínculos (M14).
+- [x] 5C — Troca da fonte canônica e vínculos (M14): aplicada e verificada no IURQ; exclusão de atualização manual corrigida e aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [ ] 5D — Interface única de Atualizações e Arquivos.
 
 ### Lote 6 — Eventos e Calendário
@@ -75,7 +75,15 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente a M13/5B após aceite humano. Próximo gate é a preparação local da M14/5C; não aplicar M14 remotamente sem autorização explícita. Sem deploy.
+Prioridade atual: fechar seletivamente a M14/5C após aceite humano. Próximo gate é 5D, sem migration remota prevista; não iniciar antes do fechamento Git de 5C. Sem deploy.
+
+### Preparação de 5C — fonte canônica e vínculos (25/09/2026)
+
+- Predecessor 5B fechado e publicado seletivamente no commit `86f65fe`; M13 aplicada e verificada no IURQ, com aceite humano.
+- M14 `20260923201300_pedidos_v1_timeline_activate.sql` preparada localmente. A timeline canônica passa a usar `atividades` por RPCs com escopo único; anexos recebem contexto coerente de Frente, tarefa e atualização; writers legados/diretos são revogados sem excluir tabelas nem histórico legado. Exclusões de tarefa/Frente preservam histórico e arquivos, e tarefa avulsa com histórico não perde seu único vínculo.
+- Reset local sem seed aplicou as **45 migrations** do zero. pgTAP M14: **33/33**; verificação local retornou modo `v1`, zero fontes duplicadas, vínculos inválidos ou registros sem dono, e grants esperados. Leitores/escritores focais: **55/55**; suíte completa da aplicação: **914 aprovados / 4 ignorados**; TypeScript, lint focal e `git diff --check` passaram.
+- Target explicitamente confirmado como IURQ `iurqgskfuupslrghgtej`. O dry-run listou exclusivamente `20260923201300_pedidos_v1_timeline_activate.sql`, sem seeds ou roles; após autorização humana explícita, M14 foi aplicada somente no IURQ. Pós-M14: **45/45 migrations** sincronizadas e dry-run vazio; modo `v1`; **3 comentários legados / 3 projeções**; zero projeções ausentes, fontes duplicadas, atividades sem âncora ou vínculos incoerentes. RPCs autenticadas estão liberadas, RPC anônima e writes legados/diretos estão bloqueados. Sem deploy; MISFY não acessado. QA focal e aceite humano do gate concluídos.
+- No QA manual pós-M14, a exclusão de uma atualização manual não aparecia para membro comum: a interface reutilizava indevidamente a permissão administrativa do Pedido, embora a RPC autorizasse membros e protegesse registros de sistema. Correção local preserva `manual/system` no leitor e oferece exclusão somente para atualização manual; evento automático continua protegido. RED/GREEN focal: **16/16**; suíte completa posterior: **915 aprovados / 4 ignorados**; TypeScript, lint focal (zero erros; aviso antigo de `<img>`) e `git diff --check` passaram. Correção aceita manualmente pelo usuário. Edição de atualização não faz parte do contrato M14 e permanece pendente de decisão própria, pois exige RPC e migration novas; nenhuma alteração remota adicional foi feita.
 
 ### Preparação de 5B — backfill verificável de comentários (25/09/2026)
 

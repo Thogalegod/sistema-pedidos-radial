@@ -4,10 +4,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AppShell } from './AppShell';
 import HubPage from '@/app/hub/page';
 import Login from '@/app/login/page';
+import { taskFixture } from '@/lib/pedidos-tarefas/test-fixtures';
 
 const mocks = vi.hoisted(() => ({
   path: '/hub', push: vi.fn(), replace: vi.fn(), getSession: vi.fn(), signOut: vi.fn(),
   onAuthStateChange: vi.fn(), signInWithPassword: vi.fn(), loadCentralSnapshot: vi.fn(),
+  loadDashboardTasks: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => mocks.path,
@@ -18,6 +20,17 @@ vi.mock('@/lib/supabase', () => ({ supabase: { auth: mocks } }));
 vi.mock('@/lib/central/queries', () => ({
   createSupabaseCentralOperationalReadClient: vi.fn(() => ({})),
   loadCentralOperationalSnapshot: mocks.loadCentralSnapshot,
+}));
+vi.mock('@/lib/pedidos-tarefas/organization', () => ({
+  getCurrentOrganizationId: async () => 'org-1',
+}));
+vi.mock('@/lib/pedidos-tarefas/members', () => ({
+  listMembers: async () => [],
+  readCapabilities: async () => ({ statusMode: 'v1', timelineMode: 'v1' }),
+}));
+vi.mock('@/lib/pedidos-tarefas/dashboard-queries', () => ({
+  createSupabaseDashboardReadClient: () => ({}),
+  loadDashboardTasks: mocks.loadDashboardTasks,
 }));
 
 beforeEach(() => {
@@ -31,6 +44,14 @@ beforeEach(() => {
     summary: { overdueTasks: 2, tasksToday: 1, periodsToBill: 3, overdueBillings: 4 },
     priorities: [], tasks: [], periodsToBill: [], overdueBillings: [],
   });
+  mocks.loadDashboardTasks.mockResolvedValue([
+    { task: taskFixture({ id: 'overdue-1', orderId: null, frontId: null,
+      dueDate: '2000-01-01' }), order: null, lastUpdate: null },
+    { task: taskFixture({ id: 'overdue-2', orderId: null, frontId: null,
+      dueDate: '2000-01-02' }), order: null, lastUpdate: null },
+    { task: taskFixture({ id: 'today-1', orderId: null, frontId: null,
+      dueDate: new Date().toLocaleDateString('en-CA') }), order: null, lastUpdate: null },
+  ]);
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
