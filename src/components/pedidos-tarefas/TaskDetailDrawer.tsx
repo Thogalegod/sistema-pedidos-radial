@@ -1,12 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Dependency, Front, Member, Subtask, TaskV1, WaitingType } from '@/lib/pedidos-tarefas/types';
+import type { Dependency, Front, Member, Subtask, TaskV1, WaitingType, WriteResult } from '@/lib/pedidos-tarefas/types';
 import type { TaskPatch, SubtaskInput } from '@/lib/pedidos-tarefas/commands';
-import type { ComentarioTarefa } from '@/types';
+import type { Anexo, ComentarioTarefa } from '@/types';
+import type { AttachmentContext, StagedAttachment } from '@/lib/pedidos-tarefas/attachments';
+import type { TimelineEntry, UpdateInput } from '@/lib/pedidos-tarefas/timeline';
 import { blockedCount, subtaskProgress } from '@/lib/pedidos-tarefas/indicators';
 import { pendingRuleLabel } from '@/lib/pedidos-tarefas/template-dates';
 import { TaskSignals } from './TaskSignals';
+import { OrderTimeline } from './OrderTimeline';
+import { UpdateComposer } from './UpdateComposer';
+import { OrderFiles } from './OrderFiles';
 
 type Props = { taskId: string; orderId: string | null; task: TaskV1;
   fronts: Front[]; members: Member[]; subtasks: Subtask[]; comments: ComentarioTarefa[];
@@ -17,6 +22,12 @@ type Props = { taskId: string; orderId: string | null; task: TaskV1;
   onDeleteSubtask: (id: string) => Promise<boolean>;
   onAddNote: (text: string) => Promise<boolean>;
   onDeleteNote: (id: string) => Promise<boolean>;
+  timelineEntries?: TimelineEntry[];
+  onSaveUpdate?: (input: UpdateInput) => Promise<WriteResult<string>>;
+  attachments?: Anexo[];
+  onUploadFiles?: (context: AttachmentContext, files: StagedAttachment[]) => Promise<boolean>;
+  onOpenAttachment?: (attachment: Anexo) => Promise<string | null>;
+  onDeleteAttachment?: (attachment: Anexo) => Promise<boolean>;
   onToggleTask: (taskId: string) => Promise<boolean>;
   onAddDependency: (predecessorId: string) => Promise<boolean>;
   onRemoveDependency: (predecessorId: string) => Promise<boolean>;
@@ -33,7 +44,8 @@ const field = 'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text
 export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subtasks, comments,
   dependencies, orderTasks, today, onClose, onChanged, onSaveTask, onSaveSubtask,
   onDeleteSubtask, onAddNote, onDeleteNote, onToggleTask, onAddDependency,
-  onRemoveDependency, onDeleteTask }: Props) {
+  onRemoveDependency, onDeleteTask, timelineEntries, onSaveUpdate, attachments = [],
+  onUploadFiles, onOpenAttachment, onDeleteAttachment }: Props) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
   const [frontId, setFrontId] = useState(task.frontId ?? '');
@@ -257,7 +269,19 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
             className="rounded-md border px-3 text-sm">Vincular</button>
         </div>}
       </section>}
-      <section aria-label="Notas de campo" className="space-y-2 border-t pt-4">
+      {onSaveUpdate ? <section aria-label="Atualizações da tarefa" className="space-y-3 border-t pt-4">
+        <h4 className="font-semibold">Atualizações</h4>
+        <OrderTimeline entries={timelineEntries ?? comments.map(note => ({
+          id: note.id, orderId, frontId: task.frontId, taskId,
+          kind: note.event_type ? 'system' : 'manual', text: note.texto,
+          authorId: null, authorName: note.usuario, at: note.criado_em, followUpDate: null,
+        }))} fronts={fronts} tasks={orderTasks}
+          attachments={attachments} onOpenAttachment={onOpenAttachment}
+          onDeleteAttachment={onDeleteAttachment} onChanged={onChanged}
+          onDelete={async id => { const ok = await onDeleteNote(id); if (ok) onChanged(); return ok; }} />
+        <UpdateComposer context={{ orderId, frontId: orderId ? task.frontId : null, taskId }}
+          onSave={onSaveUpdate} onUpload={onUploadFiles} onSaved={onChanged} />
+      </section> : <section aria-label="Notas de campo" className="space-y-2 border-t pt-4">
         <h4 className="font-semibold">Notas de campo</h4>
         {comments.map(note => <div key={note.id} className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm">
           <div className="flex justify-between gap-2"><span>{note.usuario} · {note.criado_em}</span>
@@ -274,7 +298,14 @@ export function TaskDetailDrawer({ taskId, orderId, task, fronts, members, subta
             onChange={event => setNewNote(event.target.value)} rows={2} />
           <button type="submit" disabled={busy || !newNote.trim()} className="rounded-md border px-3 py-1.5 text-sm">Salvar nota</button>
         </form>
-      </section>
+      </section>}
+      {orderId && onOpenAttachment && <section aria-label="Arquivos da tarefa" className="space-y-3 border-t pt-4">
+        <h4 className="font-semibold">Arquivos da tarefa</h4>
+        <OrderFiles attachments={attachments}
+          context={{ orderId, frontId: task.frontId, taskId, updateId: null }}
+          onOpen={onOpenAttachment} onUpload={onUploadFiles} onDelete={onDeleteAttachment}
+          onChanged={onChanged} />
+      </section>}
       {orderId && <p className="sr-only">Pedido {orderId}</p>}
     </section>
   </div>;

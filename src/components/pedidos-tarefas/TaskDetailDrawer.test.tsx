@@ -17,6 +17,18 @@ const base = { taskId: 'task-a', orderId: 'order-a', task, fronts, members: [],
   onRemoveDependency: vi.fn().mockResolvedValue(true) };
 
 describe('TaskDetailDrawer', () => {
+  it('uses the same timeline and composer for a Pedido task', () => {
+    render(<TaskDetailDrawer {...base} onSaveUpdate={vi.fn()} timelineEntries={[{
+      id: 'update-a', orderId: 'order-a', frontId: 'front-a', taskId: 'task-a', kind: 'manual',
+      text: 'Visita feita', authorId: 'user-a', authorName: 'Ana',
+      at: '2026-09-25T12:00:00Z', followUpDate: null,
+    }]} />);
+
+    expect(screen.getByText('Visita feita')).toBeInTheDocument();
+    expect(screen.getByLabelText('Texto da atualização')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nova nota de campo')).not.toBeInTheDocument();
+  });
+
   it('saves a move within the Pedido without changing task identity', async () => {
     const onSaveTask = vi.fn().mockResolvedValue(true);
     render(<TaskDetailDrawer {...base} onSaveTask={onSaveTask} />);

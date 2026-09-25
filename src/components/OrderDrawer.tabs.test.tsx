@@ -19,6 +19,19 @@ const overview = { order: orderFixture({ id: 'p1' }), summary: empty,
   frontSummaries: [], nextAction: null, recent: null };
 
 describe('Pedido sections', () => {
+  it('uses the unified timeline and composer in Updates', () => {
+    render(<OrderDrawer order={order} isOpen activeTab="updates" onTabChange={vi.fn()}
+      overview={overview} {...callbacks} timelineEntries={[{
+        id: 'update-1', orderId: 'p1', frontId: null, taskId: null, kind: 'manual',
+        text: 'Cliente aprovou', authorId: 'user-1', authorName: 'Ana',
+        at: '2026-09-25T11:00:00Z', followUpDate: null,
+      }]} onSaveUpdate={vi.fn()} />);
+
+    expect(screen.getByText('Cliente aprovou')).toBeInTheDocument();
+    expect(screen.getByLabelText('Texto da atualização')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Adicionar resumo de reunião ou observação...')).not.toBeInTheDocument();
+  });
+
   it('lets an organization member delete only manual timeline updates', async () => {
     const onDeleteAtividade = vi.fn();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -35,6 +48,22 @@ describe('Pedido sections', () => {
     expect(deleteButtons).toHaveLength(1);
     await userEvent.click(deleteButtons[0]);
     expect(onDeleteAtividade).toHaveBeenCalledWith('p1', 'manual-1');
+  });
+
+  it('offers file deletion to a member and keeps it visible if deletion fails', async () => {
+    const onDeleteAnexo = vi.fn().mockResolvedValue(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<OrderDrawer order={{ ...order, anexos: [{
+      id: 'file-a', pedido_id: 'p1', nome_arquivo: 'proposta.pdf',
+      storage_path: 'org/p1/proposta.pdf', tipo: 'application/pdf',
+      criado_em: '2026-09-25T11:00:00Z',
+    }] }} isOpen activeTab="files" canManageOrder={false}
+      onTabChange={vi.fn()} overview={overview} {...callbacks}
+      onDeleteAnexo={onDeleteAnexo} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Excluir arquivo proposta.pdf' }));
+    expect(onDeleteAnexo).toHaveBeenCalledWith('p1', 'file-a', 'org/p1/proposta.pdf');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível excluir');
+    expect(screen.getByText('proposta.pdf')).toBeInTheDocument();
   });
 
   it('opens in Summary and only exposes legacy content in its selected tab', async () => {

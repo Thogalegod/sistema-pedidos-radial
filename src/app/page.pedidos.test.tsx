@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listSelect: vi.fn(), loadOrder: vi.fn(), loadOrderTasks: vi.fn(),
   loadOrderRecentActivity: vi.fn(), loadLegacyOrderDetail: vi.fn(),
   loadOrderUpdates: vi.fn(), loadOrderAttachments: vi.fn(),
+  createSignedUrl: vi.fn(),
   listRows: [] as Array<Record<string, unknown>>,
 }));
 
@@ -24,6 +25,7 @@ vi.mock('../lib/supabase', () => ({ supabase: {
     mocks.listSelect(columns);
     return { eq: async () => ({ data: mocks.listRows, error: null }) };
   } }),
+  storage: { from: () => ({ createSignedUrl: mocks.createSignedUrl }) },
 } }));
 vi.mock('next/navigation', () => {
   const router = { replace: vi.fn() };
@@ -73,7 +75,11 @@ describe('Pedido page focused reads', () => {
     mocks.loadOrderTasks.mockResolvedValue({ fronts: [], tasks: [], subtasks: [], dependencies: [] });
     mocks.loadOrderRecentActivity.mockResolvedValue(null);
     mocks.loadLegacyOrderDetail.mockResolvedValue(legacyDetail('p1'));
-    mocks.loadOrderAttachments.mockResolvedValue([]);
+    mocks.loadOrderAttachments.mockResolvedValue([{
+      id: 'file-1', pedido_id: 'p1', nome_arquivo: 'proposta.pdf', legenda: undefined,
+      storage_path: 'org1/p1/proposta.pdf', tipo: 'application/pdf',
+      criado_em: '2026-09-25T10:00:00Z',
+    }]);
 
     render(<Home />);
     await userEvent.click(await screen.findByRole('button', { name: 'Abrir p1' }));
@@ -85,6 +91,7 @@ describe('Pedido page focused reads', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ver arquivos' }));
     await waitFor(() => expect(mocks.loadOrderAttachments).toHaveBeenCalledWith(
       expect.anything(), 'org1', 'p1', 'legacy'));
+    expect(mocks.createSignedUrl).not.toHaveBeenCalled();
   });
 
   it('ignores an older Pedido response after another Pedido is selected', async () => {

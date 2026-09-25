@@ -17,6 +17,8 @@ export type AttachmentMetadata = {
   type: string;
 };
 
+export type StagedAttachment = { file: File; caption: string };
+
 const attachmentSchema = z.array(z.object({
   id: z.string(), pedido_id: z.string(), frente_id: z.string().nullable().optional(),
   tarefa_id: z.string().nullable().optional(), atividade_id: z.string().nullable().optional(),

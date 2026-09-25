@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { taskFixture } from '@/lib/pedidos-tarefas/test-fixtures';
@@ -55,5 +55,17 @@ describe('OrderTasksSection', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Concluir tarefa Tarefa' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível alterar a tarefa');
     expect(screen.getByRole('checkbox', { name: 'Concluir tarefa Tarefa' })).not.toBeChecked();
+  });
+
+  it('refreshes the task timeline after saving an update', async () => {
+    const task = taskFixture({ id: 'task-a', orderId: 'order-a', frontId: 'front-a' });
+    const onDetailChanged = vi.fn();
+    render(<OrderTasksSection {...base} tasks={[task]} focusedTaskId="task-a"
+      fronts={[{ id: 'front-a', orderId: 'order-a', name: 'Obra', position: 0 }]}
+      onSaveUpdate={vi.fn().mockResolvedValue({ ok: true, value: 'update-a' })}
+      onDetailChanged={onDetailChanged} />);
+    await userEvent.type(screen.getByLabelText('Texto da atualização'), 'Visita concluída');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar atualização' }));
+    await waitFor(() => expect(onDetailChanged).toHaveBeenCalledOnce());
   });
 });

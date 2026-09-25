@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Order, Priority, TeamMember } from '../types';
 import { sortOrders } from '../lib/sorting';
@@ -51,9 +51,12 @@ import { buildOrderHref, buildTaskHref } from '../lib/pedidos-tarefas/navigation
 import { loadLegacyOrderDetail, loadOrder, loadOrderAttachments, loadOrderRecentActivity,
   loadOrderTasks, loadOrderUpdates } from '../lib/pedidos-tarefas/order-queries';
 import { addTaskNote, deleteTaskNote } from '../lib/pedidos-tarefas/task-notes';
-import { addUpdate, deleteUpdate } from '../lib/pedidos-tarefas/timeline';
+import { addUpdate, deleteUpdate, loadTimeline } from '../lib/pedidos-tarefas/timeline';
+import type { TimelineEntry, UpdateInput } from '../lib/pedidos-tarefas/timeline';
 import { saveAttachmentMetadata } from '../lib/pedidos-tarefas/attachments';
-import type { Dependency, Front, OrderV1, Subtask, TaskV1 } from '../lib/pedidos-tarefas/types';
+import type { AttachmentContext, StagedAttachment } from '../lib/pedidos-tarefas/attachments';
+import type { Dependency, Front, OrderV1, Subtask, TaskV1, WriteResult } from '../lib/pedidos-tarefas/types';
+import type { Anexo } from '../types';
 import {
   duplicateTemplate,
   instantiateTemplate,
@@ -65,7 +68,7 @@ import {
 
 type SelectedDetail = { id: string; organizationId: string; revision: number; order: Order; canonicalOrder: OrderV1;
   fronts: Front[]; tasks: TaskV1[]; subtasks: Subtask[]; dependencies: Dependency[];
-  recent: { text: string; at: string; author: string } | null };
+  timeline: TimelineEntry[]; recent: { text: string; at: string; author: string } | null };
 
 export default function Home() {
   const router = useRouter();
@@ -239,7 +242,7 @@ export default function Home() {
       }) };
       setSelectedDetail({ id: orderId, organizationId: org, revision: detailRevision, order: resolvedOrder, canonicalOrder,
         fronts: taskData.fronts, tasks: taskData.tasks, subtasks: taskData.subtasks,
-        dependencies: taskData.dependencies, recent });
+        dependencies: taskData.dependencies, timeline: [], recent });
     }).catch(error => {
       if (!active) return;
       console.error('Error loading Pedido detail:', error);
@@ -255,27 +258,38 @@ export default function Home() {
     if (!selectedOrderId || !organizationId || !loadedDetailId ||
       loadedDetailId !== selectedOrderId || loadedDetailOrg !== organizationId ||
       loadedDetailRevision !== detailRevision ||
-      (activeTab !== 'updates' && activeTab !== 'files')) return;
+      (activeTab !== 'updates' && activeTab !== 'files' && !(activeTab === 'tasks' && focusedTaskId))) return;
     let active = true;
     const orderId = selectedOrderId;
     const org = organizationId;
     queueMicrotask(() => { if (active) { setSectionError(null); setSectionLoading(true); } });
     const read = async () => {
       if (activeTab === 'updates') {
-        const atividades = await loadOrderUpdates(supabase, org, orderId, capabilities?.timelineMode ?? 'legacy');
-        if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
-          ? { ...previous, order: { ...previous.order, atividades } } : previous);
-      } else {
+        if (capabilities?.timelineMode === 'v1') {
+          const [timeline, attachments] = await Promise.all([
+            loadTimeline(supabase, org, { orderId }),
+            loadOrderAttachments(supabase, org, orderId, 'v1'),
+          ]);
+          if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
+            ? { ...previous, timeline, order: { ...previous.order, anexos: attachments } } : previous);
+        } else {
+          const atividades = await loadOrderUpdates(supabase, org, orderId, 'legacy');
+          if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
+            ? { ...previous, order: { ...previous.order, atividades } } : previous);
+        }
+      } else if (activeTab === 'files') {
         const attachments = await loadOrderAttachments(supabase, org, orderId,
           capabilities?.timelineMode ?? 'legacy');
-        const anexos = await Promise.all(attachments.map(async attachment => {
-          const { data, error } = await supabase.storage.from('anexos-pedidos')
-            .createSignedUrl(attachment.storage_path, 3600);
-          if (error) throw error;
-          return { ...attachment, signed_url: data.signedUrl };
-        }));
         if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
-          ? { ...previous, order: { ...previous.order, anexos } } : previous);
+          ? { ...previous, order: { ...previous.order, anexos: attachments } } : previous);
+      } else {
+        const [attachments, timeline] = await Promise.all([
+          loadOrderAttachments(supabase, org, orderId, capabilities?.timelineMode ?? 'legacy'),
+          capabilities?.timelineMode === 'v1'
+            ? loadTimeline(supabase, org, { orderId }) : Promise.resolve([]),
+        ]);
+        if (active) setSelectedDetail(previous => previous?.id === orderId && previous.organizationId === org
+          ? { ...previous, timeline, order: { ...previous.order, anexos: attachments } } : previous);
       }
     };
     void read().catch(error => {
@@ -287,7 +301,7 @@ export default function Home() {
     });
     return () => { active = false; };
   }, [activeTab, selectedOrderId, organizationId, loadedDetailId, loadedDetailOrg,
-    loadedDetailRevision, detailRevision, capabilities?.timelineMode]);
+    loadedDetailRevision, detailRevision, capabilities?.timelineMode, focusedTaskId]);
 
   useEffect(() => {
     if (isLoading || typeof window === 'undefined') return;
@@ -923,34 +937,50 @@ export default function Home() {
     }
   };
 
+  const handleSaveUpdate = async (input: UpdateInput): Promise<WriteResult<string>> => {
+    const currentOrganizationId = requireOrganizationId();
+    if (!currentOrganizationId) return { ok: false, code: 'reload', message: 'Organização indisponível' };
+    if (capabilities?.timelineMode === 'v1') {
+      return addUpdate(supabase, currentOrganizationId, input);
+    }
+    if (!input.orderId) return { ok: false, code: 'invalid', message: 'Pedido obrigatório' };
+    const { data, error } = await supabase.from('atividades').insert({
+      organization_id: currentOrganizationId, pedido_id: input.orderId,
+      descricao: input.text.trim(), usuario: currentUser,
+    }).select('id').single();
+    if (error || !data?.id) return { ok: false, code: 'conflict', message: error?.message ?? 'Resposta inválida' };
+    return { ok: true, value: data.id };
+  };
+
   const handleDeleteAtividade = async (orderId: string, atividadeId: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     if (capabilities?.timelineMode === 'v1') {
       const result = await deleteUpdate(supabase, currentOrganizationId, atividadeId);
-      if (!result.ok) { reportCommandFailure(result, 'Erro ao remover registro'); return; }
+      if (!result.ok) { reportCommandFailure(result, 'Erro ao remover registro'); return false; }
       setDetailRevision(previous => previous + 1);
       toast.success('Registro removido');
-      return;
+      return true;
     }
     const { error } = await supabase.from('atividades').delete()
       .eq('organization_id', currentOrganizationId).eq('id', atividadeId);
-    if (reportMutationError(error, 'Erro ao remover registro')) return;
+    if (reportMutationError(error, 'Erro ao remover registro')) return false;
 
     setDetailRevision(previous => previous + 1);
     toast.success('Registro removido');
+    return true;
   };
 
-  const handleUploadFiles = async (orderId: string, stagedFiles: { file: File, legenda: string }[]) => {
+  const handleUploadFiles = async (context: AttachmentContext, stagedFiles: StagedAttachment[]) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
     const toastId = toast.loading(`Enviando ${stagedFiles.length} arquivo(s)...`);
     let uploadsSuccess = 0;
 
     for (let i = 0; i < stagedFiles.length; i++) {
-      const { file: originalFile, legenda } = stagedFiles[i];
+      const { file: originalFile, caption } = stagedFiles[i];
       
       let fileToUpload = originalFile;
       
@@ -972,7 +1002,7 @@ export default function Home() {
 
       const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `${currentOrganizationId}/${orderId}/${fileName}`;
+      const filePath = `${currentOrganizationId}/${context.orderId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('anexos-pedidos')
@@ -986,13 +1016,13 @@ export default function Home() {
 
       const canonicalMetadata = capabilities?.timelineMode === 'v1'
         ? await saveAttachmentMetadata(supabase, currentOrganizationId,
-          { orderId, frontId: null, taskId: null, updateId: null },
-          { name: originalFile.name, caption: legenda || null, path: filePath,
+          context,
+          { name: originalFile.name, caption: caption || null, path: filePath,
             type: fileToUpload.type || 'unknown' })
         : null;
       const legacyMetadata = canonicalMetadata === null ? await supabase.from('anexos').insert({
-        organization_id: currentOrganizationId, pedido_id: orderId, nome_arquivo: originalFile.name,
-        legenda: legenda || null, tipo: fileToUpload.type || 'unknown', storage_path: filePath,
+        organization_id: currentOrganizationId, pedido_id: context.orderId, nome_arquivo: originalFile.name,
+        legenda: caption || null, tipo: fileToUpload.type || 'unknown', storage_path: filePath,
       }).select().single() : null;
       const anexoData = canonicalMetadata?.ok ? { id: canonicalMetadata.value } : legacyMetadata?.data;
       const dbError = canonicalMetadata && !canonicalMetadata.ok
@@ -1016,26 +1046,28 @@ export default function Home() {
     }
 
     if (uploadsSuccess > 0) {
-      setDetailRevision(previous => previous + 1);
       toast.success(`${uploadsSuccess} arquivo(s) enviado(s) com sucesso!`, { id: toastId });
     } else if (stagedFiles.length > 0 && uploadsSuccess === 0) {
       // toast is already showing the error messages
     }
+    return uploadsSuccess === stagedFiles.length;
   };
 
   const handleDeleteAnexo = async (orderId: string, anexoId: string, storagePath: string) => {
     const currentOrganizationId = requireOrganizationId();
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) return false;
 
-    const { error: dbError } = await supabase
+    const { data: deletedRows, error: dbError } = await supabase
       .from('anexos')
       .delete()
       .eq('organization_id', currentOrganizationId)
-      .eq('id', anexoId);
+      .eq('pedido_id', orderId)
+      .eq('id', anexoId)
+      .select('id');
 
-    if (dbError) {
+    if (dbError || deletedRows?.length !== 1) {
       toast.error('Erro ao remover metadados do arquivo');
-      return;
+      return false;
     }
 
     const { error: storageError } = await supabase.storage
@@ -1045,13 +1077,23 @@ export default function Home() {
     if (storageError) {
       console.error('Storage delete error:', storageError);
       toast.error(ATTACHMENT_ORPHAN_WARNING);
-      setDetailRevision(previous => previous + 1);
-      return;
+      return true;
     }
 
-    setDetailRevision(previous => previous + 1);
     toast.success('Arquivo removido');
+    return true;
   };
+
+  const handleOpenAnexo = useCallback(async (anexo: Anexo) => {
+    const { data, error } = await supabase.storage.from('anexos-pedidos')
+      .createSignedUrl(anexo.storage_path, 3600);
+    if (error) {
+      console.error('Signed URL error:', error);
+      toast.error('Não foi possível abrir o arquivo');
+      return null;
+    }
+    return data.signedUrl;
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -1252,6 +1294,8 @@ export default function Home() {
           dependencies: selectedDetail.dependencies,
           fronts: selectedDetail.fronts,
           commentsByTask: Object.fromEntries(selectedOrder.tasks.map(task => [task.id, task.comentarios ?? []])),
+          timelineEntries: selectedDetail.timeline,
+          attachments: selectedOrder.anexos ?? [],
           members,
           today: todayISO,
           focusedTaskId,
@@ -1267,6 +1311,11 @@ export default function Home() {
           onDeleteSubtask: (taskId, id) => handleDeleteSubtarefa(selectedOrder.id, taskId, id),
           onAddNote: (taskId, text) => handleAddComentarioTarefa(taskId, text),
           onDeleteNote: (_taskId, id) => handleDeleteComentarioTarefa(id),
+          onSaveUpdate: handleSaveUpdate,
+          onUploadFiles: handleUploadFiles,
+          onOpenAttachment: handleOpenAnexo,
+          onDeleteAttachment: anexo => handleDeleteAnexo(selectedOrder.id, anexo.id, anexo.storage_path),
+          onDetailChanged: () => setDetailRevision(previous => previous + 1),
           onAddDependency: (taskId, predecessorId) => handleDependencyV1('add', taskId, predecessorId),
           onRemoveDependency: (taskId, predecessorId) => handleDependencyV1('remove', taskId, predecessorId),
           onSaveFront: handleSaveFrontV1,
@@ -1289,8 +1338,12 @@ export default function Home() {
         onDeleteOrder={handleDeleteOrder}
         onAddAtividade={handleAddAtividade}
         onDeleteAtividade={handleDeleteAtividade}
+        timelineEntries={selectedDetail?.timeline}
+        onSaveUpdate={handleSaveUpdate}
         onUploadFiles={handleUploadFiles}
         onDeleteAnexo={handleDeleteAnexo}
+        onOpenAnexo={handleOpenAnexo}
+        onDetailChanged={() => setDetailRevision(previous => previous + 1)}
         onAddSubtarefa={handleAddSubtarefa}
         onToggleSubtarefa={handleToggleSubtarefa}
         onDeleteSubtarefa={handleDeleteSubtarefa}

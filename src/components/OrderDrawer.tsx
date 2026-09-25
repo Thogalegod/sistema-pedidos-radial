@@ -1,8 +1,8 @@
-import { Order, Priority, OrderStatus } from '../types';
+import { Order, Priority, OrderStatus, type Anexo } from '../types';
 import { formatMemberLabel } from '../lib/pedidos-tarefas/members';
 import type { Member } from '../lib/pedidos-tarefas/types';
 import { StatusBadge, cn, memberColor } from './StatusBadge';
-import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, UploadCloud, Camera, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
+import { X, MapPin, Building2, Calendar, CheckSquare, Square, Plus, Trash2, MessageSquare, Paperclip, ChevronDown, ChevronUp, Mic, Navigation } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useRef, useState } from 'react';
@@ -11,6 +11,12 @@ import type { Front, OrderV1 } from '../lib/pedidos-tarefas/types';
 import { OrderSummary } from './pedidos-tarefas/OrderSummary';
 import { OrderTabs, type OrderTab } from './pedidos-tarefas/OrderTabs';
 import { OrderTasksSection, type OrderTasksSectionProps } from './pedidos-tarefas/OrderTasksSection';
+import { OrderTimeline } from './pedidos-tarefas/OrderTimeline';
+import { UpdateComposer } from './pedidos-tarefas/UpdateComposer';
+import { OrderFiles } from './pedidos-tarefas/OrderFiles';
+import type { AttachmentContext, StagedAttachment } from '../lib/pedidos-tarefas/attachments';
+import type { TimelineEntry, UpdateInput } from '../lib/pedidos-tarefas/timeline';
+import type { WriteResult } from '../lib/pedidos-tarefas/types';
 
 type SpeechRecognitionResultEvent = {
   results: { [index: number]: { [index: number]: { transcript: string } } };
@@ -46,10 +52,14 @@ interface OrderDrawerProps {
   onDeleteTask: (orderId: string, taskId: string) => void;
   onDeleteOrder: (orderId: string) => void;
   onAddAtividade: (orderId: string, descricao: string) => void;
-  onDeleteAtividade: (orderId: string, atividadeId: string) => void;
+  onDeleteAtividade: (orderId: string, atividadeId: string) => boolean | Promise<boolean>;
+  timelineEntries?: TimelineEntry[];
+  onSaveUpdate?: (input: UpdateInput) => Promise<WriteResult<string>>;
   onEditOrderField?: (orderId: string, field: 'orderNumber' | 'title' | 'client' | 'address', newValue: string) => Promise<void>;
-  onUploadFiles?: (orderId: string, stagedFiles: { file: File, legenda: string }[]) => Promise<void>;
-  onDeleteAnexo?: (orderId: string, anexoId: string, storagePath: string) => Promise<void>;
+  onUploadFiles?: (context: AttachmentContext, stagedFiles: StagedAttachment[]) => Promise<boolean>;
+  onDeleteAnexo?: (orderId: string, anexoId: string, storagePath: string) => Promise<boolean>;
+  onOpenAnexo?: (anexo: Anexo) => Promise<string | null>;
+  onDetailChanged?: () => void;
   onEditTaskTitle: (orderId: string, taskId: string, newTitle: string) => Promise<void>;
   onEditTaskDueDate?: (orderId: string, taskId: string, newDueDate: string | undefined) => Promise<void>;
   onAddSubtarefa?: (orderId: string, taskId: string, descricao: string) => Promise<void>;
@@ -72,22 +82,19 @@ interface OrderDrawerProps {
   taskSection?: OrderTasksSectionProps | null;
 }
 
-export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onAddAtividade, onDeleteAtividade, onUploadFiles, onDeleteAnexo, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null }: OrderDrawerProps) {
+export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePriority, onAddTask, onSetOrderStatus, members = [], onEditTaskTitle, onEditTaskDueDate, onEditOrderField, onDeleteTask, onDeleteOrder, onDeleteAtividade, timelineEntries, onSaveUpdate, onUploadFiles, onDeleteAnexo, onOpenAnexo, onDetailChanged, onAddSubtarefa, onToggleSubtarefa, onDeleteSubtarefa, onAddComentarioTarefa, onDeleteComentarioTarefa, today = new Date('2026-04-29'), canManageOrder = false, activeTab = 'summary', onTabChange, overview = null, onFocusTask, focusedTaskId = null, detailError = null, sectionError = null, sectionLoading = false, taskSection = null }: OrderDrawerProps) {
   
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
-  const [newAtividade, setNewAtividade] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
   const [editingTaskDueDateId, setEditingTaskDueDateId] = useState<string | null>(null);
   const [editingTaskDueDateValue, setEditingTaskDueDateValue] = useState('');
-  
-  const [stagedFiles, setStagedFiles] = useState<{ file: File, legenda: string }[]>([]);
   
   const [editingOrderField, setEditingOrderField] = useState<'orderNumber' | 'title' | 'client' | 'address' | null>(null);
   const [editingOrderValue, setEditingOrderValue] = useState('');
@@ -920,65 +927,21 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
               <div className="space-y-4 pt-4 border-t border-gray-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-purple-600" />
-                  Histórico e Resumos
+                  Atualizações
                 </h3>
-                
-                <div className="space-y-3">
-                  {order.atividades && order.atividades.length > 0 ? (
-                    order.atividades.map(atividade => (
-                      <div key={atividade.id} className="group bg-purple-50/50 border border-purple-100 rounded-lg p-3 relative">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-purple-700">{atividade.usuario}</span>
-                          <span className="text-xs text-purple-400">
-                            {format(parseISO(atividade.criado_em), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700 pr-6">{atividade.descricao}</p>
-                        {(atividade.kind === 'manual' || (atividade.kind === undefined && canManageOrder)) && (
-                          <button 
-                            onClick={() => {
-                              if (window.confirm('Deseja excluir este registro permanentemente?')) {
-                                onDeleteAtividade(order.id, atividade.id);
-                              }
-                            }}
-                            aria-label={`Excluir atualização ${atividade.descricao}`}
-                            className="absolute right-2 top-2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                            title="Deletar registro"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">Nenhum registro ainda.</p>
-                  )}
-                </div>
-
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!newAtividade.trim()) return;
-                    onAddAtividade(order.id, newAtividade.trim());
-                    setNewAtividade('');
-                  }} 
-                  className="mt-3 flex flex-col gap-2"
-                >
-                  <textarea 
-                    placeholder="Adicionar resumo de reunião ou observação..." 
-                    value={newAtividade}
-                    onChange={(e) => setNewAtividade(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none"
-                  />
-                  <button 
-                    type="submit"
-                    disabled={!newAtividade.trim()}
-                    className="self-end px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Salvar Registro
-                  </button>
-                </form>
+                <OrderTimeline entries={timelineEntries ?? (order.atividades ?? []).map(atividade => ({
+                  id: atividade.id, orderId: order.id, frontId: null, taskId: null,
+                  kind: atividade.kind ?? 'manual', text: atividade.descricao, authorId: null,
+                  authorName: atividade.usuario, at: atividade.criado_em, followUpDate: null,
+                }))} fronts={taskSection?.fronts} tasks={taskSection?.tasks}
+                  attachments={order.anexos ?? []} onOpenAttachment={onOpenAnexo}
+                  onDeleteAttachment={onDeleteAnexo
+                    ? anexo => onDeleteAnexo(order.id, anexo.id, anexo.storage_path) : undefined}
+                  onChanged={onDetailChanged}
+                  onDelete={async id => await onDeleteAtividade(order.id, id)} />
+                {onSaveUpdate ? <UpdateComposer context={{ orderId: order.id, frontId: null, taskId: null }}
+                  onSave={onSaveUpdate} onUpload={onUploadFiles}
+                  onSaved={() => onDetailChanged?.()} /> : null}
               </div>
               </>}
 
@@ -989,147 +952,13 @@ export function OrderDrawer({ order, isOpen, onClose, onToggleTask, onChangePrio
                   <Paperclip className="w-5 h-5 text-blue-600" />
                   Documentos e Fotos
                 </h3>
-
-                <div className="flex gap-2 mb-4">
-                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
-                    <input 
-                      type="file" 
-                      className="sr-only" 
-                      multiple 
-                      accept="image/*,application/pdf"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
-                          setStagedFiles(prev => [...prev, ...newFiles]);
-                          e.target.value = ''; // reset input
-                        }
-                      }}
-                    />
-                    <UploadCloud className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
-                    <span className="text-xs font-semibold text-gray-600">Anexar Arquivos</span>
-                  </label>
-                  
-                  <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 hover:border-blue-400 transition-colors cursor-pointer group">
-                    <input 
-                      type="file" 
-                      className="sr-only" 
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          const newFiles = Array.from(e.target.files).map(file => ({ file, legenda: '' }));
-                          setStagedFiles(prev => [...prev, ...newFiles]);
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                    <Camera className="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" />
-                    <span className="text-xs font-semibold text-gray-600">Tirar Foto</span>
-                  </label>
-                </div>
-
-                {/* Staging Area for new files */}
-                {stagedFiles.length > 0 && (
-                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-3 mb-4">
-                    <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Arquivos para Envio</h4>
-                    {stagedFiles.map((staged, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row gap-2 bg-white p-2 rounded-lg border border-blue-100 shadow-sm">
-                        <div className="flex items-center gap-2 flex-1 overflow-hidden">
-                          {staged.file.type.includes('pdf') ? <FileText className="w-4 h-4 text-red-500 flex-shrink-0" /> : <ImageIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />}
-                          <span className="text-xs font-medium text-gray-600 truncate">{staged.file.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                          <input 
-                            type="text"
-                            placeholder="Legenda (ex: Fundação...)"
-                            value={staged.legenda}
-                            onChange={(e) => {
-                              const newArr = [...stagedFiles];
-                              newArr[idx].legenda = e.target.value;
-                              setStagedFiles(newArr);
-                            }}
-                            className="flex-1 sm:w-48 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                          />
-                          <button 
-                            onClick={() => setStagedFiles(prev => prev.filter((_, i) => i !== idx))}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-end pt-2">
-                      <button 
-                        onClick={() => {
-                          if (onUploadFiles) {
-                            onUploadFiles(order.id, stagedFiles);
-                            setStagedFiles([]);
-                          }
-                        }}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                      >
-                        Enviar {stagedFiles.length} arquivo(s)
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {order.anexos && order.anexos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {order.anexos.map(anexo => {
-                      const isPdf = anexo.tipo.includes('pdf');
-                      return (
-                        <div key={anexo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
-                          <a
-                            href={anexo.signed_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-disabled={!anexo.signed_url}
-                            className="block w-full aspect-square relative"
-                          >
-                            {isPdf ? (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white">
-                                <FileText className="w-10 h-10 text-red-500 mb-2" />
-                                <span className="text-[10px] font-medium text-gray-600 text-center truncate w-full px-2">{anexo.nome_arquivo}</span>
-                              </div>
-                            ) : (
-                              anexo.signed_url ? (
-                                <img src={anexo.signed_url} alt={anexo.nome_arquivo} className="absolute inset-0 w-full h-full object-cover" />
-                              ) : (
-                                <div className="absolute inset-0 flex items-center justify-center p-2 bg-white text-xs text-gray-500 text-center">
-                                  Prévia indisponível
-                                </div>
-                              )
-                            )}
-                          </a>
-                          {anexo.legenda && (
-                            <div className="p-2 bg-white border-t border-gray-100 flex-1 flex items-center">
-                              <p className="text-xs font-medium text-gray-700 line-clamp-2">{anexo.legenda}</p>
-                            </div>
-                          )}
-                          
-                          {canManageOrder && onDeleteAnexo && (
-                            <button 
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (window.confirm('Deseja excluir este anexo permanentemente?')) {
-                                  onDeleteAnexo(order.id, anexo.id, anexo.storage_path);
-                                }
-                              }}
-                              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-red-600 text-white rounded-full transition-colors shadow-sm z-10 backdrop-blur-sm"
-                              title="Excluir anexo"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 italic">Nenhum anexo salvo.</p>
-                )}
+                <OrderFiles attachments={order.anexos ?? []}
+                  context={{ orderId: order.id, frontId: null, taskId: null, updateId: null }}
+                  showAllContexts onUpload={onUploadFiles}
+                  onOpen={onOpenAnexo ?? (async anexo => anexo.signed_url ?? null)}
+                  onDelete={onDeleteAnexo
+                    ? anexo => onDeleteAnexo(order.id, anexo.id, anexo.storage_path) : undefined}
+                  onChanged={onDetailChanged} />
               </div>
               </>}
 

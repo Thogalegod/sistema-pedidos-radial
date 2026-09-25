@@ -56,7 +56,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 - [x] 5A — Expansão de atividades e captura de deltas (M12): aplicada e verificada no IURQ; criação/remoção de nota sem duplicação visual aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [x] 5B — Backfill verificável de comentários (M13): aplicada e verificada no IURQ; notas antigas sem duplicação visual aceitas pelo usuário em 25/09/2026. Fechamento Git autorizado.
 - [x] 5C — Troca da fonte canônica e vínculos (M14): aplicada e verificada no IURQ; exclusão de atualização manual corrigida e aceita pelo usuário em 25/09/2026. Fechamento Git autorizado.
-- [ ] 5D — Interface única de Atualizações e Arquivos.
+- [x] 5D — Interface única de Atualizações e Arquivos: correções de QA aceitas manualmente pelo usuário em 25/09/2026. Fechamento Git autorizado.
 
 ### Lote 6 — Eventos e Calendário
 
@@ -75,7 +75,17 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente a M14/5C após aceite humano. Próximo gate é 5D, sem migration remota prevista; não iniciar antes do fechamento Git de 5C. Sem deploy.
+Prioridade atual: fechar seletivamente o 5D após aceite humano; próximo gate 6A, com autorização remota separada antes de qualquer aplicação da M15. Sem deploy.
+
+### Preparação de 5D — interface única de Atualizações e Arquivos (25/09/2026)
+
+- Criados componentes únicos para timeline, compositor e arquivos, reutilizados no Pedido, na tarefa do Pedido e na tarefa avulsa. Eventos de sistema e atualizações manuais são distinguíveis; autoria, horário, Frente/tarefa e follow-up permanecem visíveis. As caixas legadas de nota/atividade não aparecem no modo canônico.
+- O compositor persiste a atualização antes dos arquivos. Falha de upload preserva o texto já salvo e oferece reenvio sem criar outra atualização. Tarefa avulsa não oferece upload. Seleção aceita somente imagem/PDF de até 10 MB; o caminho de Storage continua `organização/Pedido/arquivo` e os metadados guardam o contexto de Pedido, Frente, tarefa e atualização.
+- Arquivos são listados por contexto e a URL assinada é criada somente ao clicar em **Abrir**. Exclusão mantém a ordem metadado primeiro/objeto depois; falha de Storage conserva o aviso de órfão já definido pelo projeto.
+- TDD RED por módulos e integração ausentes; GREEN focal: **26/26 testes** em 6 arquivos. Regressão completa do aplicativo: **923 aprovados / 4 ignorados**. TypeScript, lint focal e `git diff --check` passaram. Nenhuma migration, acesso remoto, commit, push ou deploy; MISFY não acessado. Aguardar teste manual e aceite humano.
+- QA manual do usuário encontrou quatro falhas na primeira versão: atualização nova da tarefa não aparecia, arquivo vinculado não aparecia dentro da atualização, foto não tinha miniatura e membro comum não via exclusão de arquivo. Causas confirmadas: callback de recarga da tarefa vazio; timeline não recebia anexos; componente de arquivos tinha somente o botão Abrir; drawer restringia exclusão ao admin apesar das políticas de membro no banco/Storage. Correção local conecta a recarga, carrega anexos junto da timeline, mostra o vínculo e prévia temporária de imagens, e expõe a exclusão a membros mantendo confirmação/erro e checagem de linha removida. Os testes de regressão foram observados RED antes da correção. **QA manual precisa ser repetido pelo usuário**; nenhum dado real foi excluído pelo agente.
+- Após a correção: **18/18 testes focais** em 4 arquivos; regressão completa **927 aprovados / 4 ignorados**; TypeScript, lint focal e `git diff --check` passaram. O fluxo de exclusão continua a remover metadados antes do objeto e agora exige confirmação de uma linha removida para reportar sucesso. Prévia de foto assina URL temporária ao exibir a foto no detalhe; PDF permanece sob abertura explícita.
+- Usuário confirmou em 25/09/2026 que o reteste manual das correções ficou certo. Aceite do 5D recebido; staging seletivo, gate staged, commit e push autorizados conforme `AGENTS.md`.
 
 ### Preparação de 5C — fonte canônica e vínculos (25/09/2026)
 

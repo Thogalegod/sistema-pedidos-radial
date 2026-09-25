@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import type { TaskInput, TaskPatch, SubtaskInput } from '@/lib/pedidos-tarefas/commands';
 import type { ComentarioTarefa } from '@/types';
-import type { Dependency, Front, Member, Subtask, TaskV1 } from '@/lib/pedidos-tarefas/types';
+import type { Anexo } from '@/types';
+import type { Dependency, Front, Member, Subtask, TaskV1, WriteResult } from '@/lib/pedidos-tarefas/types';
+import type { AttachmentContext, StagedAttachment } from '@/lib/pedidos-tarefas/attachments';
+import type { TimelineEntry, UpdateInput } from '@/lib/pedidos-tarefas/timeline';
 import { chooseInitialFront } from '@/lib/pedidos-tarefas/fronts';
 import { blockedCount } from '@/lib/pedidos-tarefas/indicators';
 import { OrderTaskList } from './OrderTaskList';
@@ -22,6 +25,13 @@ export type OrderTasksSectionProps = { orderId: string; tasks: TaskV1[]; subtask
   onDeleteSubtask: (taskId: string, id: string) => Promise<boolean>;
   onAddNote: (taskId: string, text: string) => Promise<boolean>;
   onDeleteNote: (taskId: string, id: string) => Promise<boolean>;
+  timelineEntries?: TimelineEntry[];
+  onSaveUpdate?: (input: UpdateInput) => Promise<WriteResult<string>>;
+  attachments?: Anexo[];
+  onUploadFiles?: (context: AttachmentContext, files: StagedAttachment[]) => Promise<boolean>;
+  onOpenAttachment?: (attachment: Anexo) => Promise<string | null>;
+  onDeleteAttachment?: (attachment: Anexo) => Promise<boolean>;
+  onDetailChanged?: () => void;
   onAddDependency: (taskId: string, predecessorId: string) => Promise<boolean>;
   onRemoveDependency: (taskId: string, predecessorId: string) => Promise<boolean>;
   onSaveFront: (front: Front) => Promise<boolean>;
@@ -32,7 +42,9 @@ export function OrderTasksSection({ orderId, tasks, subtasks, commentsByTask, de
   fronts, members, today, focusedTaskId, canManageOrder, defaultAssigneeId,
   onFocusTask, onCloseTask, onCreateTask, onSaveTask, onToggleTask, onDeleteTask,
   onSaveSubtask, onDeleteSubtask, onAddNote, onDeleteNote, onAddDependency,
-  onRemoveDependency, onSaveFront, onRemoveFront, onReorderFront }: OrderTasksSectionProps) {
+  onRemoveDependency, onSaveFront, onRemoveFront, onReorderFront, timelineEntries,
+  onSaveUpdate, attachments = [], onUploadFiles, onOpenAttachment,
+  onDeleteAttachment, onDetailChanged }: OrderTasksSectionProps) {
   const [groupBy, setGroupBy] = useState<'stage' | 'due'>('stage');
   const [showFrontEditor, setShowFrontEditor] = useState(false);
   const [title, setTitle] = useState('');
@@ -132,11 +144,17 @@ export function OrderTasksSection({ orderId, tasks, subtasks, commentsByTask, de
       taskId={selectedTask.id} orderId={orderId} task={selectedTask} fronts={fronts}
       members={members} subtasks={subtasks.filter(item => item.taskId === selectedTask.id)}
       comments={commentsByTask[selectedTask.id] ?? []} dependencies={dependencies} orderTasks={tasks}
-      today={today} onClose={onCloseTask} onChanged={() => {}}
+      today={today} onClose={onCloseTask} onChanged={onDetailChanged ?? (() => {})}
       onSaveTask={onSaveTask} onToggleTask={onToggleTask}
       onSaveSubtask={onSaveSubtask} onDeleteSubtask={id => onDeleteSubtask(selectedTask.id, id)}
       onAddNote={text => onAddNote(selectedTask.id, text)}
       onDeleteNote={id => onDeleteNote(selectedTask.id, id)}
+      timelineEntries={timelineEntries?.length
+        ? timelineEntries.filter(entry => entry.taskId === selectedTask.id) : undefined}
+      onSaveUpdate={onSaveUpdate}
+      attachments={attachments.filter(file => file.tarefa_id === selectedTask.id)}
+      onUploadFiles={onUploadFiles} onOpenAttachment={onOpenAttachment}
+      onDeleteAttachment={onDeleteAttachment}
       onAddDependency={id => onAddDependency(selectedTask.id, id)}
       onRemoveDependency={id => onRemoveDependency(selectedTask.id, id)}
       onDeleteTask={canManageOrder ? async id => { const ok = await onDeleteTask(id);

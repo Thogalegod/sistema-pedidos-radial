@@ -10,6 +10,7 @@ import {
   type StandaloneTaskDetail as Detail,
 } from '@/lib/pedidos-tarefas/standalone-task';
 import { addTaskNote, deleteTaskNote } from '@/lib/pedidos-tarefas/task-notes';
+import { addUpdate } from '@/lib/pedidos-tarefas/timeline';
 import type { Capabilities, Member } from '@/lib/pedidos-tarefas/types';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 
@@ -69,6 +70,8 @@ export function StandaloneTaskDetail({ organizationId, taskId, members, today, t
     }}
     onAddNote={async text => (await addTaskNote(supabase, organizationId, taskId, text, timelineMode)).ok}
     onDeleteNote={async id => (await deleteTaskNote(supabase, organizationId, id, timelineMode)).ok}
+    onSaveUpdate={timelineMode === 'v1'
+      ? input => addUpdate(supabase, organizationId, input) : undefined}
     onAddDependency={async () => false}
     onRemoveDependency={async () => false}
     onDeleteTask={async id => {
