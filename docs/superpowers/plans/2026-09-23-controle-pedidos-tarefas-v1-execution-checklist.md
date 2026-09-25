@@ -60,7 +60,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ### Lote 6 — Eventos e Calendário
 
-- [ ] 6A — Eventos independentes e associações (M15).
+- [x] 6A — Eventos independentes e associações (M15): migration e QA técnico concluídos no IURQ; aceite humano recebido em 25/09/2026.
 - [ ] 6B — Projeção única do calendário.
 - [ ] 6C — Calendário global e aba do Pedido.
 
@@ -75,7 +75,26 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: fechar seletivamente o 5D após aceite humano; próximo gate 6A, com autorização remota separada antes de qualquer aplicação da M15. Sem deploy.
+Prioridade atual: fechar seletivamente 6A após aceite humano; próximo gate 6B — projeção única do calendário, sem migration. Sem deploy.
+
+### Aplicação de 6A — M15 no IURQ (25/09/2026)
+
+- Autorização explícita recebida: “continue” em resposta ao gate “M15 → IURQ LIBERADO”. Target reconfirmado como IURQ `iurqgskfuupslrghgtej`; MISFY permaneceu fora do escopo e não foi acessado.
+- Preflight final: inventário **46 migrations locais / 45 remotas**; dry-run sem seeds/roles listou exclusivamente `20260925185741_pedidos_v1_events.sql` (hash Git do arquivo `a1d3b6f525929af21b3aaaff6f0f6498a9ca041b`).
+- A CLI aplicou exclusivamente a M15. Inventário posterior **46/46** e novo dry-run sem pendências, seeds ou roles.
+- Verificação focal remota: tabela inicialmente vazia; todos os contadores `invalid_*` em zero; `authenticated` com SELECT/INSERT/UPDATE/DELETE, sem TRUNCATE; `anon` sem SELECT. Advisors de segurança em nível de erro: zero achados.
+- QA transacional remoto, sob role `authenticated`: os quatro tipos foram criados sem Pedido, defaults de responsável/autoria ficaram no usuário autenticado, uma edição e a exclusão dos quatro registros funcionaram. A transação terminou em `ROLLBACK`; consulta posterior confirmou **zero resíduos**.
+- Revalidação local posterior: teste focal de eventos, TypeScript, lint focal e `git diff --check` terminaram com código zero. Como a interface de Eventos só é entregue em 6C, o gate 6A está **PRONTO PARA TESTE MANUAL/ACEITE** pela evidência técnica; não há fluxo visual adicional disponível neste lote.
+- Aceite humano de 6A recebido em 25/09/2026; fechamento Git seletivo autorizado conforme `AGENTS.md`. Sem deploy; MISFY não acessado.
+
+### Preparação de 6A — eventos independentes (25/09/2026)
+
+- Predecessor 5D aceito e publicado no commit `03a1e7fc661764b5de18ff9699951a2f54b448d8`. Criados localmente módulo de escrita/exclusão de eventos, M15 aditiva `20260925185741_pedidos_v1_events.sql`, pgTAP focal e SQL de verificação. Nenhuma interface de calendário neste gate.
+- TDD do módulo: testes falharam com implementação mínima e passaram depois. Validação final: **19/19** testes TypeScript focais; TypeScript, lint focal, `git diff --check` e inspeção de whitespace sem erros.
+- Reset local sem seed aplicou as **46 migrations** do zero. pgTAP M14+M15: **56/56**; verificação local retornou zero vínculos/calendário inválidos, CRUD somente para authenticated, sem TRUNCATE/REFERENCES/TRIGGER e sem leitura anon. DB lint e advisors de segurança em nível de erro: zero achados. O trigger interno privilegiado permanece em `private`, revogado de PUBLIC/anon/authenticated e valida membership antes de ler/ bloquear os pais.
+- Regressões antigas fora do gate: o pgTAP de M05 não encontrou seu helper dentro do container; o de M08 tenta INSERT/DELETE legado revogado deliberadamente pela M14. M14 e M15, que cobrem o estado canônico atual e as mutações de Frente, passaram integralmente; nenhuma regra antiga foi reaberta.
+- Target read-only confirmado como IURQ `iurqgskfuupslrghgtej`, ativo e saudável. Inventário: **46 migrations locais / 45 remotas**. Dry-run remoto sem seeds/roles listou exclusivamente `20260925185741_pedidos_v1_events.sql`.
+- Naquele preparo, a M15 ainda **não estava aplicada**; nenhum acesso ao MISFY, nem commit/push/deploy havia ocorrido. A aplicação posterior está registrada acima.
 
 ### Preparação de 5D — interface única de Atualizações e Arquivos (25/09/2026)
 
