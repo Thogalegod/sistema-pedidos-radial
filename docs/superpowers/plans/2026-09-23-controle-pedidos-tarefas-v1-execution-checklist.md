@@ -62,7 +62,7 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 - [x] 6A — Eventos independentes e associações (M15): migration e QA técnico concluídos no IURQ; aceite humano recebido em 25/09/2026.
 - [x] 6B — Projeção única do calendário: implementação e QA técnico concluídos; aceite humano recebido em 25/09/2026.
-- [ ] 6C — Calendário global e aba do Pedido.
+- [x] 6C — Calendário global e aba do Pedido: teste manual aprovado pelo usuário em 25/09/2026; fechamento Git publicado no commit `8a70a9fd08efb6aa0aca833c6b3027a7c907cb31`.
 
 ### Melhorias de UX futuras — anotadas, não aprovadas para implementação
 
@@ -75,16 +75,17 @@ MISFY permanece proibido. Servidor Next é gerido pelo usuário. Usar RTK quando
 
 ## Prioridade e ponto de parada
 
-Prioridade atual: 6C implementada e **PRONTO PARA TESTE MANUAL**; aguardar o gate humano antes de staging seletivo, `ai:gate:staged`, commit ou push. Sem migration/deploy.
+Prioridade atual: **Controle de Pedidos/Tarefas V1 concluído** após o aceite e publicação da 6C. Não há Lote 7 neste plano. O próximo trabalho possível é um gate novo de desenho de UX para detalhe do Pedido em página inteira e Lista Inteligente; as melhorias abaixo permanecem anotadas, mas não aprovadas para implementação. Sem migration/deploy.
 
-### Preparação de 6C — calendário global e aba do Pedido (25/09/2026)
+### Conclusão de 6C — calendário global e aba do Pedido (25/09/2026)
 
 - Criada a rota `/calendario` dentro do AppShell e acrescentado o módulo Calendário à navegação sem remover links existentes. A mesma `CalendarView` é usada na visão global e na aba Calendário do Pedido; o escopo do Pedido apenas acrescenta o filtro `orderId` ao loader canônico da 6B.
 - A visão compacta oferece mês anterior/próximo, Hoje, agrupamento acessível por dia, rótulos textuais para os sete tipos projetados, estado de carregamento, vazio e erro. Prazos, subtarefas e follow-ups navegam para a entidade fonte; Eventos usam `/calendario?evento=<id>`.
 - `EventEditor` cria, lê, edita e exclui Eventos sempre com organização derivada da sessão. Responsável, cliente, Pedido, Frente e Tarefa vêm de leituras filtradas pela organização; escolher Tarefa preenche Pedido/Frente consistentes. URL adivinhada de Evento sem linha visível por RLS produz “Evento não encontrado” e não renderiza o formulário.
 - TDD observado: o RED inicial falhou pelos componentes, deep link e item de navegação ainda inexistentes. GREEN focal final: **40/40** em 6 arquivos; regressão ampliada de Pedidos/Tarefas, drawer, página e navegação: **233/233** em 45 arquivos. TypeScript, lint focal e `git diff --check` passaram.
-- Auto-revisão confirmou ausência de migration, deploy, secrets, geração de URL de anexo ou fonte paralela de calendário. A 6C não fez writes remotos: o IURQ aguarda o teste manual visual/funcional do usuário; MISFY não foi acessado.
-- Estado: **PRONTO PARA TESTE MANUAL**. Validar global e aba do Pedido, largura pequena/teclado, criar/editar/excluir Evento, evento sem Pedido, deep links para tarefa avulsa e Evento, estados vazio/erro e navegação dos outros módulos.
+- Auto-revisão confirmou ausência de migration, deploy, secrets, geração de URL de anexo ou fonte paralela de calendário. A 6C não fez writes remotos adicionais; MISFY não foi acessado.
+- Aceite humano recebido em 25/09/2026. O staging seletivo dos 16 caminhos esperados passou em `STAGED_GATE_PASS`; commit funcional `8a70a9fd08efb6aa0aca833c6b3027a7c907cb31` publicado em `codex/controle-locacoes`, com HEAD e upstream conferidos no mesmo SHA.
+- Estado: **6C, Lote 6 e Controle de Pedidos/Tarefas V1 concluídos**. Melhorias futuras exigem novo desenho, escopo e aceite; não são continuação automática deste plano.
 
 ### Preparação de 6B — projeção única do calendário (25/09/2026)
 
