@@ -16,7 +16,7 @@ function checkManifest(manifest) {
   if (manifest.shell?.url !== `/termografia/offline/${manifest.buildId}/shell.html` || !Array.isArray(manifest.assets) || !manifest.assets.length) throw new Error('Pacote offline incompleto.');
   const entries = [manifest.shell, ...manifest.assets];
   if (new Set(entries.map(item => item.url)).size !== entries.length || manifest.assets.some(item => !validAsset(item.url))
-      || manifest.assets.some(item => item.downloadUrl !== undefined && item.downloadUrl !== `/termografia/offline/${manifest.buildId}/assets${item.url}`)
+      || manifest.assets.some(item => item.downloadUrl !== undefined && item.downloadUrl !== `/termografia/offline/${manifest.buildId}/assets${item.url}.bin`)
       || entries.some(item => !/^[a-f0-9]{64}$/.test(item.sha256) || !Number.isSafeInteger(item.size) || item.size <= 0)) throw new Error('Pacote offline inválido.');
   return manifest;
 }
@@ -54,12 +54,19 @@ async function prepare(port) {
     const entry = entries[i];
     const response = await publicResponse(entry.downloadUrl ?? entry.url);
     const contentType = response.headers.get('content-type') ?? '';
-    if ((i === 0 && !contentType.includes('text/html')) || (entry.url.endsWith('.js') && !/javascript/.test(contentType)) || (entry.url.endsWith('.css') && !contentType.includes('text/css'))) throw new Error('Um arquivo offline recebeu uma resposta incompatível.');
+    if (!entry.downloadUrl && ((i === 0 && !contentType.includes('text/html')) || (entry.url.endsWith('.js') && !/javascript/.test(contentType)) || (entry.url.endsWith('.css') && !contentType.includes('text/css')))) throw new Error('Um arquivo offline recebeu uma resposta incompatível.');
     const bytes = await response.clone().arrayBuffer();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
     if (bytes.byteLength !== entry.size || digest !== entry.sha256) throw new Error(`Arquivo offline diferente da versão esperada: ${entry.url}. A preparação anterior foi mantida.`);
     // Keep relative CSS/module URLs based on the original request, not the download copy.
-    await cache.put(entry.url, entry.downloadUrl ? new Response(bytes, { status: 200, headers: response.headers }) : response);
+    const headers = new Headers(response.headers);
+    if (entry.downloadUrl) {
+      const extension = entry.url.split('.').pop();
+      const mime = { js: 'text/javascript', css: 'text/css', png: 'image/png', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', webmanifest: 'application/manifest+json' };
+      headers.set('Content-Type', mime[extension] ?? 'application/octet-stream');
+      headers.delete('Content-Encoding'); headers.delete('Content-Length');
+    }
+    await cache.put(entry.url, entry.downloadUrl ? new Response(bytes, { status: 200, headers }) : response);
     port?.postMessage({ type: 'PROGRESS', done: i + 1, total: entries.length });
   }
   for (const entry of entries) if (!await cache.match(entry.url)) throw new Error('O navegador não confirmou o armazenamento do app.');

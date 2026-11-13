@@ -67,12 +67,12 @@ export async function generateOfflinePackage(root = process.cwd()) {
   const output = {
     version: 1, buildId,
     shell: { url: prefix + '/shell.html', sha256: digest(html), size: html.byteLength },
-    assets: [...files].sort(([a], [b]) => a.localeCompare(b)).map(([url, bytes]) => ({ url, downloadUrl: `${prefix}/assets${url}`, sha256: digest(bytes), size: bytes.byteLength })),
+    assets: [...files].sort(([a], [b]) => a.localeCompare(b)).map(([url, bytes]) => ({ url, downloadUrl: `${prefix}/assets${url}.bin`, sha256: digest(bytes), size: bytes.byteLength })),
   };
   const folder = path.join(root, 'public', prefix);
   await mkdir(folder, { recursive: true });
   for (const [url, bytes] of files) {
-    const destination = path.join(folder, 'assets', url);
+    const destination = path.join(folder, 'assets', url + '.bin');
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, bytes);
   }

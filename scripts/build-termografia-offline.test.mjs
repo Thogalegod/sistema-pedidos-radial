@@ -28,7 +28,7 @@ describe('offline build package', () => {
     expect(result.assets.map(asset => asset.url)).toContain('/_next/static/media/extra.woff2');
     expect(result.assets.map(asset => asset.url)).toContain('/_next/static/chunks/runtime..js');
     const runtime = result.assets.find(asset => asset.url === '/_next/static/chunks/runtime..js');
-    expect(runtime.downloadUrl).toBe('/termografia/offline/qa-build/assets/_next/static/chunks/runtime..js');
+    expect(runtime.downloadUrl).toBe('/termografia/offline/qa-build/assets/_next/static/chunks/runtime..js.bin');
     expect(await readFile(path.join(root, 'public', runtime.downloadUrl), 'utf8')).toBe('/* runtime */');
     expect(result.shell.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.parse(await readFile(path.join(root, 'public/termografia/offline/latest.json'), 'utf8')).buildId).toBe('qa-build');
