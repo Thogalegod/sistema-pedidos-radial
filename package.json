@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "dev:termografia": "node scripts/dev-termografia.mjs",
+    "build": "next build && node scripts/build-termografia-offline.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -45,6 +46,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "fake-indexeddb": "6.2.4",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",

@@ -1,3 +1,5 @@
+import type { PointMetadata } from './field-collection';
+
 export type TermografiaClassificacao =
   | 'Normal'
   | 'Observação'
@@ -35,6 +37,10 @@ export interface TermografiaReportRow {
   responsavel_nome?: string | null;
   responsavel_crea?: string | null;
   revisao: number;
+  mobile_sync_state?: 'pending' | 'complete' | null;
+  mobile_snapshot_hash?: string | null;
+  mobile_snapshot?: unknown;
+  parent_report_id?: string | null;
 }
 
 export interface TermografiaPointRow {
@@ -58,6 +64,7 @@ export interface TermografiaPointRow {
   created_at: string;
   updated_at: string;
   created_by?: string | null;
+  metadados_coleta?: unknown;
 }
 
 export interface TermografiaFileRow {
@@ -72,12 +79,21 @@ export interface TermografiaFileRow {
   tamanho_bytes?: number | null;
   created_at: string;
   created_by?: string | null;
+  content_sha256?: string | null;
+  image_width?: number | null;
+  image_height?: number | null;
+}
+
+export interface TermografiaArquivo {
+  id: string; tipo: TermografiaArquivoTipo; storagePath: string; fileName: string; contentType: string;
+  tamanhoBytes?: number | null; sha256?: string | null; width?: number | null; height?: number | null; url?: string | null;
 }
 
 export interface TermografiaPonto {
   id: string;
   setor: string;
   local: string;
+  equipamento?: string;
   inspecionado: boolean;
   ocorrencia: boolean;
   componente?: string;
@@ -90,6 +106,8 @@ export interface TermografiaPonto {
   fotoTermicaUrl?: string | null;
   fotoDigitalArquivoId?: string | null;
   fotoTermicaArquivoId?: string | null;
+  metadata?: PointMetadata;
+  arquivos?: TermografiaArquivo[];
 }
 
 export interface TermografiaRelatorio {
@@ -111,6 +129,10 @@ export interface TermografiaRelatorio {
   responsavel_crea: string;
   revisao: number;
   pontos: TermografiaPonto[];
+  syncState?: 'pending' | 'complete' | null;
+  snapshotHash?: string | null;
+  sourceReportId?: string | null;
+  collectionVersion?: 1;
 }
 
 export const conclusoesPadrao: Record<TermografiaClassificacao, string> = {
@@ -131,7 +153,7 @@ export function pontosAquecidosPorSetorLocal(pontos: TermografiaPonto[]) {
   pontos.forEach((ponto) => {
     const chave = `${ponto.setor}|||${ponto.local}`;
     const atual = mapa.get(chave) ?? { setor: ponto.setor, local: ponto.local, pontosAquecidos: 0 };
-    if (ponto.ocorrencia) atual.pontosAquecidos += 1;
+    atual.pontosAquecidos += ponto.metadata ? ponto.metadata.hotspots.length : (ponto.ocorrencia ? 1 : 0);
     mapa.set(chave, atual);
   });
 

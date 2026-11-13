@@ -170,6 +170,71 @@ export async function createTermografiaSignedUrl(client: SupabaseLike, storagePa
   return data?.signedUrl ?? null;
 }
 
+function readImageBytes(blob: Blob): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(new Error('Não foi possível conferir o conteúdo da foto.'));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+// The file ID belongs to this save attempt and must be reused on retry.
+// The database swaps metadata atomically; old bytes survive every failed step.
+export async function saveTermografiaPhoto(client: SupabaseLike, input: {
+  organizationId: string; reportId: string; pointId: string; fileId: string;
+  kind: TermografiaPhotoKind; file: File;
+  previous?: Pick<TermografiaFileRow, 'id' | 'storage_path'>;
+}) {
+  assertImageFile(input.file);
+  let fileName = buildSafeTermografiaFileName({ kind: input.kind, originalName: input.file.name, uniqueToken: input.fileId });
+  let storagePath = buildTermografiaPhotoPath({ ...input, fileName });
+  const bucket = client.storage.from(TERMOGRAFIA_DOCUMENT_BUCKET);
+  const { error } = await bucket.upload(storagePath, input.file, { contentType: input.file.type, upsert: false });
+  if (error) {
+    const duplicate = [error.statusCode, error.status, error.code, error.error]
+      .some(value => ['409', 'Duplicate', 'ResourceAlreadyExists'].includes(String(value)));
+    if (!duplicate) throw error;
+    const registered = await client.from('termografia_arquivos').select('*')
+      .eq('organization_id', input.organizationId).eq('report_id', input.reportId)
+      .eq('point_id', input.pointId).eq('id', input.fileId).maybeSingle();
+    if (registered.error) throw registered.error;
+    if (!registered.data) {
+      // Unregistered objects cannot be read by policy. Upload a fresh copy;
+      // preserve the uncertain object for later cleanup, never overwrite it.
+      fileName = buildSafeTermografiaFileName({ kind: input.kind, originalName: input.file.name, uniqueToken: `${input.fileId}-${crypto.randomUUID()}` });
+      storagePath = buildTermografiaPhotoPath({ ...input, fileName });
+      const retry = await bucket.upload(storagePath, input.file, { contentType: input.file.type, upsert: false });
+      if (retry.error) throw retry.error;
+    } else {
+      fileName = registered.data.file_name;
+      storagePath = registered.data.storage_path;
+      const existing = await bucket.download(storagePath);
+      if (existing.error) throw existing.error;
+      if (!existing.data) throw new Error('Não foi possível conferir a foto já enviada.');
+      const [original, stored] = await Promise.all([readImageBytes(input.file), readImageBytes(existing.data)]);
+      const bytes = new Uint8Array(original);
+      const storedBytes = new Uint8Array(stored);
+      if (bytes.length !== storedBytes.length || bytes.some((byte, index) => byte !== storedBytes[index])) {
+        throw new Error('O conteúdo da foto já enviada é diferente. Reabra o relatório para conferir.');
+      }
+    }
+  }
+  const result = await client.rpc('save_termografia_photo', {
+    p_organization_id: input.organizationId, p_report_id: input.reportId,
+    p_point_id: input.pointId, p_file_id: input.fileId, p_tipo: input.kind,
+    p_file_name: fileName, p_content_type: input.file.type, p_tamanho_bytes: input.file.size,
+    p_previous_file_id: input.previous?.id ?? null,
+  }).single();
+  if (result.error) throw result.error;
+  if (!result.data || result.data.id !== input.fileId) throw new Error('O salvamento da foto não foi confirmado. Tente novamente.');
+  if (input.previous && input.previous.storage_path !== storagePath) {
+    // Cleanup is optional: failure must not undo a confirmed replacement.
+    try { await removeStorageObjectOrThrow(client, input.previous.storage_path); } catch { /* retained for later cleanup */ }
+  }
+  return result.data as TermografiaFileRow;
+}
+
 export async function removeRegisteredTermografiaFile(client: SupabaseLike, file: Pick<TermografiaFileRow, 'id' | 'storage_path'>) {
   await removeStorageObjectOrThrow(client, file.storage_path);
 

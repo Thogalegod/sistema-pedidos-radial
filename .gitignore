@@ -18,6 +18,7 @@
 
 # next.js
 /.next/
+/.next-termografia-local/
 /out/
 
 # production
@@ -54,3 +55,6 @@ next-env.d.ts
 # Claude Code local/personal state
 /.claude/settings.local.json
 /CLAUDE.local.md
+
+# Build-specific, public offline shell (generated after next build)
+/public/termografia/offline/

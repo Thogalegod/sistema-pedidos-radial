@@ -7,6 +7,7 @@ import { creaBase64 } from '@/lib/creaBase64';
 import { formatarDataHora, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio } from '@/lib/termografia/types';
 import { loadTermografiaReport } from '@/lib/termografia/report-actions';
 import { createTermografiaSignedUrl } from '@/lib/termografia/storage';
+import { FieldPrintReport } from '@/components/termografia/FieldPrintReport';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -41,16 +42,18 @@ export default function TermografiaPrintViewer(props: { params: Promise<{ id: st
   const searchParams = useSearchParams();
   const incluirFotosSemOcorrencia = searchParams.get('fotos') === '1';
   const [data, setData] = useState<TermografiaRelatorio | null | false>(null);
+  const [loadError, setLoadError] = useState('Relatório não encontrado.');
   const [pontos, setPontos] = useState<PontoComFotos[]>([]);
+  const [photoError, setPhotoError] = useState(false);
 
   useEffect(() => {
     loadTermografiaReport(supabase, params.id)
       .then((rel) => setData(rel))
-      .catch(() => setData(false));
+      .catch(error => { setLoadError(error instanceof Error ? error.message : 'Não foi possível abrir o relatório.'); setData(false); });
   }, [params.id]);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || data.collectionVersion === 1) return;
     let ativo = true;
     Promise.all((data.pontos ?? []).map(async (ponto) => ({
       ...ponto,
@@ -58,7 +61,7 @@ export default function TermografiaPrintViewer(props: { params: Promise<{ id: st
       fotoTermicaSrc: ponto.fotoTermicaUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoTermicaUrl) : null,
     }))).then((res) => {
       if (ativo) setPontos(res);
-    });
+    }).catch(() => { if (ativo) setPhotoError(true); });
     return () => { ativo = false; };
   }, [data]);
 
@@ -71,8 +74,11 @@ export default function TermografiaPrintViewer(props: { params: Promise<{ id: st
   );
   const totalFolhas = 5 + Math.max(1, Math.ceil(roteiro.length / 34)) + paginasRegistrosSemOcorrencia.length + ocorrencias.length + 2;
 
-  if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
+  if (data === false) return <div role="alert" className="p-8 text-center text-red-600">{loadError}</div>;
+  if (data && data.collectionVersion === 1) return <FieldPrintReport report={data} />;
   if (!data) return <div className="p-8 text-center">Carregando relatório para impressão...</div>;
+  if (photoError) return <div role="alert" className="p-8 text-center text-red-700">Não foi possível carregar todas as fotos. Confira a conexão e recarregue antes de imprimir.</div>;
+  if (pontos.length !== data.pontos.length) return <div role="status" className="p-8 text-center">Carregando fotos para impressão...</div>;
 
   const Header = ({ fl }: { fl: number }) => (
     <div className="cabecalho w-full border-2 border-blue-900 mb-3 flex text-[10pt]">

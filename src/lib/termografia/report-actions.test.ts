@@ -4,6 +4,7 @@ import {
   deleteTermografiaPoint,
   deleteTermografiaReport,
   listTermografiaReports,
+  loadTermografiaReport,
   mapTermografiaReport,
 } from './report-actions';
 
@@ -39,6 +40,16 @@ function clientWithTables(tables: Record<string, unknown>) {
 }
 
 describe('termografia report actions', () => {
+  it('excludes pending mobile skeletons and counts every hotspot in complete normalized reports', async () => {
+    const { client } = clientWithTables({ organization_members: { organization_id: 'org-1' }, relatorios_termografia: [{ id: 'pending', mobile_sync_state: 'pending' }, { id: 'complete', mobile_sync_state: 'complete' }], termografia_pontos: [{ report_id: 'complete', ocorrencia: true, metadados_coleta: { version: 1, inspectionStatus: 'inspected', inspectionReason: '', photoIds: [], hotspots: [1, 2].map(n => ({ id: `8eb38662-a7b7-4c4d-b83f-83b02e833a7${n}`, photoId: '20ae89f7-3b09-46be-b810-e32165bccb1d', componente: 'Fase', temperatura: '60', conclusao: 'QA' })), annotations: [] } }] });
+    expect(await listTermografiaReports(client)).toEqual([expect.objectContaining({ id: 'complete', pontos_count: 1, ocorrencias_count: 2 })]);
+  });
+  it('pins scoped reading to exact user/membership and rejects pending detail/print', async () => {
+    const { client, tableQueries } = clientWithTables({ organization_members: { organization_id: 'chosen-org' }, relatorios_termografia: { id: 'pending', mobile_sync_state: 'pending' } });
+    await expect(loadTermografiaReport(client, 'pending', { userId: 'user-1', organizationId: 'chosen-org' })).rejects.toThrow(/enviada|envio/i);
+    expect(tableQueries.organization_members.eq).toHaveBeenCalledWith('organization_id', 'chosen-org');
+    await expect(loadTermografiaReport(client, 'pending', { userId: 'other', organizationId: 'chosen-org' })).rejects.toThrow(/conta/i);
+  });
   it('lists reports only for the active user organization and maps occurrence counts', async () => {
     const { client, tableQueries } = clientWithTables({
       organization_members: { organization_id: 'org-1' },
