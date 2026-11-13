@@ -31,7 +31,7 @@ async function readiness() {
 }
 async function publicResponse(path) {
   const response = await fetch(new URL(path, self.location.origin).href, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
-  if (!response.ok || response.type === 'opaque' || response.redirected) throw new Error('Não foi possível baixar todos os arquivos para uso offline.');
+  if (!response.ok || response.type === 'opaque' || response.redirected) throw new Error(`Falha no download offline (HTTP ${response.status}): ${path}. Seus dados locais foram preservados.`);
   return response;
 }
 async function prepare(port) {
@@ -54,7 +54,7 @@ async function prepare(port) {
     if ((i === 0 && !contentType.includes('text/html')) || (entry.url.endsWith('.js') && !/javascript/.test(contentType)) || (entry.url.endsWith('.css') && !contentType.includes('text/css'))) throw new Error('Um arquivo offline recebeu uma resposta incompatível.');
     const bytes = await response.clone().arrayBuffer();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
-    if (bytes.byteLength !== entry.size || digest !== entry.sha256) throw new Error('Um arquivo da atualização está incompleto. A versão anterior foi mantida.');
+    if (bytes.byteLength !== entry.size || digest !== entry.sha256) throw new Error(`Arquivo offline diferente da versão esperada: ${entry.url}. A preparação anterior foi mantida.`);
     await cache.put(entry.url, response);
     port?.postMessage({ type: 'PROGRESS', done: i + 1, total: entries.length });
   }

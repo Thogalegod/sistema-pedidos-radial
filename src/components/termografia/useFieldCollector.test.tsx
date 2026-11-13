@@ -5,16 +5,19 @@ import { DraftStore } from '@/lib/termografia/offline-store';
 import { createFieldCollection, createFieldPoint } from '@/lib/termografia/field-collection';
 import { clearLocalIdentity, readLocalIdentity, saveLocalIdentity } from '@/lib/termografia/local-identity';
 import { useFieldCollector } from './useFieldCollector';
-const mock = vi.hoisted(() => ({ shell: vi.fn(), sync: vi.fn(), prepare: vi.fn(), getUser: vi.fn(), membership: vi.fn(), authChanged: undefined as ((event: string, session: { user: { id: string } } | null) => void) | undefined }));
+const mock = vi.hoisted(() => ({ revision: vi.fn(), shell: vi.fn(), sync: vi.fn(), prepare: vi.fn(), getUser: vi.fn(), membership: vi.fn(), authChanged: undefined as ((event: string, session: { user: { id: string } } | null) => void) | undefined }));
 vi.mock('@/lib/supabase', () => ({ supabase: {
   auth: { getUser: mock.getUser, onAuthStateChange: (callback: typeof mock.authChanged) => { mock.authChanged = callback; return { data: { subscription: { unsubscribe: () => {} } } }; } },
   from: () => ({ select: () => ({ eq: () => ({ limit: () => ({ maybeSingle: mock.membership }) }) }) }),
 } }));
 vi.mock('@/lib/termografia/sync-field-collection', () => ({ syncFieldCollection: mock.sync, prepareFieldCollection: mock.prepare, mobileTermografiaClient: (client: unknown) => client }));
 vi.mock('@/lib/termografia/offline-shell', () => ({ getOfflineReadiness: async () => ({ ready: false }), prepareOfflineShell: mock.shell }));
+vi.mock('@/lib/termografia/report-revision', () => ({ importReportRevision: mock.revision }));
 const scope = { projectId: 'project', origin: window.location.origin, userId: 'user', organizationId: 'org' };
 let store: DraftStore;
 beforeEach(() => {
+  window.history.replaceState({}, '', '/termografia/nova');
+  mock.revision.mockReset();
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
   localStorage.clear(); saveLocalIdentity(scope);
   store = new DraftStore(scope);
@@ -25,6 +28,32 @@ beforeEach(() => {
 afterEach(async () => { cleanup(); store.close(); await store.db.delete(); vi.unstubAllEnvs(); });
 async function draft() { const d = createFieldCollection(scope, { cliente_nome: 'Recuperado' }); d.points.push(createFieldPoint({ setor: 'Sala', local: 'QD1' })); d.activePointId = d.points[0].id; return store.create(d); }
 describe('prepared collector access and send authorization', () => {
+  it('starts a blank collection when Nova coleta is requested, preserving the previous one', async () => {
+    const previous = await draft();
+    window.history.replaceState({}, '', '/termografia/nova?nova=1');
+    const view = renderHook(useFieldCollector);
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    expect(view.result.current.state?.draft.id).not.toBe(previous.id);
+    expect(view.result.current.state?.draft.report.cliente_nome).toBe('');
+    expect((await store.get(previous.id))?.report.cliente_nome).toBe('Recuperado');
+  });
+  it('does not silently open another collection after a failed revision', async () => {
+    await draft(); mock.revision.mockRejectedValue(new Error('Foto indisponível'));
+    window.history.replaceState({}, '', '/termografia/nova?revisar=report');
+    const view = renderHook(useFieldCollector);
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    expect(view.result.current.state).toBeNull();
+    expect(view.result.current.error).toBe('Foto indisponível');
+    expect(window.location.search).toContain('revisar=report');
+  });
+  it('opens the editable revision instead of a draft present in the URL', async () => {
+    const previous = await draft(); const revision = createFieldCollection(scope, { cliente_nome: 'Revisão' });
+    mock.revision.mockResolvedValue(revision);
+    window.history.replaceState({}, '', `/termografia/nova?revisar=report&rascunho=${previous.id}`);
+    const view = renderHook(useFieldCollector);
+    await waitFor(() => expect(view.result.current.state?.draft.id).toBe(revision.id));
+    expect(view.result.current.state?.draft.sync.status).toBe('draft');
+  });
   it('creates a new collection without an empty panel and preserves the editor on cold reopen', async () => {
     const view = renderHook(useFieldCollector);
     await waitFor(() => expect(view.result.current.state).not.toBeNull());

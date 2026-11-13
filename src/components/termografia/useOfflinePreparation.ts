@@ -8,6 +8,7 @@ export function useOfflinePreparation(enabled: boolean) {
   const [readiness, setReadiness] = useState<OfflineReadiness>({ ready: false });
   const [online, setOnline] = useState(true);
   const [preparingOffline, setPreparingOffline] = useState(false);
+  const [offlineProgress, setOfflineProgress] = useState<{ done: number; total: number }>();
   const [offlineError, setOfflineError] = useState<string>();
   const retry = useRef<() => Promise<void>>(async () => {});
 
@@ -20,13 +21,13 @@ export function useOfflinePreparation(enabled: boolean) {
       if (job) return job;
       setOnline(navigator.onLine);
       setPreparingOffline(navigator.onLine);
-      setOfflineError(undefined);
+      setOfflineError(undefined); setOfflineProgress(undefined);
       job = (async () => {
         const cached = await getOfflineReadiness().catch(() => ({ ready: false }));
         if (!alive) return;
         setReadiness(cached);
         if (!navigator.onLine) return;
-        const result = await prepareOfflineShell(undefined, { requestPersistence: false });
+        const result = await prepareOfflineShell((done, total) => { if (alive) setOfflineProgress({ done, total }); }, { requestPersistence: false });
         if (!result.ready) throw new Error(result.error ?? 'Não foi possível preparar o uso sem internet.');
         if (alive) setReadiness(result);
       })().catch(async cause => {
@@ -57,5 +58,5 @@ export function useOfflinePreparation(enabled: boolean) {
   }, [enabled]);
 
   const prepareOffline = useCallback(() => retry.current(), []);
-  return { readiness, online, preparingOffline, offlineError, prepareOffline };
+  return { readiness, online, preparingOffline, offlineProgress, offlineError, prepareOffline };
 }

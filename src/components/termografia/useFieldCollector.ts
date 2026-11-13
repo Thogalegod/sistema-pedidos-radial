@@ -27,7 +27,6 @@ export function useFieldCollector() {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const busyRef = useRef(false);
   const abortRef = useRef(new AbortController());
-  const revisionJob = useRef<Promise<FieldCollection> | null>(null);
   const scopeRef = useRef<OfflineScope | null>(null);
 
   const bind = useCallback((store: DraftStore, draft: FieldCollection) => {
@@ -122,24 +121,29 @@ export function useFieldCollector() {
       if (!alive || !current()) return;
       const params = new URLSearchParams(window.location.search);
       const revisionId = params.get('revisar');
+      let selected: FieldCollection | undefined;
       if (revisionId) {
-        if (!navigator.onLine) setError('Conecte-se para buscar o relatório e criar a revisão. Seus rascunhos locais continuam disponíveis.');
-        else {
-          setProgress('Baixando relatório e originais para revisão…');
-          revisionJob.current ??= importReportRevision(store, mobileTermografiaClient(supabase), revisionId, (done, total) => { if (alive && current()) setProgress(`Revisão: ${done}/${total} originais conferidos`); }, abortRef.current.signal);
-          try { const imported = await revisionJob.current; if (!alive || !current()) return; list = [imported, ...list]; }
-          catch (cause) { if (alive && current()) setError(message(cause)); }
-          finally { if (alive) setProgress(undefined); }
-        }
-      }
-      if (!alive || !current()) return;
-      if (!list.length) {
-        const draft = createFieldCollection(store.scope);
-        list = [await store.create(draft)];
+        if (!navigator.onLine) throw new Error('Conecte-se para baixar as fotos e abrir uma revisão editável. Nenhuma coleta anterior foi aberta.');
+        setProgress('Baixando relatório e originais para revisão…');
+        try {
+          selected = await importReportRevision(store, mobileTermografiaClient(supabase), revisionId,
+            (done, total) => { if (alive && current()) setProgress(`Revisão: ${done}/${total} originais conferidos`); }, abortRef.current.signal);
+          if (!alive || !current()) return;
+          list = [selected, ...list];
+        } finally { if (alive) setProgress(undefined); }
+      } else if (params.get('nova') === '1') {
+        selected = await store.create(createFieldCollection(store.scope));
+        list = [selected, ...list];
+      } else if (params.get('rascunho')) {
+        selected = list.find(d => d.id === params.get('rascunho'));
+        if (!selected) throw new Error('Esta coleta não foi encontrada neste aparelho. Volte à lista para escolher uma coleta ou iniciar outra.');
+      } else {
+        selected = list[0];
+        if (!selected) { selected = await store.create(createFieldCollection(store.scope)); list = [selected]; }
       }
       if (!alive || !current()) return;
       setDrafts(list);
-      bind(store, list.find(d => d.id === params.get('rascunho')) ?? list[0]); setLoading(false);
+      bind(store, selected); setLoading(false);
       void resume();
     };
     void boot().catch(cause => { if (alive) { setError(message(cause)); setLoading(false); } });

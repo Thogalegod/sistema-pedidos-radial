@@ -1,4 +1,5 @@
--- Pending backend compatibility patch. Not applied. Apply before publishing the digitalPhotoId client.
+-- Applied to IURQ as 20261113103246_termografia_occurrences_digital_photo.
+-- QA: new and legacy metadata accepted; invalid digital reference rejected; no report rows changed.
 CREATE OR REPLACE FUNCTION public.validate_termografia_mobile_snapshot(s jsonb, report_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 DECLARE p jsonb; f jsonb; h jsonb; a jsonb; xy jsonb; m jsonb; v_id uuid;

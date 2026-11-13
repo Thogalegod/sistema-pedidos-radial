@@ -3,9 +3,10 @@ export interface OfflineReadiness { ready: boolean; buildId?: string; assetCount
 function askWorker(worker: ServiceWorker, type: 'PREPARE' | 'STATUS', onProgress?: (done: number, total: number) => void): Promise<OfflineReadiness> {
   return new Promise((resolve, reject) => {
     const channel = new MessageChannel();
-    const timeout = window.setTimeout(() => { channel.port1.close(); reject(new Error('A preparação demorou demais. Verifique a conexão e tente novamente.')); }, type === 'PREPARE' ? 120_000 : 10_000);
+    const expire = () => { channel.port1.close(); reject(new Error('O download ficou sem avançar. Confira a conexão e tente novamente; seus dados e fotos locais não foram apagados.')); };
+    let timeout = window.setTimeout(expire, type === 'PREPARE' ? 120_000 : 10_000);
     channel.port1.onmessage = event => {
-      if (event.data?.type === 'PROGRESS') { onProgress?.(event.data.done, event.data.total); return; }
+      if (event.data?.type === 'PROGRESS') { clearTimeout(timeout); timeout = window.setTimeout(expire, 120_000); onProgress?.(event.data.done, event.data.total); return; }
       clearTimeout(timeout); channel.port1.close(); resolve(event.data as OfflineReadiness);
     };
     worker.postMessage({ type }, [channel.port2]);

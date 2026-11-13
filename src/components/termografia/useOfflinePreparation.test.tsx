@@ -17,7 +17,7 @@ describe('automatic offline preparation', () => {
     expect(mock.prepare).not.toHaveBeenCalled();
     view.rerender({ enabled: true });
     await waitFor(() => expect(view.result.current.readiness.ready).toBe(true));
-    expect(mock.prepare).toHaveBeenCalledExactlyOnceWith(undefined, { requestPersistence: false });
+    expect(mock.prepare).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { requestPersistence: false });
   });
   it('uses the saved readiness offline and prepares when connection returns', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);

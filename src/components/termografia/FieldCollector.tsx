@@ -13,12 +13,12 @@ import { collectorUrl, initialCollectorView, knownSectors, type CollectorView } 
 export function FieldCollector() {
   const collector = useFieldCollector();
   if (collector.loading) return <main className="min-h-screen bg-slate-50 p-5 text-slate-800"><p role="status">Abrindo coletas deste celular…</p></main>;
-  if (!collector.state) return <main className="mx-auto max-w-xl space-y-4 p-5 text-slate-900"><h1 className="text-2xl font-bold">Coleta de termografia</h1><p role="alert">{collector.error ?? 'Entre na sua conta para iniciar a coleta.'}</p><a className={primaryClass} href="/login">Entrar na conta</a></main>;
+  if (!collector.state) return <main className="mx-auto max-w-xl space-y-4 p-5 text-slate-900"><h1 className="text-2xl font-bold">Coleta de termografia</h1><p role="alert">{collector.error ?? 'Entre na sua conta para iniciar a coleta.'}</p><a className={buttonClass} href="/termografia">Voltar às minhas coletas</a><button type="button" className={primaryClass} onClick={() => window.location.reload()}>Tentar novamente</button><a className={buttonClass} href="/login">Entrar na conta</a></main>;
   return <CollectionScreens key={collector.state.draft.id} collector={collector} />;
 }
 
 function CollectionScreens({ collector }: { collector: ReturnType<typeof useFieldCollector> }) {
-  const { state, loading, busy, error, readiness, progress, online, preparingOffline, offlineError } = collector;
+  const { state, loading, busy, error, readiness, progress, online, preparingOffline, offlineProgress, offlineError } = collector;
   const [search, setSearch] = useState('');
   const [route, setRoute] = useState('');
   const [routeSector, setRouteSector] = useState('');
@@ -29,7 +29,7 @@ function CollectionScreens({ collector }: { collector: ReturnType<typeof useFiel
   const [viewedPoint, setViewedPoint] = useState('');
   const [backupError, setBackupError] = useState<string>();
   if (loading) return <main className="min-h-screen bg-slate-50 p-5 text-slate-800"><p role="status">Abrindo coletas deste celular…</p></main>;
-  if (!state) return <main className="mx-auto max-w-xl space-y-4 p-5 text-slate-900"><h1 className="text-2xl font-bold">Coleta de termografia</h1><p role="alert">{error ?? 'Entre na sua conta para iniciar a coleta.'}</p><a className={primaryClass} href="/login">Entrar na conta</a><a className={buttonClass} href="/termografia/nova">Tentar abrir novamente</a></main>;
+  if (!state) return <main className="mx-auto max-w-xl space-y-4 p-5 text-slate-900"><h1 className="text-2xl font-bold">Coleta de termografia</h1><p role="alert">{error ?? 'Entre na sua conta para iniciar a coleta.'}</p><a className={buttonClass} href="/termografia">Voltar às minhas coletas</a><button type="button" className={primaryClass} onClick={() => window.location.reload()}>Tentar novamente</button><a className={buttonClass} href="/login">Entrar na conta</a><a className={buttonClass} href="/termografia/nova">Tentar abrir novamente</a></main>;
   const draft = state.draft;
   const view = navigation?.id === draft.id ? navigation.view : initialCollectorView(draft, window.location.search);
   const frozen = draft.sync.status !== 'draft';
@@ -94,8 +94,9 @@ function CollectionScreens({ collector }: { collector: ReturnType<typeof useFiel
         {(error || draft.sync.error || backupError) && <p role="alert" className="break-words rounded-lg bg-red-50 p-3 text-sm text-red-900">{error || draft.sync.error || backupError}</p>}
         {progress && <p role="status" className="text-sm text-blue-900">{progress}</p>}
         <div className={`space-y-1 text-xs ${readiness.ready ? 'text-emerald-800' : 'text-amber-800'}`}>
-          <p role="status" className="font-semibold">{readiness.ready ? online ? 'Pronto para usar sem internet' : 'Sem internet · continue sua coleta normalmente' : preparingOffline ? 'Preparando uso sem internet…' : 'Ainda não está pronto para reabrir sem internet'}</p>
+          <p role="status" className="font-semibold">{readiness.ready ? online ? 'Pronto para usar sem internet' : 'Sem internet · continue sua coleta normalmente' : preparingOffline ? offlineProgress ? `Preparando uso sem internet: ${offlineProgress.done}/${offlineProgress.total} arquivos` : 'Preparando uso sem internet…' : 'Ainda não está pronto para reabrir sem internet'}</p>
           {view === 'more' && <p>{readiness.ready ? 'Não precisa ativar nenhum modo. Fotos e dados são salvos neste aparelho, com ou sem sinal.' : preparingOffline ? 'Isso acontece automaticamente. Você já pode preencher a coleta; aguarde a confirmação antes de sair para um local sem sinal.' : 'Você pode continuar nesta tela. Conecte-se à internet para preparar a reabertura da coleta sem sinal.'}</p>}
+          {!readiness.ready && !preparingOffline && <p>Os dados e fotos salvos ficam neste aparelho, mas a reabertura sem sinal ainda não está garantida.</p>}
           {offlineError && <p>{readiness.ready ? 'A atualização não terminou. A versão já preparada continua disponível.' : offlineError}</p>}
           {offlineError && online && !preparingOffline && <button type="button" className={buttonClass} onClick={() => void collector.prepareOffline()}>Tentar preparação novamente</button>}
         </div>
