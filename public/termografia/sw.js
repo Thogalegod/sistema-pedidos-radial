@@ -58,7 +58,8 @@ async function prepare(port) {
     const bytes = await response.clone().arrayBuffer();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
     if (bytes.byteLength !== entry.size || digest !== entry.sha256) throw new Error(`Arquivo offline diferente da versão esperada: ${entry.url}. A preparação anterior foi mantida.`);
-    await cache.put(entry.url, response);
+    // Keep relative CSS/module URLs based on the original request, not the download copy.
+    await cache.put(entry.url, entry.downloadUrl ? new Response(bytes, { status: 200, headers: response.headers }) : response);
     port?.postMessage({ type: 'PROGRESS', done: i + 1, total: entries.length });
   }
   for (const entry of entries) if (!await cache.match(entry.url)) throw new Error('O navegador não confirmou o armazenamento do app.');
