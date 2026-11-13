@@ -168,7 +168,7 @@ function CollectionScreens({ collector }: { collector: ReturnType<typeof useFiel
         </div>
         <FieldPhotos key={active.id} store={collector.store} draft={draft} point={active} disabled={disabled} localSaved={state.saved} attach={collector.attach} removePhoto={collector.removePhoto} updatePoint={updatePoint} flush={collector.flush} />
       </section>}
-      {frozen && view === 'hub' && <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">Esta versão está reservada para envio. Os originais permanecem no celular. Para alterar, use “Criar cópia editável” em Mais.</p>}
+      {frozen && view === 'hub' && <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">{draft.sync.status === 'synced' ? 'Esta coleta já foi enviada. O relatório está na sua conta. Para alterar, use “Criar cópia editável” em Mais.' : 'Esta coleta está na fila de envio. Para alterar, use “Criar cópia editável” em Mais.'}</p>}
       {view === 'finish' && !frozen && <section className={`${cardClass} space-y-4`} aria-label="Conclusão da coleta">
         <h1 className="text-xl font-bold">Terminar coleta</h1>
         <p className="text-sm text-slate-700">Os dados e fotos estão neste aparelho. Envie à sua conta para abrir o relatório no computador e completar os dados.</p>

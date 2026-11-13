@@ -67,10 +67,15 @@ export async function generateOfflinePackage(root = process.cwd()) {
   const output = {
     version: 1, buildId,
     shell: { url: prefix + '/shell.html', sha256: digest(html), size: html.byteLength },
-    assets: [...files].sort(([a], [b]) => a.localeCompare(b)).map(([url, bytes]) => ({ url, sha256: digest(bytes), size: bytes.byteLength })),
+    assets: [...files].sort(([a], [b]) => a.localeCompare(b)).map(([url, bytes]) => ({ url, downloadUrl: `${prefix}/assets${url}`, sha256: digest(bytes), size: bytes.byteLength })),
   };
   const folder = path.join(root, 'public', prefix);
   await mkdir(folder, { recursive: true });
+  for (const [url, bytes] of files) {
+    const destination = path.join(folder, 'assets', url);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, bytes);
+  }
   await writeFile(path.join(folder, 'shell.html'), html);
   await writeFile(path.join(folder, 'manifest.json'), JSON.stringify(output));
   // Descriptor last: a failed build never advertises a partially assembled package.

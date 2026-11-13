@@ -84,7 +84,7 @@ export class DraftStore {
     });
   }
   async delete(id: string, expectedRevision: number): Promise<void> {
-    await this.write(async () => { await this.current(id, expectedRevision); await this.db.blobs.where('draftKey').equals(this.key(id)).delete(); await this.db.prepared.where('draftKey').equals(this.key(id)).delete(); await this.db.drafts.delete(this.key(id)); });
+    await this.write(async () => { const current = await this.current(id, expectedRevision); if (!['draft', 'synced'].includes(current.sync.status)) throw new Error('Conclua o envio antes de excluir esta cópia local.'); await this.db.blobs.where('draftKey').equals(this.key(id)).delete(); await this.db.prepared.where('draftKey').equals(this.key(id)).delete(); await this.db.drafts.delete(this.key(id)); });
   }
   async getBlob(id: string, photoId: string): Promise<Blob | undefined> {
     return this.db.transaction('r', this.db.drafts, this.db.blobs, async () => {

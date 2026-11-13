@@ -138,8 +138,7 @@ export function useFieldCollector() {
         selected = list.find(d => d.id === params.get('rascunho'));
         if (!selected) throw new Error('Esta coleta não foi encontrada neste aparelho. Volte à lista para escolher uma coleta ou iniciar outra.');
       } else {
-        selected = list[0];
-        if (!selected) { selected = await store.create(createFieldCollection(store.scope)); list = [selected]; }
+        selected = await store.create(createFieldCollection(store.scope)); list = [selected, ...list];
       }
       if (!alive || !current()) return;
       setDrafts(list);
@@ -173,6 +172,16 @@ export function useFieldCollector() {
   }, [current, refresh]);
   const open = useCallback((id: string) => action(async (store) => { const saved = await store.get(id); if (saved && current()) bind(store, saved); }), [action, bind, current]);
   const create = useCallback(() => action(async store => { const draft = createFieldCollection(store.scope); const saved = await store.create(draft); if (current()) bind(store, saved); }), [action, bind, current]);
+  const deleteLocal = useCallback(() => action(async (store, session) => {
+    const draft = session.state.draft;
+    if (!['draft', 'synced'].includes(draft.sync.status)) throw new Error('Conclua o envio antes de excluir esta cópia local.');
+    const warning = draft.sync.status === 'synced'
+      ? 'Excluir esta cópia do celular? O relatório enviado continuará na sua conta.'
+      : 'Excluir esta coleta e todas as suas fotos deste celular? Ela ainda não foi enviada. Esta ação não pode ser desfeita. Você pode cancelar e exportar uma cópia ZIP antes.';
+    if (!window.confirm(warning)) return;
+    await store.delete(draft.id, draft.revision);
+    if (current()) bind(store, await store.create(createFieldCollection(store.scope)));
+  }), [action, bind, current]);
   const authorizeSend = useCallback(async () => {
     const authorized = await action(async (store, session) => {
       if (session.state.draft.sync.status !== 'draft') return true;
@@ -199,5 +208,5 @@ export function useFieldCollector() {
     if (!window.confirm('Reabrir a versão salva? As alterações ainda não salvas nesta tela serão descartadas.')) return;
     const draft = await store.get(session.state.draft.id); if (draft && current()) { bind(store, draft); setError(undefined); }
   }, [bind, current]);
-  return { state, drafts, loading, busy, error, ...offline, progress, store, edit, flush, open, create, authorizeSend, resume, exportBackup, importBackup, copy, attach, removePhoto, retryLocal, reload };
+  return { state, drafts, loading, busy, error, ...offline, progress, store, edit, flush, open, create, authorizeSend, resume, exportBackup, importBackup, copy, attach, removePhoto, retryLocal, reload, deleteLocal };
 }

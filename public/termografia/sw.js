@@ -5,6 +5,8 @@ const POINTER = '/termografia/offline/ready';
 const DESCRIPTOR = '/termografia/offline/latest.json';
 const publicAssets = new Set(['/logo.png', '/termografia/manifest.webmanifest', '/termografia/icon.svg', '/termografia/icon-192.png', '/termografia/icon-512.png']);
 let preparation;
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
 function validAsset(path) {
   return typeof path === 'string' && (/^\/_next\/static\/[\w/\.~\-]+$/.test(path) || publicAssets.has(path)) && !path.split('/').some(segment => segment === '..' || segment === '.');
@@ -14,6 +16,7 @@ function checkManifest(manifest) {
   if (manifest.shell?.url !== `/termografia/offline/${manifest.buildId}/shell.html` || !Array.isArray(manifest.assets) || !manifest.assets.length) throw new Error('Pacote offline incompleto.');
   const entries = [manifest.shell, ...manifest.assets];
   if (new Set(entries.map(item => item.url)).size !== entries.length || manifest.assets.some(item => !validAsset(item.url))
+      || manifest.assets.some(item => item.downloadUrl !== undefined && item.downloadUrl !== `/termografia/offline/${manifest.buildId}/assets${item.url}`)
       || entries.some(item => !/^[a-f0-9]{64}$/.test(item.sha256) || !Number.isSafeInteger(item.size) || item.size <= 0)) throw new Error('Pacote offline inválido.');
   return manifest;
 }
@@ -49,7 +52,7 @@ async function prepare(port) {
   const cache = await caches.open(PREFIX + manifest.buildId);
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
-    const response = await publicResponse(entry.url);
+    const response = await publicResponse(entry.downloadUrl ?? entry.url);
     const contentType = response.headers.get('content-type') ?? '';
     if ((i === 0 && !contentType.includes('text/html')) || (entry.url.endsWith('.js') && !/javascript/.test(contentType)) || (entry.url.endsWith('.css') && !contentType.includes('text/css'))) throw new Error('Um arquivo offline recebeu uma resposta incompatível.');
     const bytes = await response.clone().arrayBuffer();

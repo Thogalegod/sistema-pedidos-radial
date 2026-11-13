@@ -26,8 +26,25 @@ beforeEach(() => {
   mock.membership.mockReset(); mock.authChanged = undefined;
 });
 afterEach(async () => { cleanup(); store.close(); await store.db.delete(); vi.unstubAllEnvs(); });
-async function draft() { const d = createFieldCollection(scope, { cliente_nome: 'Recuperado' }); d.points.push(createFieldPoint({ setor: 'Sala', local: 'QD1' })); d.activePointId = d.points[0].id; return store.create(d); }
+async function draft() { const d = createFieldCollection(scope, { cliente_nome: 'Recuperado' }); d.points.push(createFieldPoint({ setor: 'Sala', local: 'QD1' })); d.activePointId = d.points[0].id; const saved = await store.create(d); window.history.replaceState({}, '', `/termografia/nova?rascunho=${saved.id}`); return saved; }
 describe('prepared collector access and send authorization', () => {
+  it('never resumes an old draft through the bare new-collection URL', async () => {
+    const previous = await draft(); window.history.replaceState({}, '', '/termografia/nova');
+    const view = renderHook(useFieldCollector);
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    expect(view.result.current.state?.draft.id).not.toBe(previous.id);
+    expect(view.result.current.state?.draft.report.cliente_nome).toBe('');
+  });
+  it('deletes only the selected local collection after confirmation', async () => {
+    const previous = await draft(); const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const view = renderHook(useFieldCollector);
+    await waitFor(() => expect(view.result.current.state?.draft.id).toBe(previous.id));
+    await waitFor(() => expect(view.result.current.busy).toBe(false));
+    await act(() => view.result.current.deleteLocal());
+    expect(await store.get(previous.id)).toBeUndefined();
+    expect(view.result.current.state?.draft.id).not.toBe(previous.id);
+    expect(mock.sync).not.toHaveBeenCalled(); confirm.mockRestore();
+  });
   it('starts a blank collection when Nova coleta is requested, preserving the previous one', async () => {
     const previous = await draft();
     window.history.replaceState({}, '', '/termografia/nova?nova=1');

@@ -25,15 +25,16 @@ async function harness() {
     self: { location: { origin }, clients: { async get() { return { url: origin + '/termografia/nova' }; } }, addEventListener(name: string, handler: typeof listeners[string]) { listeners[name] = handler; } },
     caches, fetch: fetcher, crypto: webcrypto, URL, Response, Request, TextEncoder, console,
   });
-  async function publish(buildId: string, broken = false) {
+  async function publish(buildId: string, broken = false, immutable = false) {
     const shell = '<html>public collector ' + buildId + '</html>';
     const asset = '/* bundle ' + buildId + ' */';
     const digest = async (text: string) => Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(text))).toString('hex');
     const prefix = '/termografia/offline/' + buildId;
-    const manifest = { version: 1, buildId, shell: { url: prefix + '/shell.html', sha256: await digest(shell), size: shell.length }, assets: [{ url: '/_next/static/chunks/' + buildId + '.js', sha256: await digest(asset), size: asset.length }] };
+    const manifest = { version: 1, buildId, shell: { url: prefix + '/shell.html', sha256: await digest(shell), size: shell.length }, assets: [{ url: '/_next/static/chunks/' + buildId + '.js', ...(immutable ? { downloadUrl: prefix + '/assets/_next/static/chunks/' + buildId + '.js' } : {}), sha256: await digest(asset), size: asset.length }] };
     server.set(origin + '/termografia/offline/latest.json', Response.json({ version: 1, buildId, manifestUrl: prefix + '/manifest.json' }));
     server.set(origin + prefix + '/manifest.json', Response.json(manifest));
     server.set(origin + prefix + '/shell.html', new Response(shell, { headers: { 'content-type': 'text/html' } }));
+    if (immutable) server.set(origin + manifest.assets[0].downloadUrl, new Response(asset, { headers: { 'content-type': 'application/javascript' } }));
     server.set(origin + manifest.assets[0].url, new Response(broken ? 'broken bundle' : asset, { headers: { 'content-type': 'application/javascript' } }));
   }
   async function message(type: string) {
@@ -50,6 +51,14 @@ async function harness() {
 }
 
 describe('thermography public offline shell', () => {
+  it('verifies immutable copies even when hosting modifies the runtime at the original URL', async () => {
+    const h = await harness(); await h.publish('build-copy', true, true);
+    expect(await h.message('PREPARE')).toMatchObject({ ready: true });
+    expect(h.fetched).toContain(origin + '/termografia/offline/build-copy/assets/_next/static/chunks/build-copy.js');
+    expect(h.fetched).not.toContain(origin + '/_next/static/chunks/build-copy.js');
+    h.server.clear();
+    expect(await (await h.request('/_next/static/chunks/build-copy.js'))!.text()).toBe('/* bundle build-copy */');
+  });
   it('checks for updates without downloading the same verified build again', async () => {
     const h = await harness(); await h.publish('build-one'); await h.message('PREPARE');
     h.fetched.length = 0;
