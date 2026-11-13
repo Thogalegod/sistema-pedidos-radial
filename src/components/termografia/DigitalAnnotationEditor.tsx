@@ -5,9 +5,9 @@ import type { DigitalAnnotation, FieldHotspot } from '@/lib/termografia/field-co
 import { DigitalAnnotationOverlay } from './DigitalAnnotationOverlay';
 import { buttonClass, fieldClass } from './collectorStyles';
 
-export function DigitalAnnotationEditor({ src, photoId, annotations, hotspots, onChange, disabled = false, onImageError }: {
+export function DigitalAnnotationEditor({ src, originalSrc, photoId, annotations, hotspots, onChange, disabled = false, onImageError }: {
   src: string; photoId: string; annotations: DigitalAnnotation[]; hotspots: FieldHotspot[];
-  onChange: (annotations: DigitalAnnotation[]) => void; disabled?: boolean; onImageError?: () => void;
+  onChange: (annotations: DigitalAnnotation[]) => void; disabled?: boolean; onImageError?: () => void; originalSrc?: string;
 }) {
   const [tool, setTool] = useState<DigitalAnnotation['tool'] | null>(null);
   const [original, setOriginal] = useState(false);
@@ -43,7 +43,7 @@ export function DigitalAnnotationEditor({ src, photoId, annotations, hotspots, o
     <div className="relative w-full overflow-hidden rounded-lg bg-slate-100">
       {/* Native dimensions establish the exact drawing bounds; no letterboxing. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="Foto digital original" className="block h-auto w-full" onError={onImageError} draggable={false} />
+      <img src={original && originalSrc ? originalSrc : src} alt="Foto digital original" className="block h-auto w-full" onError={onImageError} draggable={false} />
       {!original && <DigitalAnnotationOverlay annotations={preview ? [...annotations, preview] : annotations} hotspots={hotspots} />}
       {!disabled && !original && <svg role="img" aria-label="Desenhar na foto digital" viewBox="0 0 1 1" preserveAspectRatio="none"
         className="absolute inset-0 h-full w-full" style={{ touchAction: tool ? 'none' : 'auto', pointerEvents: tool ? 'auto' : 'none' }}

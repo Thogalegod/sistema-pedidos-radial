@@ -7,7 +7,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function setup() {
   const draft = createFieldCollection({ projectId: 'p', origin: 'o', userId: 'u', organizationId: 'g' });
   const point = createFieldPoint({ setor: 'A', local: 'QGBT' }); draft.points.push(point);
-  return { draft, point, disabled: false, localSaved: true, attach: vi.fn(), removePhoto: vi.fn(), updatePoint: vi.fn(), flush: vi.fn(async () => {}), store: null as DraftStore | null };
+  return { draft, point, disabled: false, localSaved: true, attach: vi.fn(), removePhoto: vi.fn(), cropPhoto: vi.fn(async () => true), updatePoint: vi.fn(), flush: vi.fn(async () => {}), store: null as DraftStore | null };
 }
 describe('original photo preview and external camera', () => {
   it('keeps multiple occurrences under their own digital photo', () => {

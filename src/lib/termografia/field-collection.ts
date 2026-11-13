@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TermografiaReportInput } from './report-actions';
+import { photoCropSchema, type PhotoCrop } from './photo-crop';
 
 export interface OfflineScope { projectId: string; origin: string; userId: string; organizationId: string }
 export type InspectionStatus = 'pending' | 'inspected' | 'no-load' | 'inaccessible';
@@ -18,6 +19,7 @@ export interface FieldPoint {
 }
 export interface FieldPhoto {
   id: string; pointId: string; kind: 'digital' | 'termica'; fileName: string; contentType: string; size: number; lastModified?: number;
+  crop?: PhotoCrop;
 }
 export interface FieldSnapshot {
   schemaVersion: 1; id: string; scope: OfflineScope; sourceReportId?: string; report: TermografiaReportInput; points: FieldPoint[]; photos: FieldPhoto[];
@@ -44,7 +46,7 @@ const annotationSchema = z.object({
   strokeWidth: z.number().positive().max(1), points: z.array(z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).strict()).min(1),
 }).strict();
 const pointSchema = z.object({ id: uuid, setor: z.string(), local: z.string(), equipamento: z.string().optional(), inspectionStatus: z.enum(['pending', 'inspected', 'no-load', 'inaccessible']), inspectionReason: z.string(), occurrenceSelected: z.boolean().optional(), photoIds: z.array(uuid), hotspots: z.array(hotspotSchema), annotations: z.array(annotationSchema) }).strict();
-const photoSchema = z.object({ id: uuid, pointId: uuid, kind: z.enum(['digital', 'termica']), fileName: z.string(), contentType: z.string(), size: z.number().int().nonnegative(), lastModified: z.number().int().nonnegative().optional() }).strict();
+const photoSchema = z.object({ id: uuid, pointId: uuid, kind: z.enum(['digital', 'termica']), fileName: z.string(), contentType: z.string(), size: z.number().int().nonnegative(), lastModified: z.number().int().nonnegative().optional(), crop: photoCropSchema.optional() }).strict().refine(photo => !photo.crop || photo.kind === 'digital', 'Somente a foto digital pode ser recortada.');
 const snapshotSchema = z.object({ schemaVersion: z.literal(1), id: uuid, scope: scopeSchema, sourceReportId: uuid.optional(), report: reportSchema, points: z.array(pointSchema), photos: z.array(photoSchema) }).strict();
 const collectionSchema = snapshotSchema.extend({
   revision: z.number().int().nonnegative(), createdAt: z.string().datetime(), updatedAt: z.string().datetime(), activePointId: uuid.optional(),

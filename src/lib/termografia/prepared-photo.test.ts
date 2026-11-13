@@ -28,4 +28,16 @@ describe('browser image preparation', () => {
     const large = new Blob([new Uint8Array(MOBILE_MAX_FILE_BYTES + 1)], { type: 'image/jpeg' });
     await expect(prepareFieldPhoto(large, photo(large, 'termica'))).rejects.toThrow(/10 MiB/);
   });
+  it('renders only the selected digital area, preserving original bytes and output dimensions', async () => {
+    const original = new Blob(['whole-photo'], { type: 'image/jpeg' });
+    const derivative = new Blob(['cropped-photo'], { type: 'image/jpeg' });
+    const drawImage = vi.fn();
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }), toBlob: (done: (blob: Blob) => void) => done(derivative) };
+    vi.stubGlobal('document', { createElement: () => canvas });
+    vi.stubGlobal('createImageBitmap', vi.fn(async (blob: Blob) => ({ width: blob === original ? 1200 : 600, height: blob === original ? 800 : 400, close: vi.fn() })));
+    const result = await prepareFieldPhoto(original, { ...photo(original, 'digital'), crop: { x: .25, y: .25, width: .5, height: .5 } });
+    expect(drawImage.mock.calls[0].slice(1)).toEqual([300, 200, 600, 400, 0, 0, 600, 400]);
+    expect(result).toMatchObject({ blob: derivative, width: 600, height: 400 });
+    expect(await original.text()).toBe('whole-photo');
+  });
 });

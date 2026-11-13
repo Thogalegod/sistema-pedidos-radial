@@ -4,35 +4,47 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DigitalAnnotation, FieldCollection, FieldHotspot, FieldPhoto, FieldPoint } from '@/lib/termografia/field-collection';
 import type { DraftStore } from '@/lib/termografia/offline-store';
 import { DigitalAnnotationEditor } from './DigitalAnnotationEditor';
+import { DigitalPhotoCropper } from './DigitalPhotoCropper';
+import { prepareFieldPhoto } from '@/lib/termografia/prepared-photo';
+import type { PhotoCrop } from '@/lib/termografia/photo-crop';
 import { buttonClass, cardClass, fieldClass } from './collectorStyles';
 
 const noSubscription = () => () => {};
 const isAndroid = () => /Android/i.test(navigator.userAgent);
 
-function LocalPhoto({ store, draft, photo, point, disabled, onAnnotations, onRemove }: {
+function LocalPhoto({ store, draft, photo, point, disabled, onAnnotations, onRemove, onCrop }: {
   store: DraftStore | null; draft: FieldCollection; photo: FieldPhoto; point: FieldPoint; disabled: boolean;
   onAnnotations: (photoId: string, annotations: DigitalAnnotation[]) => void; onRemove: (id: string) => void;
+  onCrop: (id: string, crop?: PhotoCrop) => Promise<boolean>;
 }) {
-  const [source, setSource] = useState<{ url?: string; error?: string }>({});
+  const [source, setSource] = useState<{ url?: string; originalUrl?: string; error?: string }>({});
+  const [cropping, setCropping] = useState(false);
   const enlarged = useRef<HTMLDialogElement>(null);
   const loadedUrl = useRef<string | undefined>(undefined);
-  useEffect(() => () => { if (loadedUrl.current) URL.revokeObjectURL(loadedUrl.current); }, []);
+  const originalUrl = useRef<string | undefined>(undefined);
+  useEffect(() => () => { if (loadedUrl.current) URL.revokeObjectURL(loadedUrl.current); if (originalUrl.current && originalUrl.current !== loadedUrl.current) URL.revokeObjectURL(originalUrl.current); }, []);
   useEffect(() => {
     let alive = true;
     if (!store || loadedUrl.current) return;
-    void store.getBlob(draft.id, photo.id).then(blob => {
+    void store.getBlob(draft.id, photo.id).then(async blob => {
       if (!alive) return;
       if (!blob) { setSource({ error: 'Original ainda não está disponível. Aguarde a gravação; se houver falha, mantenha esta aba aberta e tente salvar novamente.' }); return; }
-      loadedUrl.current = URL.createObjectURL(blob); setSource({ url: loadedUrl.current });
+      const display = photo.crop ? (await prepareFieldPhoto(blob, photo)).blob : blob;
+      if (!alive) return;
+      originalUrl.current = URL.createObjectURL(blob);
+      loadedUrl.current = display === blob ? originalUrl.current : URL.createObjectURL(display);
+      setSource({ url: loadedUrl.current, originalUrl: originalUrl.current });
     }).catch(() => { if (alive) setSource({ error: 'Não foi possível ler o original salvo no celular. Tente reabrir o rascunho.' }); });
     return () => { alive = false; };
-  }, [store, draft.id, draft.revision, photo.id]);
+  }, [store, draft.id, draft.revision, photo]);
   const fail = () => setSource(previous => ({ ...previous, error: 'Não foi possível abrir esta imagem. O original foi preservado. Use outro formato compatível antes de enviar.' }));
   return <article className="min-w-0 space-y-3 rounded-lg border border-slate-200 p-3">
     <p className="break-words text-sm font-medium">{photo.fileName}</p>
     {source.error && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{source.error}</p>}
     {!source.url && !source.error && <p className="text-sm text-slate-500">Lendo foto do celular…</p>}
-    {source.url && photo.kind === 'digital' && <DigitalAnnotationEditor src={source.url} photoId={photo.id} annotations={point.annotations.filter(a => a.photoId === photo.id)} hotspots={point.hotspots.filter(h => !h.digitalPhotoId || h.digitalPhotoId === photo.id)}
+    {source.originalUrl && photo.kind === 'digital' && !disabled && <button type="button" className={`${buttonClass} border-blue-300 text-blue-800`} onClick={() => setCropping(true)}>{photo.crop ? 'Ajustar recorte' : 'Recortar'}</button>}
+    {cropping && source.originalUrl && <DigitalPhotoCropper src={source.originalUrl} crop={photo.crop} hasDrawings={point.annotations.some(a => a.photoId === photo.id)} onSave={crop => onCrop(photo.id, crop)} onCancel={() => setCropping(false)} />}
+    {source.url && photo.kind === 'digital' && <DigitalAnnotationEditor src={source.url} originalSrc={source.originalUrl} photoId={photo.id} annotations={point.annotations.filter(a => a.photoId === photo.id)} hotspots={point.hotspots.filter(h => !h.digitalPhotoId || h.digitalPhotoId === photo.id)}
       onChange={annotations => onAnnotations(photo.id, annotations)} disabled={disabled || !!source.error} onImageError={fail} />}
     {/* eslint-disable-next-line @next/next/no-img-element */}
     {source.url && photo.kind === 'termica' && <img src={source.url} alt={`Térmica original ${photo.fileName}`} className="block h-auto w-full rounded-lg" onError={fail} />}
@@ -40,17 +52,18 @@ function LocalPhoto({ store, draft, photo, point, disabled, onAnnotations, onRem
       {source.url && <button type="button" className={buttonClass} onClick={() => enlarged.current?.showModal()}>Ampliar foto</button>}
       {!disabled && <button type="button" className={buttonClass} onClick={() => { if (window.confirm('Remover esta foto e suas descrições/marcações associadas?')) onRemove(photo.id); }}>Remover foto</button>}
     </div>
-    <dialog ref={enlarged} aria-label="Foto original ampliada" className="fixed inset-0 m-auto max-h-[95dvh] w-[95vw] max-w-5xl overflow-auto rounded-xl bg-white p-3 backdrop:bg-black/70">
+    <dialog ref={enlarged} aria-label="Foto ampliada" className="fixed inset-0 m-auto max-h-[95dvh] w-[95vw] max-w-5xl overflow-auto rounded-xl bg-white p-3 backdrop:bg-black/70">
       <button type="button" className={`${buttonClass} mb-3`} onClick={() => enlarged.current?.close()}>Fechar foto ampliada</button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {source.url && <img src={source.url} alt={`Original ampliado ${photo.fileName}`} className="h-auto w-full" />}
+      {source.url && <img src={source.url} alt={`Foto ampliada ${photo.fileName}`} className="h-auto w-full" />}
     </dialog>
   </article>;
 }
 
-export function FieldPhotos({ store, draft, point, disabled, localSaved, attach, removePhoto, updatePoint, flush }: {
+export function FieldPhotos({ store, draft, point, disabled, localSaved, attach, removePhoto, cropPhoto, updatePoint, flush }: {
   store: DraftStore | null; draft: FieldCollection; point: FieldPoint; disabled: boolean; localSaved: boolean;
   attach: (pointId: string, files: File[], kind: 'digital' | 'termica') => void; removePhoto: (id: string) => void;
+  cropPhoto: (id: string, crop?: PhotoCrop) => Promise<boolean>;
   updatePoint: (update: (point: FieldPoint) => void) => void; flush: () => Promise<void>;
 }) {
   const [launch, setLaunch] = useState<{ ready?: boolean; error?: string; saving?: boolean }>({});
@@ -64,14 +77,14 @@ export function FieldPhotos({ store, draft, point, disabled, localSaved, attach,
   return <div className="grid min-w-0 gap-4 lg:grid-cols-2">
     <section className={`${cardClass} space-y-3`} aria-label="Fotos digitais">
       <h3 className="text-lg font-semibold">Foto digital · {digital.length}</h3>
-      <p className="text-sm text-slate-600">Fotografe o quadro e marque os componentes sobre a digital.</p>
+      <p className="text-sm text-slate-600">Fotografe o quadro. Se precisar, toque em Recortar antes de desenhar sobre a foto.</p>
       <div className="flex flex-wrap gap-2">
         <label className={`${buttonClass} relative cursor-pointer`}>Fotografar digital<input aria-label="Fotografar digital" className="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept="image/*" capture="environment" disabled={disabled} onChange={event => select(event.currentTarget, 'digital')} /></label>
         <label className={`${buttonClass} relative cursor-pointer`}>Álbum digital<input aria-label="Adicionar digitais do álbum" className="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept="image/*" multiple disabled={disabled} onChange={event => select(event.currentTarget, 'digital')} /></label>
       </div>
       {digital.map((photo, digitalIndex) => <section key={photo.id} aria-label={`Foto digital ${digitalIndex + 1}`} className="space-y-3 rounded-lg border border-slate-200 p-3">
       <h4 className="font-medium">Digital {digitalIndex + 1}</h4>
-      <LocalPhoto {...{ store, draft, photo, point, disabled }} onAnnotations={annotate} onRemove={removePhoto} />
+      <LocalPhoto key={JSON.stringify(photo.crop)} {...{ store, draft, photo, point, disabled }} onAnnotations={annotate} onRemove={removePhoto} onCrop={cropPhoto} />
       {(point.occurrenceSelected || point.hotspots.length > 0) && <details open className="rounded-lg border border-orange-200 p-3">
         <summary className="min-h-11 cursor-pointer py-3 font-medium">Descrição da ocorrência</summary>
         <div className="space-y-3">
@@ -114,7 +127,7 @@ export function FieldPhotos({ store, draft, point, disabled, localSaved, attach,
       </div>}
       {thermal.map((photo, photoIndex) => <div key={photo.id} className="space-y-3">
         <h4 className="font-medium">Térmica {photoIndex + 1}</h4>
-        <LocalPhoto {...{ store, draft, photo, point, disabled }} onAnnotations={annotate} onRemove={removePhoto} />
+        <LocalPhoto {...{ store, draft, photo, point, disabled }} onAnnotations={annotate} onRemove={removePhoto} onCrop={cropPhoto} />
 
       </div>)}
     </section>

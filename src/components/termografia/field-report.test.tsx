@@ -15,15 +15,35 @@ function fixture() {
   return mapTermografiaReport({ report: { id: crypto.randomUUID(), mobile_sync_state: 'complete', cliente_nome: 'Cliente', data_execucao: '2026-11-12', equipamento: 'InfiRay T2S Plus' }, points: [{ id: p.id, setor: p.setor, local: p.local, metadados_coleta: pointMetadata(p) }], files: ids.map((id, n) => ({ id, point_id: p.id, tipo: n ? 'termica' : 'digital', storage_path: `photo-${n}`, file_name: `photo-${n}.jpg` })) });
 }
 describe('complete versioned print report', () => {
+  it('prints only after decoding all displayed copies of the photos', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    const oldDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    const decode = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', { configurable: true, value: decode });
+    try {
+      render(<FieldPrintReport report={fixture()} />);
+      const button = screen.getByRole('button', { name: 'Imprimir / salvar PDF' });
+      await waitFor(() => expect(button).toBeEnabled());
+      fireEvent.click(button);
+      await waitFor(() => expect(print).toHaveBeenCalledOnce());
+      expect(decode.mock.calls.length).toBe(document.querySelectorAll('.tr-document img').length);
+    } finally {
+      if (oldDecode) Object.defineProperty(HTMLImageElement.prototype, 'decode', oldDecode); else Reflect.deleteProperty(HTMLImageElement.prototype, 'decode');
+      print.mockRestore();
+    }
+  });
   it('includes every thermal image, multiple hotspot descriptions and only digital annotations', async () => {
     render(<FieldPrintReport report={fixture()} />);
     await waitFor(() => expect(screen.getAllByAltText(/Foto térmica T/)).toHaveLength(3));
-    expect(screen.getAllByAltText(/Foto digital D/)).toHaveLength(1);
+    expect(screen.getAllByAltText(/Foto digital D/)).toHaveLength(3);
     expect(screen.getByText('Descrição do aquecimento 1')).toBeVisible();
     expect(screen.getByText('Descrição do aquecimento 2')).toBeVisible();
     expect(screen.getByText('Descrição do aquecimento 3')).toBeVisible();
-    expect(screen.getAllByRole('img', { name: 'Identificação dos componentes' })).toHaveLength(1);
-    expect(screen.getByText('InfiRay T2S Plus')).toBeVisible();
+    expect(screen.getAllByRole('img', { name: 'Identificação dos componentes' })).toHaveLength(3);
+    expect(screen.getAllByText('InfiRay T2S Plus').length).toBeGreaterThan(0);
+    const row = document.querySelector('[data-measurement-id]');
+    expect(row).toHaveClass('tr-occurrence-row');
+    expect(row?.querySelector('.tr-occurrence-cell')).toHaveTextContent('3');
   });
   it('does not print when an image fails to decode', async () => {
     const print = vi.spyOn(window, 'print').mockImplementation(() => {});

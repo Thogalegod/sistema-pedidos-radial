@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { canonicalCrop, type PhotoCrop } from './photo-crop';
 import { MOBILE_MAX_FILE_BYTES, preparedPhotoPath, sha256Blob, type PreparedPhoto } from './prepared-photo';
 import {
   collectionSnapshot, scopeKey, validateFieldCollection, validateReadyToQueue,
@@ -104,6 +105,21 @@ export class DraftStore {
       draft.photos.push(photo); point.photoIds.push(photo.id);
       // All operations share the transaction. Validation/write failure rolls the original back.
       await this.db.blobs.add({ key: this.blobKey(id, photo.id), draftKey: this.key(id), original });
+      return this.persist(draft);
+    });
+  }
+  /** Crop metadata and drawing reset commit atomically; original bytes never change. */
+  async setPhotoCrop(id: string, expectedRevision: number, photoId: string, input?: PhotoCrop): Promise<FieldCollection> {
+    const crop = canonicalCrop(input);
+    return this.write(async () => {
+      const draft = await this.current(id, expectedRevision); this.editable(draft);
+      const photo = draft.photos.find(p => p.id === photoId);
+      if (!photo || photo.kind !== 'digital') throw new Error('Somente a foto digital pode ser recortada.');
+      if (JSON.stringify(canonicalCrop(photo.crop)) === JSON.stringify(crop)) return draft;
+      if (crop) photo.crop = crop; else delete photo.crop;
+      // Drawings use the displayed image coordinates. Descriptions and links stay intact.
+      for (const point of draft.points) point.annotations = point.annotations.filter(a => a.photoId !== photoId);
+      await this.db.prepared.delete(this.blobKey(id, photoId));
       return this.persist(draft);
     });
   }

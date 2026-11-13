@@ -11,6 +11,7 @@ import { mobileTermografiaClient, prepareFieldCollection, syncFieldCollection, t
 import { exportFieldCollection, importFieldCollection } from '@/lib/termografia/backup';
 import { importReportRevision } from '@/lib/termografia/report-revision';
 import { collectorUrl, initialCollectorView } from './collectorNavigation';
+import type { PhotoCrop } from '@/lib/termografia/photo-crop';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível concluir. Mantenha esta aba aberta e tente novamente.';
 export function useFieldCollector() {
@@ -202,11 +203,17 @@ export function useFieldCollector() {
     try { for (const file of files) sessionRef.current?.attach(pointId, file, kind); } catch (cause) { setError(message(cause)); }
   }, [current]);
   const removePhoto = useCallback((id: string) => { if (!busyRef.current && current()) sessionRef.current?.removePhoto(id); }, [current]);
+  const cropPhoto = useCallback(async (photoId: string, crop?: PhotoCrop): Promise<boolean> => !!(await action(async (store, session) => {
+    const draft = session.state.draft;
+    const saved = await store.setPhotoCrop(draft.id, draft.revision, photoId, crop);
+    if (!current()) return false;
+    session.adopt(saved); return true;
+  })), [action, current]);
   const retryLocal = useCallback(async () => { try { await sessionRef.current?.retry(); await refresh(); } catch (cause) { setError(message(cause)); } }, [refresh]);
   const reload = useCallback(async () => {
     const store = storeRef.current, session = sessionRef.current; if (!store || !session || !current()) return;
     if (!window.confirm('Reabrir a versão salva? As alterações ainda não salvas nesta tela serão descartadas.')) return;
     const draft = await store.get(session.state.draft.id); if (draft && current()) { bind(store, draft); setError(undefined); }
   }, [bind, current]);
-  return { state, drafts, loading, busy, error, ...offline, progress, store, edit, flush, open, create, authorizeSend, resume, exportBackup, importBackup, copy, attach, removePhoto, retryLocal, reload, deleteLocal };
+  return { state, drafts, loading, busy, error, ...offline, progress, store, edit, flush, open, create, authorizeSend, resume, exportBackup, importBackup, copy, attach, removePhoto, cropPhoto, retryLocal, reload, deleteLocal };
 }

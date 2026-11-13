@@ -166,7 +166,7 @@ function CollectionScreens({ collector }: { collector: ReturnType<typeof useFiel
             {(active.inspectionStatus === 'no-load' || active.inspectionStatus === 'inaccessible') && <label className="text-sm sm:col-span-2">Motivo *<textarea className={fieldClass} value={active.inspectionReason} onChange={e => patchPoint({ inspectionReason: e.target.value })} placeholder="Descreva brevemente o motivo" /></label>}
           </fieldset>
         </div>
-        <FieldPhotos key={active.id} store={collector.store} draft={draft} point={active} disabled={disabled} localSaved={state.saved} attach={collector.attach} removePhoto={collector.removePhoto} updatePoint={updatePoint} flush={collector.flush} />
+        <FieldPhotos key={active.id} store={collector.store} draft={draft} point={active} disabled={disabled} localSaved={state.saved} attach={collector.attach} removePhoto={collector.removePhoto} cropPhoto={collector.cropPhoto} updatePoint={updatePoint} flush={collector.flush} />
       </section>}
       {frozen && view === 'hub' && <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">{draft.sync.status === 'synced' ? 'Esta coleta já foi enviada. O relatório está na sua conta. Para alterar, use “Criar cópia editável” em Mais.' : 'Esta coleta está na fila de envio. Para alterar, use “Criar cópia editável” em Mais.'}</p>}
       {view === 'finish' && !frozen && <section className={`${cardClass} space-y-4`} aria-label="Conclusão da coleta">

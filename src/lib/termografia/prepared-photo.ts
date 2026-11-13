@@ -1,5 +1,6 @@
 import type { FieldPhoto, OfflineScope } from './field-collection';
 import { buildTermografiaPhotoPath } from './paths';
+import { canonicalCrop } from './photo-crop';
 
 export const MOBILE_MAX_FILE_BYTES = 10 * 1024 * 1024;
 export interface PreparedPhoto {
@@ -36,17 +37,24 @@ async function decode(blob: Blob): Promise<{ source: CanvasImageSource; width: n
 }
 /** Thermal evidence is unchanged; only digital photographs may become a separate resized derivative. */
 export const prepareFieldPhoto: PreparePhoto = async (original, photo) => {
+  const crop = canonicalCrop(photo.crop);
+  if (crop && photo.kind !== 'digital') throw new Error('Somente a foto digital pode ser recortada.');
   if (photo.kind === 'termica' && original.size > MOBILE_MAX_FILE_BYTES) throw new Error('A térmica original excede 10 MiB. Ela foi preservada; selecione uma exportação menor antes do envio.');
   const decoded = await decode(original);
   try {
-    if (photo.kind === 'termica' || (original.size <= 1.5 * 1024 * 1024 && Math.max(decoded.width, decoded.height) <= 2048)) {
+    if (photo.kind === 'termica' || (!crop && original.size <= 1.5 * 1024 * 1024 && Math.max(decoded.width, decoded.height) <= 2048)) {
       if (original.size > MOBILE_MAX_FILE_BYTES) throw new Error('Imagem excede o limite de 10 MiB.');
       return { blob: original, width: decoded.width, height: decoded.height };
     }
-    const scale = Math.min(1, 2048 / Math.max(decoded.width, decoded.height));
-    const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(decoded.width * scale)); canvas.height = Math.max(1, Math.round(decoded.height * scale));
+    const x = crop ? Math.min(decoded.width - 1, Math.round(crop.x * decoded.width)) : 0;
+    const y = crop ? Math.min(decoded.height - 1, Math.round(crop.y * decoded.height)) : 0;
+    const width = crop ? Math.max(1, Math.min(decoded.width - x, Math.round(crop.width * decoded.width))) : decoded.width;
+    const height = crop ? Math.max(1, Math.min(decoded.height - y, Math.round(crop.height * decoded.height))) : decoded.height;
+    const scale = Math.min(1, 2048 / Math.max(width, height));
+    const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext('2d'); if (!context) throw new Error('Não foi possível preparar a foto digital; original preservado.');
-    context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
+    if (crop) context.drawImage(decoded.source, x, y, width, height, 0, 0, canvas.width, canvas.height);
+    else context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
     let blob: Blob | null = null;
     for (const quality of [.9, .8, .7]) {
       blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
