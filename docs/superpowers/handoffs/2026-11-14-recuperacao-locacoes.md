@@ -1,5 +1,17 @@
 # Recuperação de Locações — checkpoint
 
+## Locações — publicadas em 14/11/2026
+
+Commit/push verificados: `2dca7105315ecef41deebb35512f2c88b9ef4733`, branch `codex/controle-locacoes`. Produção `dpl_2V5KPeC3SoPPCJpS2ZCtbje4JiX6` READY, domínio https://sistema-pedidos-radial.vercel.app confirmado. Hub inclui o cartão Controle de locações. Financeiro restrito ao proprietário verificado no IURQ; MISFY não acessado.
+
+Validação: gate seletivo e TypeScript aprovados; 55 testes no candidato exato do commit; build remoto com 11 rotas de Locações; 264/264 fontes conferidas; 50 fontes termográficas publicadas preservadas. HTTP 200 em hub, painel, ativos, contratos, cobranças e termografia. Teste autenticado no navegador/celular não foi executado nesta publicação.
+
+Autorização expressa do usuário para commit, push e deploy substituiu a espera pelo gate manual deste lote. Bloqueio inicial da revisão automática do deploy resolvido após comprovar que os dados profissionais já pertenciam ao app publicado no mesmo projeto autenticado. Evidências em `docs/architecture/2026-11-14-locacoes-production-verification.json`.
+
+Git local continua HEAD 2bb9504, com índice real vazio: metadata fica fora da pasta gravável. Commit criado por API, com árvore idêntica ao índice temporário validado, e push por atualização sem força/lease do branch remoto. Preservar arquivos locais pendentes; comparar com o commit remoto, não recommitar alterações já publicadas. Revisão de Termografia de 14/11 e melhorias pendentes do hub continuam fora deste deploy. Próximo passo: usar /hub ou /contratos-locacoes com a conta de Thomás; seguir melhorias em novo escopo sem reabrir este lote.
+
+## Histórico das etapas anteriores
+
 ## Atualização vigente — acesso exclusivo e recuperação
 
 Limite da verificação HTTP da API: a ferramenta classificou o 401 como `deployment_authentication_required`, após redirect. Isso é inconclusivo sobre a autenticação da própria API e não foi contabilizado como teste de autorização da aplicação. Autorização financeira foi verificada no banco sob os papéis de proprietário e admin antigo; fluxo completo de envio de e-mail não foi executado.

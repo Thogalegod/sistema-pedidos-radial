@@ -1,10 +1,14 @@
 # AI Development Checkpoint
 
-## Locações — recuperação iniciada em 14/11/2026
+## Locações — publicadas em 14/11/2026
 
-**PRONTO PARA TESTE MANUAL na prévia IURQ.** `dpl_86m1D9R9vhoytDYVkW7aSKwGRwWP` READY: https://sistema-pedidos-radial-mbky0z6z8-thogalego-4398s-projects.vercel.app/contratos-locacoes . Build remoto e TypeScript R5 aprovados; 89 Vitest + 5 node:test + 3 verificações do guard de ambiente. Fonte remota confere 263/263 hashes, termografia preservada 50/50. HTTP 200 em painel/ativos/contratos/cobranças/termografia. Domínio principal não promovido, nenhum commit/push. Evidência em `docs/architecture/2026-11-14-locacoes-preview-verification.json`. Link temporário de acesso à prévia entregue na conversa, sem persistir credencial de compartilhamento no repo.
+Commit/push verificados: `2dca7105315ecef41deebb35512f2c88b9ef4733`, branch `codex/controle-locacoes`. Produção `dpl_2V5KPeC3SoPPCJpS2ZCtbje4JiX6` READY, domínio https://sistema-pedidos-radial.vercel.app confirmado. Hub inclui o cartão Controle de locações. Financeiro restrito ao proprietário verificado no IURQ; MISFY não acessado.
 
-Usuário escolheu equipamentos primeiro e financeiro somente para si. IURQ: migration `20261114212102_rental_owner_access_payments` aplicada; proprietário exclusivo `thomas@radialenergia.com.br` configurado por identidade verificada, sem promoção a admin. RLS financeira, três RPCs de boletos/envio e Storage financeiro protegidos; recebimento atômico/idempotente, INSERT direto revogado. QA transacional passou e foi revertido. Pacote R5 recompõe 11 rotas e inclui gate de conta e recuperação de recebimentos. Ambiente local voltou a funcionar após bloqueio temporário por caminho /workspace inválido. Sem staging/commit/push ou promoção principal. Retomar em `docs/superpowers/handoffs/2026-11-14-recuperacao-locacoes.md`. Preservar a termografia publicada, sem promover a revisão pendente de 14/11.
+Validação: gate seletivo e TypeScript aprovados; 55 testes no candidato exato do commit; build remoto com 11 rotas de Locações; 264/264 fontes conferidas; 50 fontes termográficas publicadas preservadas. HTTP 200 em hub, painel, ativos, contratos, cobranças e termografia. Teste autenticado no navegador/celular não foi executado nesta publicação.
+
+Autorização expressa do usuário para commit, push e deploy substituiu a espera pelo gate manual deste lote. Bloqueio inicial da revisão automática do deploy resolvido após comprovar que os dados profissionais já pertenciam ao app publicado no mesmo projeto autenticado. Evidências em `docs/architecture/2026-11-14-locacoes-production-verification.json`.
+
+Git local continua HEAD 2bb9504, com índice real vazio: metadata fica fora da pasta gravável. Commit criado por API, com árvore idêntica ao índice temporário validado, e push por atualização sem força/lease do branch remoto. Preservar arquivos locais pendentes; comparar com o commit remoto, não recommitar alterações já publicadas. Revisão de Termografia de 14/11 e melhorias pendentes do hub continuam fora deste deploy. Próximo passo: usar /hub ou /contratos-locacoes com a conta de Thomás; seguir melhorias em novo escopo sem reabrir este lote.
 
 ## Stable base
 - Repository: `Thogalegod/sistema-pedidos-radial`
