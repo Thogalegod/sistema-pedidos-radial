@@ -1,6 +1,6 @@
 'use client';
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CobrancasPage from './page';
 
@@ -48,7 +48,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('CobrancasPage billing delivery visibility', () => {
-  it('keeps the monthly view by default and supports all months without a month filter', async () => {
+  it('opens all months with outstanding balances by default', async () => {
+    navigation.params = new URLSearchParams();
+    mocks.getCurrentOrganizationMembership.mockResolvedValue({ role: 'admin', can_manage_billing: true });
+    render(<CobrancasPage />);
+    await waitFor(() => expect(mocks.listBillings).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: undefined, status: 'open' })));
+    expect(screen.getByText('Todos os meses')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Status das cobranças' })).toHaveValue('open');
+    expect(screen.queryByRole('button', { name: 'Mês anterior' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrar por mês' }));
+    expect(navigation.push).toHaveBeenCalledWith(expect.stringMatching(/month=\d{4}-\d{2}/));
+  });
+
+  it('respects an explicitly selected month or status', async () => {
     mocks.getCurrentOrganizationMembership.mockResolvedValue({ role: 'admin', can_manage_billing: true });
     const { unmount } = render(<CobrancasPage />);
     await waitFor(() => expect(mocks.listBillings).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: '2026-08' })));
@@ -57,6 +69,20 @@ describe('CobrancasPage billing delivery visibility', () => {
     render(<CobrancasPage />);
     await waitFor(() => expect(mocks.listBillings).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: undefined, status: 'overdue' })));
     expect(screen.getByText('Todos os meses')).toBeInTheDocument();
+  });
+
+  it('preserves status when choosing a month and follows URL navigation', async () => {
+    navigation.params = new URLSearchParams('month=2026-08&status=paid');
+    mocks.getCurrentOrganizationMembership.mockResolvedValue({ role: 'admin', can_manage_billing: true });
+    const { rerender } = render(<CobrancasPage />);
+    await waitFor(() => expect(mocks.listBillings).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: '2026-08', status: 'paid' })));
+    fireEvent.change(screen.getByLabelText('Selecionar mês'), { target: { value: '2026-06' } });
+    expect(navigation.push).toHaveBeenLastCalledWith('/contratos-locacoes/cobrancas?month=2026-06&status=paid');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status das cobranças' }), { target: { value: 'all' } });
+    expect(navigation.push).toHaveBeenLastCalledWith('/contratos-locacoes/cobrancas?month=2026-08&status=all');
+    navigation.params = new URLSearchParams();
+    rerender(<CobrancasPage />);
+    await waitFor(() => expect(mocks.listBillings).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ month: undefined, status: 'open' })));
   });
 
   it('shows delivery indicators to an authorized billing manager', async () => {

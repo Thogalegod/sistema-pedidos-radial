@@ -315,6 +315,35 @@ describe('contracts rental queries', () => {
     expect(client.restrictedQueries).toBe(0);
   });
 
+  it('shows only receivable balances across months, including partial payments', async () => {
+    class OutstandingReadClient extends FakeReadClient {
+      async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {
+        return [
+          makeBillingCycle({ id: 'old', due_date: '2026-06-15' }),
+          makeBillingCycle({ id: 'future', due_date: '2026-09-15' }),
+          makeBillingCycle({ id: 'billing-1' }), // partially paid by the base fixture
+          makeBillingCycle({ id: 'settled' }),
+          makeBillingCycle({ id: 'draft', status: 'draft' }),
+          makeBillingCycle({ id: 'exempt', status: 'exempt' }),
+          makeBillingCycle({ id: 'cancelled', status: 'cancelled' }),
+          makeBillingCycle({ id: 'zero', total_amount: '0' }),
+        ];
+      }
+      async listPaymentsByBillingCycleIds(): Promise<Payment[]> {
+        const payments = await super.listPaymentsByBillingCycleIds();
+        return [...payments, { ...payments[0], id: 'settlement', billing_cycle_id: 'settled', amount: '300000' }];
+      }
+    }
+    const client = new OutstandingReadClient();
+    const billings = await listBillings(client, '2026-08-12', { status: 'open' });
+    expect(billings.map(billing => billing.id)).toEqual(['old', 'billing-1', 'future']);
+    expect(billings.find(billing => billing.id === 'billing-1')?.balance_amount).toBe('200000');
+    const monthly = await listBillings(client, '2026-08-12', { status: 'open', month: '2026-08' });
+    expect(monthly.map(billing => billing.id)).toEqual(['billing-1']);
+    const all = await listBillings(client, '2026-08-12', { status: 'all' });
+    expect(all).toHaveLength(8);
+  });
+
   it('limits billings to the selected due-date month before applying filters and priority', async () => {
     class MonthlyBillingReadClient extends FakeReadClient {
       async listBillingCyclesByOrganization(): Promise<BillingCycle[]> {

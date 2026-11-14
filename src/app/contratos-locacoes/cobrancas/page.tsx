@@ -8,7 +8,6 @@ import { canManageBilling, createSupabaseContractsLocacoesReadClient, listBillin
 import { useDebouncedValue } from '@/lib/contratos-locacoes/use-debounced-value';
 import {
   buildBillingMonthHref,
-  formatBillingMonthLabel,
   resolveBillingMonth,
   shiftBillingMonth,
   toLocalDateKey,
@@ -19,15 +18,13 @@ export default function CobrancasPage() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const allMonths = searchParams.get('month') === 'all';
   const selectedMonth = resolveBillingMonth(searchParams.get('month'));
+  const allMonths = searchParams.get('month') !== selectedMonth;
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [billingManager, setBillingManager] = useState(false);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled'>(
-    normalizeStatusFilter(searchParams.get('status'))
-  );
+  const status = normalizeStatusFilter(searchParams.get('status'));
   const debouncedSearch = useDebouncedValue(search, 300);
 
   useEffect(() => {
@@ -81,32 +78,48 @@ export default function CobrancasPage() {
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  function changeStatus(value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('status', normalizeStatusFilter(value));
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
   return (
     <div className="space-y-4">
       <nav aria-label="Mês das cobranças" className="flex flex-wrap items-center justify-center gap-3">
-        <button
+        {!allMonths && <button
           aria-label="Mês anterior"
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
           onClick={() => navigateMonth(-1)}
           type="button"
         >
           ‹
-        </button>
-        <strong className="min-w-28 text-center text-sm text-gray-900">{allMonths ? 'Todos os meses' : formatBillingMonthLabel(selectedMonth)}</strong>
-        <button
+        </button>}
+        {allMonths ? <strong className="min-w-28 text-center text-sm text-gray-900">Todos os meses</strong> : (
+          <input
+            aria-label="Selecionar mês"
+            type="month"
+            value={selectedMonth}
+            className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900"
+            onChange={(event) => {
+              if (event.target.value) router.push(buildBillingMonthHref(pathname, searchParams.toString(), event.target.value));
+            }}
+          />
+        )}
+        {!allMonths && <button
           aria-label="Próximo mês"
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700"
           onClick={() => navigateMonth(1)}
           type="button"
         >
           ›
-        </button>
+        </button>}
         <button
-          aria-pressed={allMonths}
+          aria-expanded={!allMonths}
           className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${allMonths ? 'border-radial-primary bg-emerald-50 text-emerald-900' : 'border-gray-300 bg-white text-gray-700'}`}
           onClick={toggleAllMonths}
           type="button"
-        >{allMonths ? 'Voltar à visão mensal' : 'Todos os meses'}</button>
+        >{allMonths ? 'Filtrar por mês' : 'Todos os meses'}</button>
       </nav>
       <div className="grid gap-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_220px]">
         <input
@@ -115,7 +128,8 @@ export default function CobrancasPage() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <select className="rounded-xl border border-gray-300 px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+        <select aria-label="Status das cobranças" className="rounded-xl border border-gray-300 px-3 py-2 text-sm" value={status} onChange={(event) => changeStatus(event.target.value)}>
+          <option value="open">Em aberto</option>
           <option value="all">Todos os status</option>
           <option value="to_issue">A emitir</option>
           <option value="due_soon">Vencendo em 7 dias</option>
@@ -132,6 +146,6 @@ export default function CobrancasPage() {
 }
 
 function normalizeStatusFilter(value: string | null) {
-  const allowed = ['all', 'to_issue', 'due_soon', 'due_today', 'overdue', 'issued', 'paid', 'exempt', 'cancelled'] as const;
-  return allowed.find((entry) => entry === value) ?? 'all';
+  const allowed = ['open', 'all', 'to_issue', 'due_soon', 'due_today', 'overdue', 'issued', 'paid', 'exempt', 'cancelled'] as const;
+  return allowed.find((entry) => entry === value) ?? 'open';
 }

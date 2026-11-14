@@ -95,7 +95,7 @@ export type BillingMonthlyBaseRow = Pick<
 export interface BillingListFilters {
   month?: string;
   search?: string;
-  status?: 'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled';
+  status?: 'open' | 'all' | 'to_issue' | 'due_soon' | 'due_today' | 'overdue' | 'issued' | 'paid' | 'exempt' | 'cancelled';
 }
 
 export interface BillingListItem {
@@ -1003,6 +1003,11 @@ export async function listBillings(
     })
     .filter((billing) => {
       if (filters.status && filters.status !== 'all') {
+        if (filters.status === 'open' && (
+          !['issued', 'overdue'].includes(billing.status) || Number(billing.balance_amount) <= 0
+        )) {
+          return false;
+        }
         if (filters.status === 'to_issue' && billing.status !== 'draft') {
           return false;
         }
