@@ -383,6 +383,7 @@ export default function ContractDetailPage() {
 
     const mutationClient = createSupabaseContractsLocacoesMutationClient(supabase);
     const result = await recordBillingPayment(mutationClient, billing.id, {
+      operation_id: values.operation_id,
       billing_cycle_id: billing.id,
       paid_at: values.paid_at,
       amount: values.amount,

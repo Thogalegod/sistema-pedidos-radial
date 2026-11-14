@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Building2, Camera, FileText } from 'lucide-react';
-import { ContentContainer, PageHeader } from '@/components/app-shell/PageHeader';
+import { ArrowRight, Boxes, Building2, Camera, FileText } from 'lucide-react';
 
 const modules = [
   {
@@ -36,15 +35,26 @@ const toneClass: Record<string, { icon: string; hover: string; text: string }> =
 
 export default function RelatoriosTecnicosPage() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <ContentContainer>
-        <PageHeader
-          breadcrumbs={[{ label: 'Central', href: '/hub' }, { label: 'Relatórios Técnicos' }]}
-          title="Relatórios Técnicos"
-          description="Escolha a família do relatório técnico que será gerado."
-        />
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-8">
+          <Link href="/hub" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            &larr; Voltar ao Hub
+          </Link>
+          <div className="mt-4 flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <Boxes size={26} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-gray-900 tracking-tight">Relatórios Técnicos</h1>
+              <p className="text-gray-500 mt-1">
+                Escolha a família do relatório técnico que será gerado.
+              </p>
+            </div>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {modules.map((module) => {
             const Icon = module.icon;
             const tone = toneClass[module.tone];
@@ -53,21 +63,21 @@ export default function RelatoriosTecnicosPage() {
               <Link
                 key={module.href}
                 href={module.href}
-                className={`group rounded-xl border border-slate-200 bg-white p-5 transition-colors ${tone.hover}`}
+                className={`group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md ${tone.hover} transition-all`}
               >
-                <div className={`mb-4 flex size-10 items-center justify-center rounded-lg ${tone.icon}`}>
-                  <Icon size={21} />
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-5 group-hover:scale-105 transition-transform ${tone.icon}`}>
+                  <Icon size={24} />
                 </div>
-                <h2 className="mb-2 text-lg font-semibold text-slate-900">{module.title}</h2>
-                <p className="text-sm leading-6 text-slate-500">{module.description}</p>
-                <div className={`mt-5 flex items-center text-sm font-semibold ${tone.text}`}>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">{module.title}</h2>
+                <p className="text-sm text-gray-500 min-h-16">{module.description}</p>
+                <div className={`mt-6 flex items-center font-medium text-sm ${tone.text}`}>
                   Acessar <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
                 </div>
               </Link>
             );
           })}
         </div>
-      </ContentContainer>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import type {
 } from './types';
 
 class FakeBillingMutationClient implements ContractsLocacoesMutationClient {
+  public recordPaymentAtomically = vi.fn<NonNullable<ContractsLocacoesMutationClient['recordPaymentAtomically']>>();
   public readonly organizationId = 'org-1';
   public insertedBilling: BillingCycleInsertRecord | null = null;
   public upsertedBillingLines: BillingLine[] = [];
@@ -419,49 +420,27 @@ describe('billing mutations', () => {
     expect(client.insertedBilling?.document_number).toBe('R000023001');
   });
 
-  it('keeps partial payments out of paid status until the full amount is reached', async () => {
+  it.each(['issued', 'overdue', 'paid'] as const)('uses the authoritative transaction result for %s receipts without a second update', async (status) => {
     const client = new FakeBillingMutationClient();
-
+    const billing = { ...(await client.getBillingCycleById('org-1', 'billing-1')), status };
+    const payment = { id: 'payment-1', organization_id: 'org-1', billing_cycle_id: 'billing-1',
+      paid_at: '2026-07-15', amount: '50000', notes: 'Entrada', created_at: '', updated_at: '' };
+    const serverResult = { billing, payment, payments: [payment], balance: {
+      paid_amount: '50000', balance_amount: status === 'paid' ? '0' : '100000', is_paid_in_full: status === 'paid',
+    } };
+    client.recordPaymentAtomically.mockResolvedValue(serverResult);
     const result = await recordBillingPayment(client, 'billing-1', {
+      operation_id: '2f0c8c89-5023-47f8-9a83-78ffcc60da4b',
       billing_cycle_id: 'billing-1',
       paid_at: '2026-07-15',
       amount: '50000',
       notes: 'Entrada',
     });
 
-    expect(result.billing.status).toBe('issued');
-    expect(result.balance.balance_amount).toBe('100000');
-    expect(result.payments).toHaveLength(1);
-  });
-
-  it('uses the real billing total when recalculating balance and status after payment', async () => {
-    const client = new FakeBillingMutationClient();
-    client.billingTotalAmount = '200000';
-
-    const result = await recordBillingPayment(client, 'billing-1', {
-      billing_cycle_id: 'billing-1',
-      paid_at: '2026-07-15',
-      amount: '50000',
-      notes: 'Entrada',
-    });
-
-    expect(result.billing.status).toBe('issued');
-    expect(result.balance.paid_amount).toBe('50000');
-    expect(result.balance.balance_amount).toBe('150000');
-  });
-
-  it('keeps an already overdue billing overdue after a partial payment', async () => {
-    const client = new FakeBillingMutationClient();
-    client.billingDueDate = '2026-07-10';
-
-    const result = await recordBillingPayment(client, 'billing-1', {
-      billing_cycle_id: 'billing-1',
-      paid_at: '2026-07-15',
-      amount: '50000',
-      notes: 'Pagamento parcial atrasado',
-    });
-
-    expect(result.billing.status).toBe('overdue');
+    expect(result).toBe(serverResult);
+    expect(client.recordPaymentAtomically).toHaveBeenCalledOnce();
+    expect(client.insertedPayment).toBeNull();
+    expect(client.updatedBillingStatus).toBeNull();
   });
 
   it('rejects duplicated or overlapping periods before creating a billing cycle', async () => {
@@ -728,6 +707,7 @@ describe('billing mutations', () => {
     const client = new FakeBillingMutationClient();
 
     await expect(recordBillingPayment(client, 'billing-1', {
+      operation_id: '2f0c8c89-5023-47f8-9a83-78ffcc60da4b',
       billing_cycle_id: 'billing-2',
       paid_at: '2026-07-15',
       amount: '50000',

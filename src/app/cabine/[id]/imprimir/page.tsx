@@ -4,11 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar, Cell, Tooltip } from 'recharts';
-import {
-  CABINE_DOCUMENT_BUCKET,
-  getCabineDocumentSignedUrl,
-} from '@/lib/cabine/documents';
-import { getCurrentOrganizationId } from '@/lib/pedidos-tarefas/organization';
+import { getUrlArquivo } from '@/lib/storage';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { creaBase64 } from '@/lib/creaBase64';
 import { CabineTransformerSheet } from '@/components/CabineTransformerSheet';
@@ -36,34 +32,26 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
   useEffect(() => {
     let ativo = true;
 
-    if (data?.art_storage_path) {
+    if (data?.art_arquivo_url) {
       setArtUrl(null);
       setArtTipo(null);
       setNumPagesArt(undefined);
 
-      getCabineDocumentSignedUrl(data.art_storage_path, async (storagePath, expiresInSeconds) => {
-        const { data: signedData, error } = await supabase.storage
-          .from(CABINE_DOCUMENT_BUCKET)
-          .createSignedUrl(storagePath, expiresInSeconds);
-        if (error) throw new Error(error.message);
-        return { signedUrl: signedData?.signedUrl };
-      })
-        .then(async (url) => {
-          if (!ativo) return;
-          setArtUrl(url);
+      getUrlArquivo(data.art_arquivo_url).then(async (url) => {
+        if (!ativo) return;
+        setArtUrl(url);
 
-          try {
-            const response = await fetch(url, { method: 'HEAD' });
-            const contentType = response.headers.get('content-type') || '';
-            if (!ativo) return;
-            setArtTipo(contentType.startsWith('image/') ? 'image' : 'pdf');
-          } catch {
-            if (ativo) setArtTipo('pdf');
-          }
-        })
-        .catch(() => {
-          if (ativo) setArtUrl(null);
-        });
+        if (!url) return;
+
+        try {
+          const response = await fetch(url, { method: 'HEAD' });
+          const contentType = response.headers.get('content-type') || '';
+          if (!ativo) return;
+          setArtTipo(contentType.startsWith('image/') ? 'image' : 'pdf');
+        } catch {
+          if (ativo) setArtTipo('pdf');
+        }
+      });
     } else {
       setArtUrl(null);
       setArtTipo(null);
@@ -76,29 +64,17 @@ export default function CabinePrintViewer(props: { params: Promise<{ id: string 
   }, [data]);
 
   useEffect(() => {
-    let active = true;
-
-    async function loadReport() {
-      try {
-        const organizationId = await getCurrentOrganizationId(supabase);
-        const { data: report, error } = await supabase
-          .from('relatorios_cabine')
-          .select('*')
-          .eq('organization_id', organizationId)
-          .eq('id', params.id)
-          .single();
-
-        if (!active) return;
-        setData(!error && report ? report : false);
-      } catch {
-        if (active) setData(false);
-      }
-    }
-
-    void loadReport();
-    return () => {
-      active = false;
-    };
+    supabase.from('relatorios_cabine')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setData(data);
+        } else {
+          setData(false);
+        }
+      });
   }, [params.id]);
 
   useEffect(() => {

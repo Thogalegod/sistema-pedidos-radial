@@ -40,6 +40,7 @@ describe('billing money fields', () => {
 
     render(
       <BillingPaymentForm
+        requestKey="owner:bill"
         initialAmount="100"
         onCancel={vi.fn()}
         onSubmit={vi.fn()}

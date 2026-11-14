@@ -1,119 +1,59 @@
 'use client';
 
-import Link from 'next/link';
+/* eslint-disable @next/next/no-html-link-for-pages -- Offline collector needs document navigation rather than an uncached RSC request. */
 import { useEffect, useState } from 'react';
-import { format, parseISO } from 'date-fns';
-import { Camera, Eye, FileText, Search, X } from 'lucide-react';
-import { ContentContainer, PageHeader } from '@/components/app-shell/PageHeader';
 import { supabase } from '@/lib/supabase';
-import { listTermografiaReports, TermografiaReportListItem } from '@/lib/termografia/report-actions';
+import { listTermografiaReports, type TermografiaReportListItem } from '@/lib/termografia/report-actions';
+import { backendProjectId, readLocalIdentity, subscribeLocalIdentity } from '@/lib/termografia/local-identity';
+import { scopeKey, type FieldCollection } from '@/lib/termografia/field-collection';
+import { DraftStore } from '@/lib/termografia/offline-store';
+import { buttonClass, cardClass, fieldClass, primaryClass } from '@/components/termografia/collectorStyles';
 
 export default function TermografiaListPage() {
-  const [relatorios, setRelatorios] = useState<TermografiaReportListItem[]>([]);
+  const [reports, setReports] = useState<TermografiaReportListItem[]>([]);
+  const [drafts, setDrafts] = useState<FieldCollection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busca, setBusca] = useState('');
-
+  const [deleting, setDeleting] = useState<string>();
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState<string>();
   useEffect(() => {
-    listTermografiaReports(supabase)
-      .then((data) => {
-        setRelatorios(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setRelatorios([]);
-        setLoading(false);
-      });
+    let alive = true, revoked = false;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const identity = url ? readLocalIdentity(backendProjectId(url), window.location.origin) : null;
+    const store = identity ? new DraftStore(identity.scope) : null;
+    const unsubscribe = subscribeLocalIdentity(() => {
+      const next = url ? readLocalIdentity(backendProjectId(url), window.location.origin) : null;
+      if (!identity || !next || scopeKey(next.scope) !== scopeKey(identity.scope)) {
+        revoked = true; setReports([]); setDrafts([]); setLoading(false);
+        setError('A conta mudou. Reabra a página após entrar na conta desejada.'); store?.close();
+      }
+    });
+    if (store) void store.list().then(list => { if (alive && !revoked) setDrafts(list); }).catch(() => { if (alive && !revoked) setError('Não foi possível ler as coletas locais. Abra o coletor para tentar novamente.'); });
+    void listTermografiaReports(supabase).then(list => { if (alive && !revoked) { setReports(list); setLoading(false); } }).catch(cause => {
+      if (alive && !revoked) { setError(cause instanceof Error ? cause.message : 'Não foi possível consultar os relatórios. Suas coletas locais continuam no celular.'); setLoading(false); }
+    });
+    return () => { alive = false; unsubscribe(); store?.close(); };
   }, []);
-
-  const filtrados = relatorios.filter((rel) => {
-    if (!busca) return true;
-    const t = busca.toLowerCase();
-    return rel.numero_relatorio?.toLowerCase().includes(t) || rel.cliente_nome?.toLowerCase().includes(t);
-  });
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <ContentContainer className="pb-20">
-      <PageHeader
-        breadcrumbs={[{ label: 'Central', href: '/hub' }, { label: 'Relatórios Técnicos', href: '/relatorios-tecnicos' }, { label: 'Termografia' }]}
-        title="Relatórios de Termografia"
-        description="Inspeções termográficas com fotos digitais, imagens térmicas e ocorrências."
-        actions={<Link href="/termografia/nova" className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700">
-          <Camera size={20} />
-          <span>Novo Relatório</span>
-        </Link>}
-      />
-
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
-          <div className="relative flex-1 max-w-md">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por número ou cliente..."
-              className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-            {busca && (
-              <button onClick={() => setBusca('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <X size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-white border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
-                <th className="p-4 font-medium">Nº Relatório</th>
-                <th className="p-4 font-medium">Cliente</th>
-                <th className="p-4 font-medium">Data</th>
-                <th className="p-4 font-medium">Ocorrências</th>
-                <th className="p-4 font-medium text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 text-sm">
-              {loading ? (
-                <tr><td colSpan={5} className="p-12 text-center text-gray-500">Carregando relatórios...</td></tr>
-              ) : filtrados.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-12 text-center text-gray-500">
-                    <FileText size={44} className="mx-auto text-gray-300 mb-3" />
-                    Nenhum relatório de termografia encontrado.
-                  </td>
-                </tr>
-              ) : (
-                filtrados.map((rel) => {
-                  const ocorrencias = rel.ocorrencias_count;
-                  return (
-                    <tr key={rel.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="p-4 whitespace-nowrap">
-                        <Link href={`/termografia/${rel.id}`} className="text-blue-600 font-semibold hover:text-blue-800 hover:underline">
-                          {rel.numero_relatorio}
-                        </Link>
-                      </td>
-                      <td className="p-4 font-medium text-gray-900">{rel.cliente_nome}</td>
-                      <td className="p-4 whitespace-nowrap text-gray-600">{format(parseISO(rel.data_execucao), 'dd/MM/yyyy')}</td>
-                      <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-1 text-xs rounded-full font-medium ${ocorrencias ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
-                          {ocorrencias}
-                        </span>
-                      </td>
-                      <td className="p-4 whitespace-nowrap text-center">
-                        <Link href={`/termografia/${rel.id}`} className="inline-block p-1 text-gray-400 hover:text-blue-600 transition-colors" title="Visualizar">
-                          <Eye size={20} />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </ContentContainer>
-    </div>
-  );
+  const deleteLocal = async (draft: FieldCollection) => {
+    if (deleting || !['draft', 'synced'].includes(draft.sync.status)) return;
+    if (!window.confirm(draft.sync.status === 'synced' ? 'Excluir esta cópia do celular? O relatório enviado continuará na sua conta.' : 'Excluir esta coleta e suas fotos deste celular? Ela ainda não foi enviada e não poderá ser recuperada sem uma cópia ZIP.')) return;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const identity = url ? readLocalIdentity(backendProjectId(url), window.location.origin) : null;
+    if (!identity || scopeKey(identity.scope) !== scopeKey(draft.scope)) { setError('A conta mudou. Reabra a lista.'); return; }
+    const store = new DraftStore(identity.scope); setDeleting(draft.id);
+    try { await store.delete(draft.id, draft.revision); setDrafts(list => list.filter(item => item.id !== draft.id)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível excluir a cópia local.'); }
+    finally { store.close(); setDeleting(undefined); }
+  };
+  const filtered = reports.filter(report => `${report.numero_relatorio} ${report.cliente_nome}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  return <main className="min-h-screen bg-slate-50 pb-20 text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-3 py-5 sm:px-5">
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold tracking-wider text-blue-800">RADIAL ENERGIA</p><h1 className="text-2xl font-bold">Relatórios de termografia</h1></div><a href="/termografia/nova?nova=1" className={primaryClass}>Nova coleta</a></header>
+    <section className={`${cardClass} space-y-3`}><h2 className="text-lg font-semibold">Suas coletas neste aparelho</h2><p className="text-sm text-slate-600">Use a mesma coleta com ou sem internet. Antes de sair para o cliente, abra a coleta com conexão e aguarde “Pronto para usar sem internet”. A preparação é automática.</p><a href={drafts.length ? `/termografia/nova?rascunho=${drafts[0].id}` : "/termografia/nova"} className={primaryClass}>{drafts.length ? `Continuar coleta (${drafts.length})` : 'Iniciar coleta'}</a>
+      {drafts.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{drafts.map(draft => <div key={draft.id} className="space-y-2 rounded-xl border border-slate-200 p-3"><a href={`/termografia/nova?rascunho=${draft.id}`} className={`${buttonClass} min-w-0 flex-col items-start text-left`}><span className="w-full break-words">{draft.report.cliente_nome || 'Nova coleta'}</span><span className="text-xs text-slate-600">{draft.points.length} quadros · {draft.photos.length} fotos · {draft.sync.status === 'draft' ? 'rascunho local' : draft.sync.status === 'synced' ? 'enviado' : 'fila autorizada'}</span></a><button type="button" className={`${buttonClass} text-red-800`} disabled={!!deleting || !['draft', 'synced'].includes(draft.sync.status)} onClick={() => void deleteLocal(draft)}>{deleting === draft.id ? 'Excluindo…' : 'Excluir do celular'}</button></div>)}</div>}
+    </section>
+    {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</p>}
+    <section className="space-y-3"><h2 className="text-lg font-semibold">Relatórios enviados</h2><label className="block text-sm">Buscar por número ou cliente<input className={fieldClass} type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
+      {loading ? <p role="status" className={cardClass}>Consultando relatórios…</p> : !filtered.length ? <p className={`${cardClass} text-sm text-slate-600`}>Nenhum relatório encontrado.</p> : <div className="grid gap-3 sm:grid-cols-2">{filtered.map(report => <article key={report.id} className={`${cardClass} space-y-3`}><div><p className="text-sm font-semibold text-blue-800">{report.numero_relatorio}</p><h3 className="break-words font-semibold">{report.cliente_nome}</h3></div><p className="text-sm text-slate-600">{report.data_execucao.split('-').reverse().join('/')} · {report.pontos_count} quadros · {report.ocorrencias_count} aquecimentos / ocorrências</p><a href={`/termografia/${report.id}`} className={buttonClass}>Abrir relatório</a></article>)}</div>}
+    </section>
+  </div></main>;
 }

@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useShellUser } from '@/components/app-shell/AppShell';
+import { RentalHubShortcut } from '@/components/contratos-locacoes/RentalHubShortcut';
 import { ContentContainer, PageHeader } from '@/components/app-shell/PageHeader';
 import { OperationalDashboard } from '@/components/pedidos-tarefas/OperationalDashboard';
 import type { QuickTaskDraft } from '@/components/pedidos-tarefas/QuickTaskForm';
@@ -177,6 +178,7 @@ function HubContent() {
         </Link>)}
       </section>
 
+      <RentalHubShortcut />
       {loadError && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
         <span>{loadError}</span>
         <button type="button" onClick={() => {

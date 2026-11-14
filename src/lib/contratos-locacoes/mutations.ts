@@ -22,7 +22,8 @@ import {
 } from './schemas';
 import type { BillingCycle, BillingLine, Contract, Customer, CustomerContact, CustomerSite, Payment, RentalAsset, RentalItem } from './types';
 import { calculateBilling } from './money';
-import { buildBillingStatus, calculateBillingBalance } from './dashboard';
+import { calculateBillingBalance } from './dashboard';
+import { PaymentNotSavedError } from './payment-errors';
 import { receiptNumberFromInternalNumber } from './numbering';
 import { getContractCompanyLabel } from './company';
 import { assertNoBillingPeriodConflict } from './billing-periods';
@@ -85,6 +86,7 @@ export interface RentalAssetMutationResult {
 
 export interface ContractsLocacoesMutationClient {
   getCurrentOrganizationId(): Promise<string>;
+  recordPaymentAtomically?(organizationId: string, payload: PaymentDraftInput): Promise<PaymentMutationResult>;
   insertCustomer(record: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): Promise<Customer>;
   updateCustomer(customerId: string, patch: Partial<Customer>): Promise<Customer>;
   upsertCustomerSites(records: CustomerSite[]): Promise<CustomerSite[]>;
@@ -440,14 +442,22 @@ export function createSupabaseContractsLocacoesMutationClient(
       }
     },
 
-    async insertPayment(record) {
-      const { data, error } = await client
-        .from('payments')
-        .insert(record)
-        .select('*')
-        .single();
-
-      return ensureData(data as Payment | null, error, 'Não foi possível registrar o pagamento');
+    async recordPaymentAtomically(organizationId, payload) {
+      const { data, error } = await client.rpc('record_rental_payment', {
+        p_organization_id: organizationId,
+        p_billing_cycle_id: payload.billing_cycle_id,
+        p_operation_id: payload.operation_id,
+        p_paid_at: payload.paid_at,
+        p_amount: payload.amount,
+        p_notes: payload.notes,
+      });
+      if (error?.code === '42501') throw new PaymentNotSavedError('Sua conta não tem acesso ao financeiro.');
+      // Key reuse may indicate a previous confirmed payment: keep the key in that case.
+      if (error?.code === '22023' && error.message !== 'operation key already used with different payment') {
+        throw new PaymentNotSavedError('Recebimento não aceito. Confira o valor, a data e o saldo atual da cobrança.');
+      }
+      if (error || !data) throw new Error('Não foi possível confirmar o recebimento. Tente novamente para conferir a mesma operação.');
+      return data as PaymentMutationResult;
     },
 
     async listPaymentsByBillingCycleId(organizationId, billingCycleId) {
@@ -1265,32 +1275,6 @@ export async function recordBillingPayment(
   }
 
   const organizationId = await client.getCurrentOrganizationId();
-  const getBillingCycleById = requireBillingMethod(client.getBillingCycleById?.bind(client), 'getBillingCycleById');
-  const insertPayment = requireBillingMethod(client.insertPayment?.bind(client), 'insertPayment');
-  const listPaymentsByBillingCycleId = requireBillingMethod(client.listPaymentsByBillingCycleId?.bind(client), 'listPaymentsByBillingCycleId');
-  const updateBillingCycle = requireBillingMethod(client.updateBillingCycle?.bind(client), 'updateBillingCycle');
-  const billingCycle = await getBillingCycleById(organizationId, billingCycleId);
-
-  const payment = await insertPayment({
-    organization_id: organizationId,
-    billing_cycle_id: payload.billing_cycle_id,
-    paid_at: payload.paid_at,
-    amount: payload.amount,
-    notes: payload.notes,
-  });
-
-  const payments = await listPaymentsByBillingCycleId(organizationId, billingCycleId);
-  const totalPaid = payments.map((entry) => entry.amount);
-  const balance = calculateBillingBalance(billingCycle.total_amount, totalPaid);
-  const status = buildBillingStatus(billingCycle.total_amount, totalPaid, payload.paid_at, billingCycle.due_date);
-  const billing = await updateBillingCycle(organizationId, billingCycleId, {
-    status,
-  });
-
-  return {
-    billing,
-    payment,
-    payments,
-    balance,
-  };
+  const recordPayment = requireBillingMethod(client.recordPaymentAtomically?.bind(client), 'recordPaymentAtomically');
+  return recordPayment(organizationId, payload);
 }

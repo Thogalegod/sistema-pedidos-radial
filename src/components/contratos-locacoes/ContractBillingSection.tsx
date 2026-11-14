@@ -194,6 +194,8 @@ export function ContractBillingSection({
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                     <h4 className="mb-3 text-sm font-semibold text-emerald-950">Registrar recebimento</h4>
                     <BillingPaymentForm
+                      key={`${detail.membership.user_id}:${billing.id}`}
+                      requestKey={`${detail.membership.user_id}:${billing.id}`}
                       initialAmount={activeForm.initialAmount}
                       onCancel={() => setActiveForm(null)}
                       onSubmit={async (values, file) => {

@@ -1,4 +1,5 @@
 import { alertLevel } from './dates';
+import { resolveEffectiveBillingStatus } from './billing-status-presentation';
 import type { BillingStatus } from './types';
 
 export interface BillingSnapshotInput {
@@ -91,8 +92,12 @@ export function createBillingSnapshot(
 ): DashboardSnapshot {
   const alerts = billings.map((billing) => {
     const balance = calculateBillingBalance(billing.total_amount, billing.payments);
-    const status = buildBillingStatus(billing.total_amount, billing.payments, today, billing.due_date);
-    const level = status === 'paid' ? 'ok' : alertLevel(today, billing.due_date);
+    const status = resolveEffectiveBillingStatus(
+      billing.status,
+      buildBillingStatus(billing.total_amount, billing.payments, today, billing.due_date)
+    );
+    const collectible = status === 'issued' || status === 'overdue';
+    const level = collectible ? alertLevel(today, billing.due_date) : 'ok';
 
     return {
       id: billing.id,
@@ -112,7 +117,7 @@ export function createBillingSnapshot(
     } satisfies BillingAlertItem;
   });
 
-  const openAlerts = alerts.filter((alert) => alert.status !== 'paid' && alert.status !== 'cancelled' && alert.status !== 'exempt');
+  const openAlerts = alerts.filter((alert) => alert.status === 'issued' || alert.status === 'overdue');
   const overdueAlerts = openAlerts.filter((alert) => alert.level === 'overdue');
 
   return {

@@ -4,16 +4,12 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
-import { criarRelatorioCabine, vincularArtCabine } from '../actions';
+import { criarRelatorioCabine } from '../actions';
 import { CabineInput } from '@/lib/cabine-calc';
-import {
-  CABINE_DOCUMENT_BUCKET,
-  CABINE_DOCUMENT_MAX_BYTES,
-  uploadAndAttachCabineArt,
-} from '@/lib/cabine/documents';
 import { ArrowLeft, ArrowRight, Loader2, Save, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
+import { uploadArquivo } from '@/lib/storage';
 
 type TipoCabine = 'convencional' | 'simplificada';
 
@@ -27,7 +23,7 @@ export default function NovaCabinePage() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [tipoCabine, setTipoCabine] = useState<TipoCabine>('convencional');
-  
+
   // Step 1 - Cliente & Condições
   const [clienteNome, setClienteNome] = useState('');
   const [clienteCnpj, setClienteCnpj] = useState('');
@@ -35,13 +31,13 @@ export default function NovaCabinePage() {
   const [clienteCidade, setClienteCidade] = useState('');
   const [clienteUf, setClienteUf] = useState('SP');
   const [clienteCep, setClienteCep] = useState('');
-  
+
   const today = new Date().toISOString().split('T')[0];
   const [dataExecucao, setDataExecucao] = useState(today);
   const [responsavelNome, setResponsavelNome] = useState('Roberto Fontes Lopes');
   const [responsavelCrea, setResponsavelCrea] = useState('0601049229');
   const [artNumero, setArtNumero] = useState('');
-  
+
   const [artFile, setArtFile] = useState<File | null>(null);
   const [artNome, setArtNome] = useState<string>('');
   const [uploadando, setUploadando] = useState(false);
@@ -49,16 +45,6 @@ export default function NovaCabinePage() {
   const handleArtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf')) {
-        toast.error('Selecione um arquivo PDF para a ART.');
-        e.target.value = '';
-        return;
-      }
-      if (file.size > CABINE_DOCUMENT_MAX_BYTES) {
-        toast.error('O PDF da ART deve ter no máximo 10 MiB.');
-        e.target.value = '';
-        return;
-      }
       setArtFile(file);
       setArtNome(file.name);
     }
@@ -102,7 +88,7 @@ export default function NovaCabinePage() {
   const [trafoTipoOleo, setTrafoTipoOleo] = useState('Mineral');
   const [trafoProcedenciaOleo, setTrafoProcedenciaOleo] = useState('BR');
   const [trafoObservacoes, setTrafoObservacoes] = useState('');
-  
+
   const allTaps = [13800, 13200, 12600, 12000, 11400, 10800, 10200];
   const [selectedTaps, setSelectedTaps] = useState<number[]>([13800, 13200, 12600, 12000, 11400]);
   const [tapDespacho, setTapDespacho] = useState<number>(13800);
@@ -126,7 +112,7 @@ export default function NovaCabinePage() {
       handleNext();
       return;
     }
-    
+
     if (!clienteNome || !caboComprimento) {
       toast.error('Preencha todos os dados obrigatórios.');
       return;
@@ -134,11 +120,17 @@ export default function NovaCabinePage() {
 
     setUploadando(true);
     setLoading(true);
-    let createdReport: Awaited<ReturnType<typeof criarRelatorioCabine>> | null = null;
     try {
+      let artUrl = null;
+      if (artFile) {
+        const timestamp = Date.now();
+        const caminho = await uploadArquivo(artFile, 'arts', `art-${timestamp}.pdf`);
+        artUrl = caminho;
+      }
+
       const input: CabineInput = {
         clienteNome, clienteEndereco, clienteCidade, clienteUf, clienteCep, clienteCnpj, dataExecucao,
-        responsavelNome, responsavelCrea, artNumero,
+        responsavelNome, responsavelCrea, artNumero, artArquivoUrl: artUrl,
         caboDe, caboPara, caboSecao, caboIsolacao, caboComprimento, caboTerminais, caboEmendas, caboInstalacao,
         caboTemperatura: temperatura === '' ? undefined : Number(temperatura),
         caboUmidade: umidade === '' ? undefined : Number(umidade), caboClima: clima,
@@ -161,58 +153,12 @@ export default function NovaCabinePage() {
 
       const { data: { session } } = await supabase.auth.getSession();
 
-      createdReport = await criarRelatorioCabine(
-        input,
-        session?.access_token,
-        session?.refresh_token
-      );
-
-      if (artFile) {
-        await uploadAndAttachCabineArt({
-          organizationId: createdReport.organizationId,
-          reportId: createdReport.id,
-          fileName: `art-${Date.now()}.pdf`,
-          uploadDocument: async (storagePath) => {
-            const { error } = await supabase.storage
-              .from(CABINE_DOCUMENT_BUCKET)
-              .upload(storagePath, artFile, {
-                upsert: false,
-                contentType: 'application/pdf',
-              });
-            if (error) throw new Error(`Falha no upload da ART: ${error.message}`);
-          },
-          attachDocument: async (storagePath) => {
-            await vincularArtCabine(
-              createdReport!.id,
-              createdReport!.organizationId,
-              storagePath,
-              session?.access_token,
-              session?.refresh_token
-            );
-          },
-          removeDocument: async (storagePath) => {
-            const { error } = await supabase.storage
-              .from(CABINE_DOCUMENT_BUCKET)
-              .remove([storagePath]);
-            if (error) throw new Error(`Falha no cleanup da ART: ${error.message}`);
-          },
-        });
-      }
-
+      const res = await criarRelatorioCabine(input, session?.access_token, session?.refresh_token);
       toast.success('Relatório criado com sucesso!');
-      router.push(`/cabine/${createdReport.id}`);
+      setUploadando(false);
+      router.push(`/cabine/${res.id}`);
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'erro desconhecido';
-      if (createdReport) {
-        toast.error(
-          `O relatório ${createdReport.numeroRelatorio} foi criado sem ART. ${message}`,
-          { duration: 12000 }
-        );
-        router.push(`/cabine/${createdReport.id}`);
-      } else {
-        toast.error(`Erro ao salvar relatório: ${message}`);
-      }
-    } finally {
+      toast.error('Erro ao salvar relatório: ' + (e instanceof Error ? e.message : 'erro desconhecido'));
       setLoading(false);
       setUploadando(false);
     }
@@ -246,7 +192,7 @@ export default function NovaCabinePage() {
 
       <div className="max-w-4xl mx-auto p-4 md:p-6 pb-20">
         <Toaster position="bottom-center" />
-        
+
         {step === 0 && (
           <div className="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm p-5 md:p-6">
             <div className="mb-5">
@@ -310,11 +256,11 @@ export default function NovaCabinePage() {
           </div>
           <div className="flex items-center justify-between relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10 rounded-full"></div>
-            <div 
+            <div
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-600 -z-10 rounded-full transition-all duration-300"
               style={{ width: `${((step - 1) / 4) * 100}%` }}
             ></div>
-            
+
             {steps.map(s => (
               <div key={s.num} className="flex flex-col items-center gap-2 bg-gray-50 p-1 relative">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
@@ -331,7 +277,7 @@ export default function NovaCabinePage() {
 
         {step > 0 && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          
+
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <h2 className="text-lg font-semibold text-gray-900 pb-2 border-b">Dados do Cliente</h2>
@@ -549,7 +495,7 @@ export default function NovaCabinePage() {
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <h2 className="text-lg font-semibold text-gray-900 pb-2 border-b">Dados do Transformador</h2>
               <p className="text-sm text-gray-500 mb-4">Deixe em branco a Potência caso a cabine não possua transformador sob ensaio.</p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Potência (kVA)</label>
@@ -662,7 +608,7 @@ export default function NovaCabinePage() {
               <ArrowLeft size={18} />
               Anterior
             </button>
-            
+
             <button
               type="submit"
               disabled={loading || uploadando}

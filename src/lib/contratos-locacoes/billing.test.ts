@@ -57,6 +57,7 @@ describe('billing schemas and summaries', () => {
   it('rejects zero-value partial payments', () => {
     expect(() =>
       paymentDraftSchema.parse({
+        operation_id: '2f0c8c89-5023-47f8-9a83-78ffcc60da4b',
         billing_cycle_id: 'billing-1',
         paid_at: '2026-07-20',
         amount: '0',

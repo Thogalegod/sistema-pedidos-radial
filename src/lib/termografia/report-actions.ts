@@ -8,7 +8,10 @@ import {
   TermografiaRelatorio,
   TermografiaReportRow,
 } from './types';
+import { parsePointMetadata } from './field-collection';
 
+// Legacy query adapter also accepts the existing narrow query test clients.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseLike = any;
 
 export type TermografiaReportListItem = TermografiaReportRow & {
@@ -98,12 +101,12 @@ export async function listTermografiaReports(client: SupabaseLike) {
     .order('criado_em', { ascending: false });
   throwIfError(reportsError);
 
-  const reportRows = (reports ?? []) as TermografiaReportRow[];
+  const reportRows = ((reports ?? []) as TermografiaReportRow[]).filter(report => report.mobile_sync_state !== 'pending');
   if (reportRows.length === 0) return [];
 
   const { data: points, error: pointsError } = await client
     .from('termografia_pontos')
-    .select('id, organization_id, report_id, ocorrencia')
+    .select('*')
     .eq('organization_id', organizationId);
   throwIfError(pointsError);
 
@@ -111,7 +114,7 @@ export async function listTermografiaReports(client: SupabaseLike) {
   for (const point of (points ?? []) as TermografiaPointRow[]) {
     const current = pointsByReport.get(point.report_id) ?? { total: 0, ocorrencias: 0 };
     current.total += 1;
-    if (point.ocorrencia) current.ocorrencias += 1;
+    current.ocorrencias += point.metadados_coleta != null ? parsePointMetadata(point.metadados_coleta).hotspots.length : (point.ocorrencia ? 1 : 0);
     pointsByReport.set(point.report_id, current);
   }
 
@@ -125,17 +128,32 @@ export async function listTermografiaReports(client: SupabaseLike) {
   }) as TermografiaReportListItem[];
 }
 
-export async function createTermografiaReport(client: SupabaseLike, input: TermografiaReportInput) {
+export async function createTermografiaReport(client: SupabaseLike, input: TermografiaReportInput, requestId?: string) {
   const organizationId = await getActiveTermografiaOrganizationId(client);
+  const findExisting = async () => {
+    const result = await client.from('relatorios_termografia').select('*')
+      .eq('organization_id', organizationId).eq('id', requestId).maybeSingle();
+    throwIfError(result.error);
+    return result.data as TermografiaReportRow | null;
+  };
+  if (requestId) {
+    const existing = await findExisting();
+    if (existing) return existing;
+  }
   const { data, error } = await client
     .from('relatorios_termografia')
     .insert({
       organization_id: organizationId,
+      ...(requestId ? { id: requestId } : {}),
       ...cleanReportPayload(input),
     })
     .select('*')
     .single();
 
+  if (error && requestId) {
+    const existing = await findExisting();
+    if (existing) return existing;
+  }
   throwIfError(error);
   return data as TermografiaReportRow;
 }
@@ -154,8 +172,16 @@ export async function updateTermografiaReport(client: SupabaseLike, reportId: st
   return data as TermografiaReportRow;
 }
 
-export async function loadTermografiaReport(client: SupabaseLike, reportId: string) {
-  const organizationId = await getActiveTermografiaOrganizationId(client);
+export async function loadTermografiaReport(client: SupabaseLike, reportId: string, scope?: { userId: string; organizationId: string }) {
+  let organizationId: string;
+  if (scope) {
+    const user = await client.auth.getUser(); throwIfError(user.error);
+    if (user.data?.user?.id !== scope.userId) throw new Error('A conta mudou. Reabra o relatório na conta original.');
+    const member = await client.from('organization_members').select('organization_id').eq('user_id', scope.userId).eq('organization_id', scope.organizationId).maybeSingle();
+    throwIfError(member.error);
+    if (member.data?.organization_id !== scope.organizationId) throw new Error('Sem acesso à organização deste relatório.');
+    organizationId = scope.organizationId;
+  } else organizationId = await getActiveTermografiaOrganizationId(client);
   const { data: report, error: reportError } = await client
     .from('relatorios_termografia')
     .select('*')
@@ -163,6 +189,7 @@ export async function loadTermografiaReport(client: SupabaseLike, reportId: stri
     .eq('id', reportId)
     .single();
   throwIfError(reportError);
+  if (report.mobile_sync_state === 'pending') throw new Error('Esta coleta ainda está sendo enviada. Retome o envio no dispositivo antes de abrir ou imprimir o relatório.');
 
   const { data: points, error: pointsError } = await client
     .from('termografia_pontos')
@@ -201,12 +228,19 @@ export function mapTermografiaReport(input: {
     .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
     .map((point) => {
       const pointFiles = filesByPoint.get(point.id ?? '') ?? [];
+      const metadata = point.metadados_coleta != null ? parsePointMetadata(point.metadados_coleta) : undefined;
+      if (metadata) {
+        const belongs = (id: string, tipo: string) => pointFiles.some(f => f.id === id && f.tipo === tipo);
+        if (pointFiles.length !== metadata.photoIds.length || metadata.photoIds.some(id => !pointFiles.some(f => f.id === id)) || metadata.hotspots.some(h => !belongs(h.photoId, 'termica')) || metadata.annotations.some(a => !belongs(a.photoId, 'digital') || (a.hotspotId && !metadata.hotspots.some(h => h.id === a.hotspotId)))) throw new Error('Referência de imagem ou metadados da coleta inválidos. Retome o envio/atualize o aplicativo antes de editar.');
+      }
+      const orderedFiles = metadata ? metadata.photoIds.map(id => pointFiles.find(f => f.id === id)!) : pointFiles;
       const digital = pointFiles.find((file) => file.tipo === 'digital');
       const termica = pointFiles.find((file) => file.tipo === 'termica');
       return {
         id: point.id ?? '',
         setor: point.setor ?? '',
         local: point.local ?? '',
+        equipamento: point.equipamento ?? undefined,
         inspecionado: point.inspecionado ?? true,
         ocorrencia: point.ocorrencia ?? false,
         componente: point.componente ?? undefined,
@@ -219,6 +253,8 @@ export function mapTermografiaReport(input: {
         fotoTermicaUrl: termica?.storage_path ?? null,
         fotoDigitalArquivoId: digital?.id ?? null,
         fotoTermicaArquivoId: termica?.id ?? null,
+        ...(metadata ? { metadata } : {}),
+        arquivos: orderedFiles.map(file => ({ id: file.id ?? '', tipo: file.tipo!, storagePath: file.storage_path ?? '', fileName: file.file_name ?? '', contentType: file.content_type ?? '', tamanhoBytes: file.tamanho_bytes, sha256: file.content_sha256, width: file.image_width, height: file.image_height })),
       };
     });
 
@@ -241,6 +277,10 @@ export function mapTermografiaReport(input: {
     responsavel_crea: input.report.responsavel_crea ?? '0601049229',
     revisao: input.report.revisao ?? 0,
     pontos,
+    syncState: input.report.mobile_sync_state,
+    snapshotHash: input.report.mobile_snapshot_hash,
+    sourceReportId: input.report.parent_report_id,
+    ...(input.report.mobile_sync_state || pontos.some(p => p.metadata) ? { collectionVersion: 1 as const } : {}),
   };
 }
 
@@ -265,14 +305,28 @@ function pointPayload(input: TermografiaPointInput, organizationId: string, repo
   };
 }
 
-export async function createTermografiaPoint(client: SupabaseLike, reportId: string, input: TermografiaPointInput, ordem: number) {
+export async function createTermografiaPoint(client: SupabaseLike, reportId: string, input: TermografiaPointInput, ordem: number, requestId?: string) {
   const organizationId = await getActiveTermografiaOrganizationId(client);
+  const findExisting = async () => {
+    const result = await client.from('termografia_pontos').select('*')
+      .eq('organization_id', organizationId).eq('report_id', reportId).eq('id', requestId).maybeSingle();
+    throwIfError(result.error);
+    return result.data as TermografiaPointRow | null;
+  };
+  if (requestId) {
+    const existing = await findExisting();
+    if (existing) return existing;
+  }
   const { data, error } = await client
     .from('termografia_pontos')
-    .insert(pointPayload(input, organizationId, reportId, ordem))
+    .insert({ ...pointPayload(input, organizationId, reportId, ordem), ...(requestId ? { id: requestId } : {}) })
     .select('*')
     .single();
 
+  if (error && requestId) {
+    const existing = await findExisting();
+    if (existing) return existing;
+  }
   throwIfError(error);
   return data as TermografiaPointRow;
 }

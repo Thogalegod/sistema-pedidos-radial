@@ -26,13 +26,17 @@ export default function ConfiguracoesPage() {
   const handleUpload = async () => {
     if (!file) return;
     setUploadando(true);
-    const res = await uploadCreaRoberto(file);
-    if (res) {
+
+    try {
+      await uploadCreaRoberto(file);
       toast.success('Imagem do CREA atualizada com sucesso!');
-    } else {
-      toast.error('Erro ao atualizar imagem do CREA.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Erro ao atualizar imagem do CREA.',
+      );
+    } finally {
+      setUploadando(false);
     }
-    setUploadando(false);
   };
 
   return (

@@ -343,6 +343,7 @@ export const billingDraftSchema = z.object({
 });
 
 export const paymentDraftSchema = z.object({
+  operation_id: z.string().uuid('Identificação do recebimento inválida'),
   billing_cycle_id: z.string().trim().min(1, 'Cobrança é obrigatória'),
   paid_at: z.string().trim().min(1, 'Data do pagamento é obrigatória'),
   amount: z.preprocess((value) => {
