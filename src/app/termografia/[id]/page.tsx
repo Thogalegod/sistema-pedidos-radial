@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Camera, Edit3, Eye, FileText, Plus, Printer, Save, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast, Toaster } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
-import { getUrlArquivo } from '@/lib/storage';
-import { uploadArquivo } from '@/lib/storage';
-import { conclusoesPadrao, gerarIdPonto, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio, TermografiaRisco } from '@/lib/termografia/types';
+import { conclusoesPadrao, pontosAquecidosPorSetorLocal, TermografiaClassificacao, TermografiaPonto, TermografiaRelatorio, TermografiaRisco } from '@/lib/termografia/types';
+import { createTermografiaPoint, loadTermografiaReport, updateTermografiaPoint } from '@/lib/termografia/report-actions';
+import { createTermografiaSignedUrl, saveTermografiaPhoto } from '@/lib/termografia/storage';
+import { FieldReportView } from '@/components/termografia/FieldReportView';
 
 type PontoComFotos = TermografiaPonto & {
   fotoDigitalSrc?: string | null;
@@ -45,17 +46,11 @@ async function prepararImagem(file: File) {
   });
 }
 
-function removerFotosAssinadas(ponto: PontoComFotos): TermografiaPonto {
-  const limpo = { ...ponto };
-  delete limpo.fotoDigitalSrc;
-  delete limpo.fotoTermicaSrc;
-  return limpo;
-}
-
 export default function TermografiaViewer(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
   const [data, setData] = useState<TermografiaRelatorio | null | false>(null);
+  const [loadError, setLoadError] = useState('Relatório não encontrado.');
   const [pontos, setPontos] = useState<PontoComFotos[]>([]);
   const [incluirFotosSemOcorrencia, setIncluirFotosSemOcorrencia] = useState(false);
   const [linhaSelecionada, setLinhaSelecionada] = useState<string | null>(null);
@@ -64,21 +59,29 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   const [fotoDigitalFile, setFotoDigitalFile] = useState<File | null>(null);
   const [fotoTermicaFile, setFotoTermicaFile] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [pending, setPending] = useState(false);
+  const busy = useRef(false);
+  const attempt = useRef<{ pointId?: string; files: Map<string, { id: string; file: File }> }>({ files: new Map() });
   const [carregandoFotos, setCarregandoFotos] = useState(false);
 
-  useEffect(() => {
-    supabase
-      .from('relatorios_termografia')
-      .select('*')
-      .eq('id', params.id)
-      .single()
-      .then(({ data: rel, error }) => {
-        setData(error ? false : rel as TermografiaRelatorio);
-      });
+  const carregarRelatorio = useCallback(async () => {
+    try {
+      const rel = await loadTermografiaReport(supabase, params.id);
+      setData(rel);
+      setPontos(rel.pontos);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Não foi possível abrir o relatório. Confira a conexão e tente novamente.');
+      setData(false);
+    }
   }, [params.id]);
 
-  if (data === false) return <div className="p-8 text-center text-red-600">Relatório não encontrado.</div>;
+  useEffect(() => {
+    carregarRelatorio();
+  }, [carregarRelatorio]);
+
+  if (data === false) return <div role="alert" className="p-8 text-center text-red-600">{loadError}<a href="/termografia/nova" className="mt-4 block text-blue-700 underline">Abrir coletas salvas no celular</a></div>;
   if (!data) return <div className="p-8 text-center">Carregando relatório...</div>;
+  if (data.collectionVersion === 1) return <FieldReportView report={data} />;
 
   const pontosBase = pontos.length ? pontos : data.pontos;
   const ocorrencias = pontosBase.filter((p) => p.ocorrencia);
@@ -104,6 +107,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
     : pontosSelecionados;
 
   const abrirNovoPonto = () => {
+    attempt.current = { pointId: crypto.randomUUID(), files: new Map() };
+    setPending(false);
     setLinhaSelecionada(null);
     setEditandoId('novo');
     setDraft({
@@ -133,8 +138,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
     try {
       const assinados = await Promise.all(pontosDaLinha.map(async (ponto) => ({
         ...ponto,
-        fotoDigitalSrc: ponto.fotoDigitalUrl ? await getUrlArquivo(ponto.fotoDigitalUrl) : null,
-        fotoTermicaSrc: ponto.fotoTermicaUrl ? await getUrlArquivo(ponto.fotoTermicaUrl) : null,
+        fotoDigitalSrc: ponto.fotoDigitalUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoDigitalUrl) : null,
+        fotoTermicaSrc: ponto.fotoTermicaUrl ? await createTermografiaSignedUrl(supabase, ponto.fotoTermicaUrl) : null,
       })));
 
       setPontos((atuais) => atuais.map((item) => {
@@ -149,6 +154,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   };
 
   const iniciarEdicao = (ponto: PontoComFotos) => {
+    attempt.current = { files: new Map() };
+    setPending(false);
     setEditandoId(ponto.id);
     setDraft({ ...ponto });
     setFotoDigitalFile(null);
@@ -156,6 +163,8 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
   };
 
   const cancelarEdicao = () => {
+    attempt.current = { files: new Map() };
+    setPending(false);
     setEditandoId(null);
     setDraft({});
     setFotoDigitalFile(null);
@@ -171,64 +180,53 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
       return;
     }
 
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
     setSalvando(true);
     try {
-      const novoId = gerarIdPonto();
       const index = adicionandoPonto ? pontosBase.length : pontosBase.findIndex((p) => p.id === ponto.id);
-      let fotoDigitalUrl = draft.fotoDigitalUrl ?? ponto.fotoDigitalUrl ?? null;
-      let fotoTermicaUrl = draft.fotoTermicaUrl ?? ponto.fotoTermicaUrl ?? null;
-
-      if (fotoDigitalFile) {
-        const file = await prepararImagem(fotoDigitalFile);
-        fotoDigitalUrl = await uploadArquivo(file, `termografia/${data.numero_relatorio}`, `oc-${index + 1}-digital.jpg`);
-      }
-      if (fotoTermicaFile) {
-        const file = await prepararImagem(fotoTermicaFile);
-        fotoTermicaUrl = await uploadArquivo(file, `termografia/${data.numero_relatorio}`, `oc-${index + 1}-termica.jpg`);
-      }
-
-      const pontoSalvo: TermografiaPonto = {
-        id: adicionandoPonto ? novoId : ponto.id,
+      const pontoPayload = {
         setor,
         local,
         inspecionado: Boolean(draft.inspecionado),
         ocorrencia: Boolean(draft.ocorrencia),
         componente: draft.componente,
         temperatura: draft.temperatura,
+        data_hora_foto: draft.dataHoraFoto,
         classificacao: draft.classificacao,
         risco: draft.risco,
         conclusao: draft.conclusao,
-        fotoDigitalUrl,
-        fotoTermicaUrl,
       };
 
-      const atualizados = adicionandoPonto
-        ? [...pontosBase.map((item) => removerFotosAssinadas(item as PontoComFotos)), pontoSalvo]
-        : pontosBase.map((item) => {
-          if (item.id !== ponto.id) return removerFotosAssinadas(item as PontoComFotos);
-          return pontoSalvo;
+      const pontoSalvo = adicionandoPonto
+        ? await createTermografiaPoint(supabase, data.id, pontoPayload, index + 1, attempt.current.pointId)
+        : await updateTermografiaPoint(supabase, data.id, ponto.id, pontoPayload);
+
+      for (const kind of ['digital', 'termica'] as const) {
+        const source = kind === 'digital' ? fotoDigitalFile : fotoTermicaFile;
+        if (!source) continue;
+        if (!attempt.current.files.has(kind)) {
+          attempt.current.files.set(kind, { id: crypto.randomUUID(), file: await prepararImagem(source) });
+        }
+        const photo = attempt.current.files.get(kind)!;
+        const previousId = kind === 'digital' ? ponto.fotoDigitalArquivoId : ponto.fotoTermicaArquivoId;
+        const previousPath = kind === 'digital' ? ponto.fotoDigitalUrl : ponto.fotoTermicaUrl;
+        await saveTermografiaPhoto(supabase, {
+          organizationId: data.organization_id, reportId: data.id, pointId: pontoSalvo.id,
+          kind, file: photo.file, fileId: photo.id,
+          previous: previousId && previousPath ? { id: previousId, storage_path: previousPath } : undefined,
         });
+      }
 
-      const { error } = await supabase
-        .from('relatorios_termografia')
-        .update({ pontos: atualizados })
-        .eq('id', data.id);
-
-      if (error) throw error;
-
-      const assinados = await Promise.all(atualizados.map(async (item) => ({
-        ...item,
-        fotoDigitalSrc: `${setor}|||${local}` === `${item.setor}|||${item.local}` && item.fotoDigitalUrl ? await getUrlArquivo(item.fotoDigitalUrl) : null,
-        fotoTermicaSrc: `${setor}|||${local}` === `${item.setor}|||${item.local}` && item.fotoTermicaUrl ? await getUrlArquivo(item.fotoTermicaUrl) : null,
-      })));
-      setPontos(assinados);
-      setData({ ...data, pontos: atualizados });
+      await carregarRelatorio();
       setLinhaSelecionada(`${setor}|||${local}`);
       cancelarEdicao();
       toast.success(adicionandoPonto ? 'Ponto adicionado.' : 'Registro atualizado.');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar registro.');
     } finally {
+      busy.current = false;
       setSalvando(false);
     }
   };
@@ -279,7 +277,7 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
             </span>
             <button
               type="button"
-              onClick={abrirNovoPonto}
+              disabled={pending} onClick={abrirNovoPonto}
               className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 font-semibold text-white hover:bg-blue-700"
             >
               <Plus size={14} /> Adicionar ponto
@@ -352,6 +350,7 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
               <button
                 type="button"
                 onClick={() => {
+                  if (pending) return;
                   cancelarEdicao();
                   setLinhaSelecionada(null);
                 }}
@@ -379,55 +378,56 @@ export default function TermografiaViewer(props: { params: Promise<{ id: string 
                       <div className="text-sm text-gray-500">{adicionandoPonto ? 'Preencha os dados para incluir no roteiro' : `${ponto.setor} ${ponto.ocorrencia ? '| Ocorrência' : '| Sem ocorrência'}`}</div>
                     </div>
                     {editando && !adicionandoPonto ? (
-                      <button onClick={cancelarEdicao} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800 text-sm font-medium"><X size={16} /> Cancelar</button>
+                      <button disabled={pending} onClick={cancelarEdicao} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800 text-sm font-medium"><X size={16} /> Cancelar</button>
                     ) : !adicionandoPonto ? (
-                      <button onClick={() => iniciarEdicao(ponto as PontoComFotos)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"><Edit3 size={16} /> Editar</button>
+                      <button disabled={pending} onClick={() => iniciarEdicao(ponto as PontoComFotos)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"><Edit3 size={16} /> Editar</button>
                     ) : null}
                   </div>
 
                   {editando ? (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className={labelClass}>Setor/área</label><input value={draft.setor ?? ''} onChange={(e) => setDraft((d) => ({ ...d, setor: e.target.value }))} className={inputClass} /></div>
-                        <div><label className={labelClass}>Local</label><input value={draft.local ?? ''} onChange={(e) => setDraft((d) => ({ ...d, local: e.target.value }))} className={inputClass} /></div>
+                        <div><label className={labelClass}>Setor/área</label><input disabled={pending} value={draft.setor ?? ''} onChange={(e) => setDraft((d) => ({ ...d, setor: e.target.value }))} className={inputClass} /></div>
+                        <div><label className={labelClass}>Local</label><input disabled={pending} value={draft.local ?? ''} onChange={(e) => setDraft((d) => ({ ...d, local: e.target.value }))} className={inputClass} /></div>
                         <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                          <input type="checkbox" checked={Boolean(draft.ocorrencia)} onChange={(e) => setDraft((d) => ({ ...d, ocorrencia: e.target.checked }))} className="h-4 w-4" />
+                          <input disabled={pending} type="checkbox" checked={Boolean(draft.ocorrencia)} onChange={(e) => setDraft((d) => ({ ...d, ocorrencia: e.target.checked }))} className="h-4 w-4" />
                           Ocorrência
                         </label>
                         <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                          <input type="checkbox" checked={Boolean(draft.inspecionado)} onChange={(e) => setDraft((d) => ({ ...d, inspecionado: e.target.checked }))} className="h-4 w-4" />
+                          <input disabled={pending} type="checkbox" checked={Boolean(draft.inspecionado)} onChange={(e) => setDraft((d) => ({ ...d, inspecionado: e.target.checked }))} className="h-4 w-4" />
                           Inspecionado
                         </label>
                       </div>
                       {draft.ocorrencia && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div><label className={labelClass}>Componente</label><input value={draft.componente ?? ''} onChange={(e) => setDraft((d) => ({ ...d, componente: e.target.value }))} className={inputClass} /></div>
-                          <div><label className={labelClass}>Temperatura</label><input value={draft.temperatura ?? ''} onChange={(e) => setDraft((d) => ({ ...d, temperatura: e.target.value }))} className={inputClass} /></div>
+                          <div><label className={labelClass}>Componente</label><input disabled={pending} value={draft.componente ?? ''} onChange={(e) => setDraft((d) => ({ ...d, componente: e.target.value }))} className={inputClass} /></div>
+                          <div><label className={labelClass}>Temperatura</label><input disabled={pending} value={draft.temperatura ?? ''} onChange={(e) => setDraft((d) => ({ ...d, temperatura: e.target.value }))} className={inputClass} /></div>
                           <div>
                             <label className={labelClass}>Classificação</label>
-                            <select value={draft.classificacao ?? 'Intervenção Programada'} onChange={(e) => setDraft((d) => ({ ...d, classificacao: e.target.value as TermografiaClassificacao, conclusao: d.conclusao || conclusoesPadrao[e.target.value as TermografiaClassificacao] }))} className={inputClass}>
+                            <select disabled={pending} value={draft.classificacao ?? 'Intervenção Programada'} onChange={(e) => setDraft((d) => ({ ...d, classificacao: e.target.value as TermografiaClassificacao, conclusao: d.conclusao || conclusoesPadrao[e.target.value as TermografiaClassificacao] }))} className={inputClass}>
                               {Object.keys(conclusoesPadrao).map((c) => <option key={c}>{c}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className={labelClass}>Risco</label>
-                            <select value={draft.risco ?? 'Baixo'} onChange={(e) => setDraft((d) => ({ ...d, risco: e.target.value as TermografiaRisco }))} className={inputClass}>
+                            <select disabled={pending} value={draft.risco ?? 'Baixo'} onChange={(e) => setDraft((d) => ({ ...d, risco: e.target.value as TermografiaRisco }))} className={inputClass}>
                               <option>Baixo</option><option>Médio</option><option>Alto</option>
                             </select>
                           </div>
-                          <div className="md:col-span-2"><label className={labelClass}>Conclusão</label><input value={draft.conclusao ?? ''} onChange={(e) => setDraft((d) => ({ ...d, conclusao: e.target.value }))} className={inputClass} /></div>
+                          <div className="md:col-span-2"><label className={labelClass}>Conclusão</label><input disabled={pending} value={draft.conclusao ?? ''} onChange={(e) => setDraft((d) => ({ ...d, conclusao: e.target.value }))} className={inputClass} /></div>
                         </div>
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label className="border border-dashed border-gray-300 rounded-md p-3 text-sm font-medium text-gray-700 cursor-pointer text-center hover:border-blue-400">
                           {adicionandoPonto ? 'Adicionar foto digital' : 'Trocar foto digital'}
-                          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFotoDigitalFile(e.target.files?.[0] ?? null)} />
+                          <input disabled={pending} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFotoDigitalFile(e.target.files?.[0] ?? null)} />
                         </label>
                         <label className="border border-dashed border-gray-300 rounded-md p-3 text-sm font-medium text-gray-700 cursor-pointer text-center hover:border-blue-400">
                           {adicionandoPonto ? 'Adicionar foto térmica' : 'Trocar foto térmica'}
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => setFotoTermicaFile(e.target.files?.[0] ?? null)} />
+                          <input disabled={pending} type="file" accept="image/*" className="hidden" onChange={(e) => setFotoTermicaFile(e.target.files?.[0] ?? null)} />
                         </label>
                       </div>
+                      {pending && <p role="status" className="text-sm text-amber-800">Se ocorrer falha, tente salvar novamente nesta tela para continuar. Os campos ficam bloqueados até concluir.</p>}
                       <button disabled={salvando} onClick={() => salvarEdicao(ponto as PontoComFotos)} className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-md text-sm font-bold">
                         <Save size={16} /> {salvando ? 'Salvando...' : adicionandoPonto ? 'Adicionar ponto' : 'Salvar alterações'}
                       </button>

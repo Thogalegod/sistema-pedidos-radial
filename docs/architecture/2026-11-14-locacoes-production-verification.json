@@ -1,0 +1,78 @@
+{
+  "id": "dpl_2V5KPeC3SoPPCJpS2ZCtbje4JiX6",
+  "url": "sistema-pedidos-radial-plshxwj4k-thogalego-4398s-projects.vercel.app",
+  "state": "READY",
+  "target": "production",
+  "aliases": [
+    "sistema-pedidos-radial.vercel.app",
+    "sistema-pedidos-radial-thogalego-4398s-projects.vercel.app"
+  ],
+  "commit": "2dca7105315ecef41deebb35512f2c88b9ef4733",
+  "domain": "https://sistema-pedidos-radial.vercel.app",
+  "sourceVerification": {
+    "expected": 264,
+    "remote": 264,
+    "matches": 264,
+    "mismatches": []
+  },
+  "http": [
+    {
+      "path": "/hub",
+      "status": 200,
+      "success": true,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes",
+      "status": 200,
+      "success": true,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/ativos",
+      "status": 200,
+      "success": true,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/contratos",
+      "status": 200,
+      "success": true,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/cobrancas",
+      "status": 200,
+      "success": true,
+      "isError": false
+    },
+    {
+      "path": "/termografia",
+      "status": 200,
+      "success": true,
+      "isError": false
+    }
+  ],
+  "git": {
+    "branch": "codex/controle-locacoes",
+    "commit": "2dca7105315ecef41deebb35512f2c88b9ef4733",
+    "tree": "1253e3efa3a958d5eaa44166ac3ae074ecf6b2bf",
+    "pushVerified": true
+  },
+  "validation": {
+    "stagedGate": true,
+    "candidateTypeScript": true,
+    "candidateFocusedTests": 55,
+    "priorPreviewTests": 94,
+    "requiredRoutes": 11,
+    "environment": "IURQ",
+    "thermographyBaselineFiles": 50,
+    "authenticatedBrowserTest": false
+  },
+  "approvalReview": {
+    "initialProductionRejected": true,
+    "reason": "Identifiable professional/customer data in source",
+    "resolved": true,
+    "evidence": "Professional signature defaults were already in current production; same authenticated project and destination verified; retry accepted."
+  }
+}

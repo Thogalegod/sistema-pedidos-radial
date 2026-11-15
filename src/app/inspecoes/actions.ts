@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 export async function criarRelatorioTransformador(input: TransformerInput, access_token?: string, refresh_token?: string) {
   console.log('[ACTION] criarRelatorioTransformador chamada com input:', input.potenciaKva, 'kVA');
-  
+
   if (access_token && refresh_token) {
     await supabase.auth.setSession({ access_token, refresh_token });
   }
@@ -105,57 +105,57 @@ export async function buscarRelatorio(id: string) {
 
 export async function cancelarRelatorio(id: string, access_token?: string, refresh_token?: string) {
   if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
-  
+
   const { error } = await supabase.from('relatorios_transformador').update({ status: 'cancelado' }).eq('id', id);
   if (error) throw new Error(`Erro ao cancelar: ${error.message}`);
-  
+
   revalidatePath('/inspecoes');
   revalidatePath(`/inspecoes/${id}`);
 }
 
 export async function deletarRelatorio(id: string, access_token?: string, refresh_token?: string) {
   if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
-  
+
   const { error } = await supabase.from('relatorios_transformador').delete().eq('id', id);
   if (error) throw new Error(`Erro ao deletar: ${error.message}`);
-  
+
   revalidatePath('/inspecoes');
 }
 
 export async function criarRevisao(idOrigem: string, input: TransformerInput, access_token?: string, refresh_token?: string) {
   if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
-  
+
   // Buscar relatório antigo
   const { data: relAntigo, error: errAntigo } = await supabase
     .from('relatorios_transformador')
     .select('numero_relatorio, observacoes')
     .eq('id', idOrigem)
     .single();
-    
+
   if (errAntigo || !relAntigo) throw new Error('Relatório antigo não encontrado');
-  
+
   // Adicionar anotação de revisão no NOVO
-  const novaObs = input.observacoes 
+  const novaObs = input.observacoes
     ? `${input.observacoes}\n(Revisão do relatório ${relAntigo.numero_relatorio})`
     : `Revisão do relatório ${relAntigo.numero_relatorio}`;
-  
+
   const novoInput = { ...input, observacoes: novaObs };
-  
+
   // Criar o NOVO
   const novoRelatorio = await criarRelatorioTransformador(novoInput, access_token, refresh_token);
-  
+
   // Cancelar o ANTIGO e anotar a substituição
-  const obsAntiga = relAntigo.observacoes 
+  const obsAntiga = relAntigo.observacoes
     ? `${relAntigo.observacoes}\n(Substituído pelo relatório ${novoRelatorio.numeroRelatorio})`
     : `Substituído pelo relatório ${novoRelatorio.numeroRelatorio}`;
-    
+
   await supabase.from('relatorios_transformador').update({
     status: 'cancelado',
     observacoes: obsAntiga
   }).eq('id', idOrigem);
-  
+
   revalidatePath('/inspecoes');
   revalidatePath(`/inspecoes/${idOrigem}`);
-  
+
   return novoRelatorio;
 }

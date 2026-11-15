@@ -23,7 +23,7 @@ export default function NovaCabinePage() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [tipoCabine, setTipoCabine] = useState<TipoCabine>('convencional');
-  
+
   // Step 1 - Cliente & Condições
   const [clienteNome, setClienteNome] = useState('');
   const [clienteCnpj, setClienteCnpj] = useState('');
@@ -31,13 +31,13 @@ export default function NovaCabinePage() {
   const [clienteCidade, setClienteCidade] = useState('');
   const [clienteUf, setClienteUf] = useState('SP');
   const [clienteCep, setClienteCep] = useState('');
-  
+
   const today = new Date().toISOString().split('T')[0];
   const [dataExecucao, setDataExecucao] = useState(today);
   const [responsavelNome, setResponsavelNome] = useState('Roberto Fontes Lopes');
   const [responsavelCrea, setResponsavelCrea] = useState('0601049229');
   const [artNumero, setArtNumero] = useState('');
-  
+
   const [artFile, setArtFile] = useState<File | null>(null);
   const [artNome, setArtNome] = useState<string>('');
   const [uploadando, setUploadando] = useState(false);
@@ -88,7 +88,7 @@ export default function NovaCabinePage() {
   const [trafoTipoOleo, setTrafoTipoOleo] = useState('Mineral');
   const [trafoProcedenciaOleo, setTrafoProcedenciaOleo] = useState('BR');
   const [trafoObservacoes, setTrafoObservacoes] = useState('');
-  
+
   const allTaps = [13800, 13200, 12600, 12000, 11400, 10800, 10200];
   const [selectedTaps, setSelectedTaps] = useState<number[]>([13800, 13200, 12600, 12000, 11400]);
   const [tapDespacho, setTapDespacho] = useState<number>(13800);
@@ -112,7 +112,7 @@ export default function NovaCabinePage() {
       handleNext();
       return;
     }
-    
+
     if (!clienteNome || !caboComprimento) {
       toast.error('Preencha todos os dados obrigatórios.');
       return;
@@ -152,7 +152,7 @@ export default function NovaCabinePage() {
       };
 
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       const res = await criarRelatorioCabine(input, session?.access_token, session?.refresh_token);
       toast.success('Relatório criado com sucesso!');
       setUploadando(false);
@@ -192,7 +192,7 @@ export default function NovaCabinePage() {
 
       <div className="max-w-4xl mx-auto p-4 md:p-6 pb-20">
         <Toaster position="bottom-center" />
-        
+
         {step === 0 && (
           <div className="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm p-5 md:p-6">
             <div className="mb-5">
@@ -256,11 +256,11 @@ export default function NovaCabinePage() {
           </div>
           <div className="flex items-center justify-between relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10 rounded-full"></div>
-            <div 
+            <div
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-600 -z-10 rounded-full transition-all duration-300"
               style={{ width: `${((step - 1) / 4) * 100}%` }}
             ></div>
-            
+
             {steps.map(s => (
               <div key={s.num} className="flex flex-col items-center gap-2 bg-gray-50 p-1 relative">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
@@ -277,7 +277,7 @@ export default function NovaCabinePage() {
 
         {step > 0 && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          
+
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <h2 className="text-lg font-semibold text-gray-900 pb-2 border-b">Dados do Cliente</h2>
@@ -495,7 +495,7 @@ export default function NovaCabinePage() {
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <h2 className="text-lg font-semibold text-gray-900 pb-2 border-b">Dados do Transformador</h2>
               <p className="text-sm text-gray-500 mb-4">Deixe em branco a Potência caso a cabine não possua transformador sob ensaio.</p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Potência (kVA)</label>
@@ -608,7 +608,7 @@ export default function NovaCabinePage() {
               <ArrowLeft size={18} />
               Anterior
             </button>
-            
+
             <button
               type="submit"
               disabled={loading || uploadando}

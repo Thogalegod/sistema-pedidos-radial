@@ -1,0 +1,1439 @@
+{
+  "state": "PRODUCTION_READY",
+  "base": "2bb950481b507651be7c0d2d98aac3157017d084",
+  "deployedBaseline": "dpl_12aqXTyqbV6LH75UaHBvdw6rUCBn",
+  "sourceDirectory": "C:\\tmp\\Sistema_Pedidos_Radial-unificar-transformador\\node_modules\\.cache\\rental-restoration-20261114-r7",
+  "financialAccess": "IURQ_OWNER_ONLY_VERIFIED",
+  "authorization": "User explicitly requested commit, push and production deploy on 2026-11-14",
+  "changedSharedFiles": [
+    "src/app/layout.tsx",
+    "src/app/globals.css",
+    "src/app/hub/page.tsx",
+    "src/components/app-shell/PageHeader.tsx",
+    "src/types/index.ts",
+    "src/app/page.tsx",
+    "src/components/NewOrderDrawer.tsx",
+    "src/components/OrderCard.tsx",
+    "src/components/OrderDrawer.tsx",
+    "src/components/StatusBadge.tsx",
+    "src/data/mock.ts",
+    "src/lib/sorting.ts"
+  ],
+  "overlay": [
+    "src/lib/contratos-locacoes/dashboard.ts",
+    "src/app/contratos-locacoes/page.tsx",
+    "src/app/contratos-locacoes/layout.tsx",
+    "src/app/contratos-locacoes/contratos/[id]/page.tsx",
+    "src/components/contratos-locacoes/RentalAccessGate.tsx",
+    "src/components/contratos-locacoes/RentalRouteAccess.tsx",
+    "src/components/contratos-locacoes/RentalHubShortcut.tsx",
+    "src/components/contratos-locacoes/BillingPaymentForm.tsx",
+    "src/components/contratos-locacoes/ContractBillingSection.tsx",
+    "src/lib/contratos-locacoes/mutations.ts",
+    "src/lib/contratos-locacoes/schemas.ts",
+    "src/lib/contratos-locacoes/payment-errors.ts",
+    "scripts/verify-release-modules.mjs",
+    "scripts/verify-rental-environment.mjs"
+  ],
+  "preservedBaselineFilesBeforeBuildConfigAdjustments": 92,
+  "files": [
+    {
+      "file": "eslint.config.mjs",
+      "sha": "7b3b62d43ebb71550e9aad41f196d9c16bcbf52c",
+      "size": 483
+    },
+    {
+      "file": "next.config.ts",
+      "sha": "bf715d7886541d63398c5fde0aebb1bd7c0a7359",
+      "size": 583
+    },
+    {
+      "file": "package-lock.json",
+      "sha": "c44f84cc6cf69a6d8cbe0033e7a60890391e8b49",
+      "size": 359686
+    },
+    {
+      "file": "package.json",
+      "sha": "85e49e63446a69f621c95aa7434c4c3513750f4f",
+      "size": 1490
+    },
+    {
+      "file": "postcss.config.mjs",
+      "sha": "ccb8b6288e0fe829534eb4c452a48bc27bbcdf01",
+      "size": 101
+    },
+    {
+      "file": "public/file.svg",
+      "sha": "fb380eeffe87d50b597383664c02982964d0d28c",
+      "size": 391
+    },
+    {
+      "file": "public/globe.svg",
+      "sha": "2eba23b01a46733bb8423e6d38ebf5f7e95abec5",
+      "size": 1035
+    },
+    {
+      "file": "public/logo.png",
+      "sha": "3c62a233f3755b7f6b6b0e8f5c6c3db51d3cb413",
+      "size": 13217
+    },
+    {
+      "file": "public/next.svg",
+      "sha": "3f3e95622612b989c5bd6a03299a308c6f3c7e6b",
+      "size": 1375
+    },
+    {
+      "file": "public/vercel.svg",
+      "sha": "cebb8852d58c8886be3e9051a26957f42bb82f1a",
+      "size": 128
+    },
+    {
+      "file": "public/window.svg",
+      "sha": "54c48e0daa6caa317fe1b4c419007fd93e948db9",
+      "size": 385
+    },
+    {
+      "file": "scripts/ai/staged-gate.mjs",
+      "sha": "b2d05c73b30316f1f49fa03b164b48c444ea9c79",
+      "size": 5938
+    },
+    {
+      "file": "src/app/api/contratos-locacoes/cobrancas/[billingId]/enviar/route.ts",
+      "sha": "cc0cba7257ca8f8c814d001e044214d8525fd22a",
+      "size": 4242
+    },
+    {
+      "file": "src/app/cabine/[id]/imprimir/page.tsx",
+      "sha": "1ebcc95663afbe5a2a1c4e09bbd6e0b0b597cb39",
+      "size": 38664
+    },
+    {
+      "file": "src/app/cabine/[id]/page.tsx",
+      "sha": "3a93e9e1600e5d03ee20a41430071bee16df87f9",
+      "size": 538
+    },
+    {
+      "file": "src/app/cabine/actions.ts",
+      "sha": "c4616d4a8a7bbea18c1eab5695a89c49fa0aa881",
+      "size": 5488
+    },
+    {
+      "file": "src/app/cabine/nova/page.tsx",
+      "sha": "33db292ef21b23d80bb1248548c86bf83cbd877f",
+      "size": 33123
+    },
+    {
+      "file": "src/app/cabine/page.tsx",
+      "sha": "9937584afbfc4e6c46307c675258271b592d71f9",
+      "size": 8937
+    },
+    {
+      "file": "src/app/calendario/page.tsx",
+      "sha": "610d906172012880f6f512add70bdc3f64a85958",
+      "size": 2437
+    },
+    {
+      "file": "src/app/configuracoes/page.tsx",
+      "sha": "b2bcc2b72770382e9e6d0a0849bbef59e9d4128e",
+      "size": 2689
+    },
+    {
+      "file": "src/app/contratos-locacoes/ativos/page.tsx",
+      "sha": "3984f61421f3a3f527a99b9bcc937a074ec6ed10",
+      "size": 11518
+    },
+    {
+      "file": "src/app/contratos-locacoes/clientes/[id]/page.tsx",
+      "sha": "b9afcfc41ff7a2c30c10ffef60f464a06313ba52",
+      "size": 4427
+    },
+    {
+      "file": "src/app/contratos-locacoes/clientes/novo/page.tsx",
+      "sha": "e5019608d4069fabd4a0078cdb4dbb4d839d1e78",
+      "size": 1623
+    },
+    {
+      "file": "src/app/contratos-locacoes/clientes/page.tsx",
+      "sha": "06da64b73902ba48b660a7c3ca7be8e6e4335e42",
+      "size": 1728
+    },
+    {
+      "file": "src/app/contratos-locacoes/cobrancas/page.tsx",
+      "sha": "918806db76cb6222cbf5b982a32b0d22028609b8",
+      "size": 5512
+    },
+    {
+      "file": "src/app/contratos-locacoes/contratos/[id]/page.tsx",
+      "sha": "569d6a09ca69ee487cc7377c184cf92c6b8c7200",
+      "size": 25771
+    },
+    {
+      "file": "src/app/contratos-locacoes/contratos/novo/page.tsx",
+      "sha": "2d828f862d4644160c6b386c742c4807aaa3855b",
+      "size": 4729
+    },
+    {
+      "file": "src/app/contratos-locacoes/contratos/page.tsx",
+      "sha": "672ca952a00700c262cfcbe520a4cf1700f97609",
+      "size": 9136
+    },
+    {
+      "file": "src/app/contratos-locacoes/layout.tsx",
+      "sha": "2c92f37015b5cacf35391def6d7114f80544e9d6",
+      "size": 663
+    },
+    {
+      "file": "src/app/contratos-locacoes/loading.tsx",
+      "sha": "a8c8ba436e9ebfd63e8f328601f4618327d0ff64",
+      "size": 249
+    },
+    {
+      "file": "src/app/contratos-locacoes/page.tsx",
+      "sha": "612e9127bd266191fc1e66f339dd2f82a57a21a6",
+      "size": 2833
+    },
+    {
+      "file": "src/app/contratos-locacoes/recibos/[id]/page.tsx",
+      "sha": "ac7784ebcdbec8bf814cc7e8ab31fe51accb15f9",
+      "size": 5839
+    },
+    {
+      "file": "src/app/favicon.ico",
+      "sha": "9ecfcc8f0ead0bf3d2d7c39e084b88f41cc89a2e",
+      "size": 25931
+    },
+    {
+      "file": "src/app/globals.css",
+      "sha": "602a98f41e6ac9896acd9f358294addca9eb87b3",
+      "size": 1285
+    },
+    {
+      "file": "src/app/hub/page.tsx",
+      "sha": "ffbddf3ca172b5a97485eb23c71c794f38aa7222",
+      "size": 15263
+    },
+    {
+      "file": "src/app/inspecoes/[id]/PrintButton.tsx",
+      "sha": "dc66deb65d963ca20c5753c234a891f9363c8e47",
+      "size": 387
+    },
+    {
+      "file": "src/app/inspecoes/[id]/page.tsx",
+      "sha": "730e65fa90accb25167195aead09bb2c1f2aa612",
+      "size": 22400
+    },
+    {
+      "file": "src/app/inspecoes/actions.ts",
+      "sha": "b3500de8cc2e970714fffa5f1acf6994ae5e1bd1",
+      "size": 6143
+    },
+    {
+      "file": "src/app/inspecoes/nova/page.tsx",
+      "sha": "7f3f413e412d4d76d45d24a74769ad88215e4df4",
+      "size": 15535
+    },
+    {
+      "file": "src/app/inspecoes/page.tsx",
+      "sha": "faa54fb5a3229092dce8099d7aaa2a24cef79449",
+      "size": 9312
+    },
+    {
+      "file": "src/app/layout.tsx",
+      "sha": "d87c95cc8a8f4d7ace8fb50188b4a6f7eb46977a",
+      "size": 933
+    },
+    {
+      "file": "src/app/login/page.tsx",
+      "sha": "6161d4fa4a933b7f68eea6e74711ffcc10a2e4e9",
+      "size": 6160
+    },
+    {
+      "file": "src/app/page.tsx",
+      "sha": "9cc0c960a0b62a929f27a56dbcedd2938b4b7af1",
+      "size": 57977
+    },
+    {
+      "file": "src/app/redefinir-senha/page.tsx",
+      "sha": "9c6a0542ba0ba20080a3e0423e5c378c31e606cd",
+      "size": 5237
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-aterramento/page.tsx",
+      "sha": "ab727582072ba07a63989dc5b0ee01ce83f8be83",
+      "size": 341
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-aterramento/visualizar/page.tsx",
+      "sha": "6c3cbed8bd2f19ba15e6bf83780eddcc33ee3577",
+      "size": 369
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-cabos-media-tensao/page.tsx",
+      "sha": "ba4d2a6741ec4d7b9cf101e8c1cf6cffc2af18db",
+      "size": 346
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-cabos-media-tensao/visualizar/page.tsx",
+      "sha": "225cbcd3f785044c5f69a41e4d6258bc81924bc3",
+      "size": 374
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-chave-seccionadora/page.tsx",
+      "sha": "cf24027a4f2f633d5ceed8e5a7b34233f521edfc",
+      "size": 347
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-chave-seccionadora/visualizar/page.tsx",
+      "sha": "d87cb4881fa1b166b7fdd849c0ba7dcda09d66b3",
+      "size": 375
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-disjuntor/page.tsx",
+      "sha": "b0a08950b96a0bd7b8085e5e6b461e1320a297d2",
+      "size": 13780
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-disjuntor/visualizar/page.tsx",
+      "sha": "59305be131ad96db9ad894efaaf02c1215ad1308",
+      "size": 10387
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-para-raios/page.tsx",
+      "sha": "befd4b2a01e60532b072201e75603b4f0344cedd",
+      "size": 339
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-para-raios/visualizar/page.tsx",
+      "sha": "bf9fa058cf01afe8c1e55cafeb218ec9c3f62e1c",
+      "size": 367
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-tc-tp/page.tsx",
+      "sha": "7e9611b22a08fbaf845c3006ac495ac56f7950a8",
+      "size": 334
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-tc-tp/visualizar/page.tsx",
+      "sha": "6681c3370bf775d3392f7e237a92402e0d2002f1",
+      "size": 362
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador/page.tsx",
+      "sha": "3450c55d2030b8daff97e44d4eb849648aeb2c15",
+      "size": 28539
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/ficha-transformador/visualizar/page.tsx",
+      "sha": "a1d28d74c9e4600338fcd00f1fd2db008862cfa2",
+      "size": 15544
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/manutencao-preventiva/page.tsx",
+      "sha": "bce1380c21baa58c6b5e386c95eb68147c465792",
+      "size": 12307
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/cabine-primaria/page.tsx",
+      "sha": "3b93f68ebff03a2ae50e00ebc11e86272dd30451",
+      "size": 3358
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/page.tsx",
+      "sha": "4e48c5edc653a5657437b7c5bcc0efe1ce90b037",
+      "size": 3397
+    },
+    {
+      "file": "src/app/relatorios-tecnicos/transformador/page.tsx",
+      "sha": "150e32234e23c69980b4e1266a6a1f719a268b34",
+      "size": 3302
+    },
+    {
+      "file": "src/app/termografia/[id]/imprimir/page.tsx",
+      "sha": "f2a235b8f00eab9e02833cd864d5ca4247e5661a",
+      "size": 1339
+    },
+    {
+      "file": "src/app/termografia/[id]/page.tsx",
+      "sha": "42b9a0e29583a102052b279a592b7f0f8eb5b58b",
+      "size": 25260
+    },
+    {
+      "file": "src/app/termografia/nova/page.tsx",
+      "sha": "7a35cc625d6adbf6fcf6ab7772aa3422fb500474",
+      "size": 169
+    },
+    {
+      "file": "src/app/termografia/page.tsx",
+      "sha": "6d8a2a7333a148a69bb6a9d5f52c799acb802973",
+      "size": 6756
+    },
+    {
+      "file": "src/components/CabineTransformerSheet.tsx",
+      "sha": "1d2d9ab68973c976c2652b23a787fecfbad976d9",
+      "size": 11917
+    },
+    {
+      "file": "src/components/NewOrderDrawer.tsx",
+      "sha": "9ab16c159661484cfb7efdf4523cc7243e3e3a4e",
+      "size": 13599
+    },
+    {
+      "file": "src/components/OrderCard.tsx",
+      "sha": "0dd73859ad65d7d248e3ea91ce17c19d273add9b",
+      "size": 4015
+    },
+    {
+      "file": "src/components/OrderDrawer.tsx",
+      "sha": "351ccaccc06e521b2cea977382a64608bba3a21e",
+      "size": 54556
+    },
+    {
+      "file": "src/components/StatusBadge.tsx",
+      "sha": "13d535ae29992193c8d751aad60cee1a73b3d8c3",
+      "size": 2990
+    },
+    {
+      "file": "src/components/app-shell/AppShell.tsx",
+      "sha": "48aab8c741ddd0bbc8a6b25c15ae14d0bec50adb",
+      "size": 7683
+    },
+    {
+      "file": "src/components/app-shell/CentralSearch.tsx",
+      "sha": "3b8d41e38f0e928eb6835524cfbed2bb80290421",
+      "size": 6548
+    },
+    {
+      "file": "src/components/app-shell/PageHeader.tsx",
+      "sha": "d9b1854a6362e3ec4ac20c5bbb0791eb4db73597",
+      "size": 2924
+    },
+    {
+      "file": "src/components/app-shell/Sidebar.tsx",
+      "sha": "bdf3b807603a5212ced3feea2019a627c1d34b55",
+      "size": 6909
+    },
+    {
+      "file": "src/components/app-shell/navigation.ts",
+      "sha": "c6e986633bf89ceb0aca3cdf3d2867a41f501909",
+      "size": 3665
+    },
+    {
+      "file": "src/components/contratos-locacoes/AlertList.tsx",
+      "sha": "350c2a002e8b21063711c3bd85a3ecf8a590a73e",
+      "size": 1808
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingDeliveryHistory.tsx",
+      "sha": "589054da6ff11bb4add7b07c01c837d658356a3f",
+      "size": 1175
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingEmailModal.tsx",
+      "sha": "0a90bd5a4f4bdd3a3773dd27a0979f328f67e2bb",
+      "size": 8974
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingForm.tsx",
+      "sha": "2f0e738f23575f1b81026e6c7b8bfdccad486add",
+      "size": 5938
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingPaymentForm.tsx",
+      "sha": "98f8095581de3448c319a09a1b4596a62a54f343",
+      "size": 5751
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingPeriodCard.tsx",
+      "sha": "b2a9a5622f97549553e33e61b0001dbad80f5fb3",
+      "size": 13277
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingPeriodForm.tsx",
+      "sha": "c608e232b292e28dbe6ae844f9d43948624fdce9",
+      "size": 4936
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingStatusBadge.tsx",
+      "sha": "9de3c626742dac29ea6c374b03efa8a23c6a4d2a",
+      "size": 1277
+    },
+    {
+      "file": "src/components/contratos-locacoes/BillingTable.tsx",
+      "sha": "65b893870cb18506d9eaebbf042cf1861f4c963b",
+      "size": 4505
+    },
+    {
+      "file": "src/components/contratos-locacoes/ContractBillingSection.tsx",
+      "sha": "2ba72742d1a284544115e402ecc2b33521d8220a",
+      "size": 10376
+    },
+    {
+      "file": "src/components/contratos-locacoes/ContractEditForm.tsx",
+      "sha": "3998af8a415f80486027b0cdcffa2c23145f3ac9",
+      "size": 11099
+    },
+    {
+      "file": "src/components/contratos-locacoes/ContractForm.tsx",
+      "sha": "d4daba27f0184f7a494fbf8055cbb1284307b70c",
+      "size": 19454
+    },
+    {
+      "file": "src/components/contratos-locacoes/ContractListCard.tsx",
+      "sha": "09763f512fa9a6f80370badec937b367ce369543",
+      "size": 5562
+    },
+    {
+      "file": "src/components/contratos-locacoes/ContractSummary.tsx",
+      "sha": "7298dd027077e01a3c979ff4b15feb00d6f9332b",
+      "size": 20830
+    },
+    {
+      "file": "src/components/contratos-locacoes/CurrencyInput.tsx",
+      "sha": "b11673f2a250d513a03e302710ab96db1af5efc6",
+      "size": 1449
+    },
+    {
+      "file": "src/components/contratos-locacoes/CustomerForm.tsx",
+      "sha": "5696b1df0c6089c736f0cd04c21bb05084c9ae98",
+      "size": 22263
+    },
+    {
+      "file": "src/components/contratos-locacoes/CustomerList.tsx",
+      "sha": "1c3c789670e8fc24a4a0dae4d9446e08bbd88b0c",
+      "size": 4970
+    },
+    {
+      "file": "src/components/contratos-locacoes/DashboardCards.tsx",
+      "sha": "f652f7922221a5067446055dc151cddd527c4d8a",
+      "size": 2364
+    },
+    {
+      "file": "src/components/contratos-locacoes/LocalDraftStatus.tsx",
+      "sha": "80d5a10de6e75696b79592b394fd6e56e9713f48",
+      "size": 2983
+    },
+    {
+      "file": "src/components/contratos-locacoes/ModulePageContext.tsx",
+      "sha": "16768706abe34b79c7de76fc0c9ec8e55728bef4",
+      "size": 1958
+    },
+    {
+      "file": "src/components/contratos-locacoes/OperationalAlertGroups.tsx",
+      "sha": "130df75df8d55671da2e43bdd0e22f0826eee047",
+      "size": 6206
+    },
+    {
+      "file": "src/components/contratos-locacoes/RemittanceInvoiceAttachmentCard.tsx",
+      "sha": "4f335512a77309def83dc3277353471cb4d8e138",
+      "size": 3020
+    },
+    {
+      "file": "src/components/contratos-locacoes/RemittanceInvoiceEditor.tsx",
+      "sha": "d5b9b49d67fc85ceed4adc368d72bbeecbd080ba",
+      "size": 6502
+    },
+    {
+      "file": "src/components/contratos-locacoes/RentalItemsEditor.tsx",
+      "sha": "3ac7329557c68c46d399b78b2f0c9933d80ad871",
+      "size": 10293
+    },
+    {
+      "file": "src/components/manutencao-preventiva/FichaComplementarFormPage.tsx",
+      "sha": "15cd1ad2a36b41c78a771aef414d53bff04f8adc",
+      "size": 17032
+    },
+    {
+      "file": "src/components/manutencao-preventiva/FichaComplementarVisualizarPage.tsx",
+      "sha": "d9b8a55231a13d3488ae988cc8aa5dbc1c9bd75b",
+      "size": 11232
+    },
+    {
+      "file": "src/components/pedidos-tarefas/CalendarView.tsx",
+      "sha": "687f3ee22b1f3c04f195c0055f3d21da826f6459",
+      "size": 7341
+    },
+    {
+      "file": "src/components/pedidos-tarefas/EventEditor.tsx",
+      "sha": "c10953f190902265ddc239678867954ee90626fe",
+      "size": 11059
+    },
+    {
+      "file": "src/components/pedidos-tarefas/FrontEditor.tsx",
+      "sha": "29bef07b27cd2a6e6dc9deb33fddf0f354b47a52",
+      "size": 4791
+    },
+    {
+      "file": "src/components/pedidos-tarefas/MemberNameEditor.tsx",
+      "sha": "bfda6ab21afcd7bc5cb436d98fb73389cc94b891",
+      "size": 9007
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OperationalDashboard.tsx",
+      "sha": "0ddc34518f07db9fdb2c9be036e3a9dffa6292ef",
+      "size": 4866
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OperationalTaskCard.tsx",
+      "sha": "4152799f6b3c896895e8d461880aca44cfc57bc9",
+      "size": 1090
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderFiles.tsx",
+      "sha": "5dfd65d6fd281d7ecb70910e23b5e8a7a4cf1b78",
+      "size": 5535
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderSummary.tsx",
+      "sha": "25bf6d0da575e03d8981233509e7786e85f2e7ba",
+      "size": 2893
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderTabs.tsx",
+      "sha": "bcec0c53d31d4464c6f4581d962559373c77f1e3",
+      "size": 1154
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderTaskList.tsx",
+      "sha": "ca9b1c6d7c7afcbd8f33124ee50ab90bb916da3e",
+      "size": 3962
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderTasksSection.tsx",
+      "sha": "3920e465dbc0296166ae6b1ddf9d14ad8fcb629c",
+      "size": 10522
+    },
+    {
+      "file": "src/components/pedidos-tarefas/OrderTimeline.tsx",
+      "sha": "ce9526efaf3cf8ccd14075c163ff8095b46cc26e",
+      "size": 4093
+    },
+    {
+      "file": "src/components/pedidos-tarefas/QuickTaskForm.tsx",
+      "sha": "a938b75e91da07a81f30655001e9d0a6b062eb9b",
+      "size": 2666
+    },
+    {
+      "file": "src/components/pedidos-tarefas/StandaloneTaskDetail.tsx",
+      "sha": "5510e742530f6e21fe0e3f780790a2a0b18f34f7",
+      "size": 3738
+    },
+    {
+      "file": "src/components/pedidos-tarefas/TaskDetailDrawer.tsx",
+      "sha": "c6094583082b786ed0e17369dd01afca620bc647",
+      "size": 20413
+    },
+    {
+      "file": "src/components/pedidos-tarefas/TaskSignals.tsx",
+      "sha": "1cd8df3a540bff3a23d6c75a8b5a6bd93e2f5cfb",
+      "size": 2821
+    },
+    {
+      "file": "src/components/pedidos-tarefas/TemplateEditor.tsx",
+      "sha": "9d94647ac1b265fb7c2e28423edbf965fc45a615",
+      "size": 22575
+    },
+    {
+      "file": "src/components/pedidos-tarefas/TemplatePicker.tsx",
+      "sha": "fd4fe99618587ff4a1aa7b6ef89d386d6319280a",
+      "size": 2911
+    },
+    {
+      "file": "src/components/pedidos-tarefas/UpdateComposer.tsx",
+      "sha": "867094bbdcb359235babdf2179d7f96656ec8c74",
+      "size": 4788
+    },
+    {
+      "file": "src/data/mock.ts",
+      "sha": "4cd311f350193c29325fcc0c0b8f4503d3ad9625",
+      "size": 3154
+    },
+    {
+      "file": "src/lib/cabine-calc.ts",
+      "sha": "b53c2f00d7b489419d8ccecbf46819f7e8716f8e",
+      "size": 6988
+    },
+    {
+      "file": "src/lib/cabine/documents.ts",
+      "sha": "d72cbce6282f6c6789d6ded064feebb00d784e29",
+      "size": 3607
+    },
+    {
+      "file": "src/lib/cabine/report-actions.ts",
+      "sha": "9ae2b1d22c3151cc0c1d361bea60c081210ff7c5",
+      "size": 2146
+    },
+    {
+      "file": "src/lib/central/operational.ts",
+      "sha": "fbb9c419598a24c9d0d11fe3a3d6f14614d6fff0",
+      "size": 8305
+    },
+    {
+      "file": "src/lib/central/queries.ts",
+      "sha": "8e080a317e37f192f8a0e2a3f5fda2ed42eaaf97",
+      "size": 8092
+    },
+    {
+      "file": "src/lib/central/search.ts",
+      "sha": "395c2fe08318f2085e14e65ca767ee08a431090c",
+      "size": 10526
+    },
+    {
+      "file": "src/lib/central/view.ts",
+      "sha": "5bd3870cbbc366eaf4b51e372200466adbf7cd2b",
+      "size": 1933
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-delivery.ts",
+      "sha": "626521b2515694ace220be5837f549f2afc72f0c",
+      "size": 16818
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-email-attachments.server.tsx",
+      "sha": "f05f966b195713134edfd0a164f639b2821db86a",
+      "size": 3465
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-email-config.ts",
+      "sha": "03d22b491930f5c38ad50faffa4e577211596aa5",
+      "size": 2928
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-email.ts",
+      "sha": "8589389ef56613bc952d40e05a4c2684d4996bf2",
+      "size": 5356
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-periods.ts",
+      "sha": "23babfa3fb485daaa79fb8b5ac16f7ae6e0f2744",
+      "size": 8231
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-send-client.ts",
+      "sha": "3f1885309163eb2db6476c5ea806f281503f765d",
+      "size": 2713
+    },
+    {
+      "file": "src/lib/contratos-locacoes/billing-status-presentation.ts",
+      "sha": "f0e878a4523aea4e2a39227c17b24c77a9b4fc60",
+      "size": 3793
+    },
+    {
+      "file": "src/lib/contratos-locacoes/boleto-documents.ts",
+      "sha": "3f422863e1a13eeb306ace64fef3e8316c748332",
+      "size": 7641
+    },
+    {
+      "file": "src/lib/contratos-locacoes/company.ts",
+      "sha": "a458f369c8cd7126055d33c98345ab7d6559b8d8",
+      "size": 2261
+    },
+    {
+      "file": "src/lib/contratos-locacoes/contract-creation.ts",
+      "sha": "53f70e4de1ef65ac2be7ab74ddcd1d42ecff2219",
+      "size": 1385
+    },
+    {
+      "file": "src/lib/contratos-locacoes/contract-edit.ts",
+      "sha": "f6cc83c1ba0b0c44ae17d419e7426540e31dbc50",
+      "size": 9919
+    },
+    {
+      "file": "src/lib/contratos-locacoes/contract-presentation.ts",
+      "sha": "245fd776e79ab6bd1a2e4bbfa86b5c649160ecea",
+      "size": 723
+    },
+    {
+      "file": "src/lib/contratos-locacoes/contract-reference.ts",
+      "sha": "352e4802f2348ca8c2ab2e35eb8ff3d31705de66",
+      "size": 1043
+    },
+    {
+      "file": "src/lib/contratos-locacoes/dashboard.ts",
+      "sha": "1d9523286687f28a5d91df9590f10a444f598319",
+      "size": 4848
+    },
+    {
+      "file": "src/lib/contratos-locacoes/dates.ts",
+      "sha": "fb21374177b484ef0ba621eb9afe7b65b2cb2761",
+      "size": 2841
+    },
+    {
+      "file": "src/lib/contratos-locacoes/local-draft.ts",
+      "sha": "b4d9e468691b377ef540d481d3eddf4637952f21",
+      "size": 3050
+    },
+    {
+      "file": "src/lib/contratos-locacoes/money.ts",
+      "sha": "3f4a436ff07ce8bce0f316fcda4290025c94e01b",
+      "size": 5028
+    },
+    {
+      "file": "src/lib/contratos-locacoes/mutations.ts",
+      "sha": "b89e1dc36731b3b564902a62fc569411788c50a5",
+      "size": 43219
+    },
+    {
+      "file": "src/lib/contratos-locacoes/navigation-context.ts",
+      "sha": "1d5c72f12d6e6e57432d645651bf1a9ec14391b2",
+      "size": 2679
+    },
+    {
+      "file": "src/lib/contratos-locacoes/numbering.ts",
+      "sha": "323ad0cc52cdc0d6ec3cd3f31b930413d8b90348",
+      "size": 1979
+    },
+    {
+      "file": "src/lib/contratos-locacoes/open-document-window.ts",
+      "sha": "a80564084a50a1e7b8745641de69f9572e37f014",
+      "size": 475
+    },
+    {
+      "file": "src/lib/contratos-locacoes/payment-proofs.ts",
+      "sha": "ac46d5357d0b14a4d152b2603ffd1d9309c1eacc",
+      "size": 8600
+    },
+    {
+      "file": "src/lib/contratos-locacoes/pdf/ReceiptDocument.tsx",
+      "sha": "53805fd9d975e26233a8e837c7f1065b5cdbe4a4",
+      "size": 149
+    },
+    {
+      "file": "src/lib/contratos-locacoes/pdf/RentalInvoiceDocument.tsx",
+      "sha": "167e0c181292e0b51eee30160b3a4ba5fe8b652d",
+      "size": 12245
+    },
+    {
+      "file": "src/lib/contratos-locacoes/queries.ts",
+      "sha": "8c83e9bddfcad30752601efb6ce4c444f416421b",
+      "size": 40728
+    },
+    {
+      "file": "src/lib/contratos-locacoes/receipt.ts",
+      "sha": "2c9ad420c7968cc38eb269ddca51c7ed84de5656",
+      "size": 209
+    },
+    {
+      "file": "src/lib/contratos-locacoes/remittance-documents.ts",
+      "sha": "6d1c5f5dedbe2d8b00d6263fec9b6d888137fc68",
+      "size": 13050
+    },
+    {
+      "file": "src/lib/contratos-locacoes/remittance-invoice-update.ts",
+      "sha": "2db4c27e2d2774e2f9355985a7db888b98e555f4",
+      "size": 1823
+    },
+    {
+      "file": "src/lib/contratos-locacoes/rental-assets.ts",
+      "sha": "faaec266c0078552f7e34b68765bbf9173438a56",
+      "size": 4547
+    },
+    {
+      "file": "src/lib/contratos-locacoes/rental-closure.ts",
+      "sha": "eace28c02ec3b60ee910ce9b993819e711f6318b",
+      "size": 1225
+    },
+    {
+      "file": "src/lib/contratos-locacoes/rental-invoice.ts",
+      "sha": "cf7d0e8ea5828fed7205b111d1b015444ae650e6",
+      "size": 5633
+    },
+    {
+      "file": "src/lib/contratos-locacoes/rental-operations.ts",
+      "sha": "e1174b864022623cf3617894e48297480bf42e03",
+      "size": 2017
+    },
+    {
+      "file": "src/lib/contratos-locacoes/schemas.ts",
+      "sha": "ec457ff0561c55505fd9097164eb04e2937b30ca",
+      "size": 13990
+    },
+    {
+      "file": "src/lib/contratos-locacoes/transitions.ts",
+      "sha": "d257b68a5c0cca821a91dac1d06c82a9d0402ffe",
+      "size": 1946
+    },
+    {
+      "file": "src/lib/contratos-locacoes/types.ts",
+      "sha": "792b80331b8909f030e0bc6a96bfa2178452fd1c",
+      "size": 9488
+    },
+    {
+      "file": "src/lib/contratos-locacoes/use-debounced-value.ts",
+      "sha": "2f0b98a9257ce43a99d36fb8263e920ef138e2a3",
+      "size": 410
+    },
+    {
+      "file": "src/lib/contratos-locacoes/use-local-draft.ts",
+      "sha": "0721cf80ec5b0d26f0e4b86a1a7ba76a77acc541",
+      "size": 4418
+    },
+    {
+      "file": "src/lib/creaBase64.ts",
+      "sha": "2e588f0307461620087f77627d740ff870f49098",
+      "size": 137414
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/ficha-disjuntor.ts",
+      "sha": "939784fd938e41fff98aa53e9dadf6ae3dffc41c",
+      "size": 2647
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/ficha-transformador.ts",
+      "sha": "76858b4a58d8357d07d193a08f629a0bed226156",
+      "size": 5476
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/fichas-complementares.ts",
+      "sha": "8c3254701756a937f0964605a97cfa73f9349a75",
+      "size": 19220
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/queries-mutations.ts",
+      "sha": "140d3b7d5319af24e6135503c66834ae32351141",
+      "size": 24336
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/schemas.ts",
+      "sha": "9ed082bebd665d4b21ad88689cadd449342c6109",
+      "size": 3672
+    },
+    {
+      "file": "src/lib/manutencao-preventiva/types.ts",
+      "sha": "1871fa6269d5fa1ed97c7b40b9570b7389e68427",
+      "size": 2314
+    },
+    {
+      "file": "src/lib/migration-hash.ts",
+      "sha": "142584c075f31899cf90d90e2f36440869bde7fb",
+      "size": 290
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/attachment-deletion.ts",
+      "sha": "c00a0609d1c6991b54e0a90be698853f1ae88c83",
+      "size": 855
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/attachments.ts",
+      "sha": "fc2af7ce8122284d5626974f1fb31c29d5075bee",
+      "size": 2421
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/calendar-queries.ts",
+      "sha": "80866f2acf36ae9e83e2983653cc8de2fcfe6f2b",
+      "size": 4259
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/calendar.ts",
+      "sha": "53c5e8fbba166f4d896923b866cd5fff903e623a",
+      "size": 3035
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/commands.ts",
+      "sha": "b2a3fcbc105c2f9858c121baf22232f87e0ff474",
+      "size": 5549
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/dashboard-queries.ts",
+      "sha": "1b0201748818b9a109cb8fe2ca21c3588f5d4354",
+      "size": 6262
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/dashboard.ts",
+      "sha": "bb7e58715d91e3b9d887a2023ff36b3a1ed83447",
+      "size": 1590
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/detail-deletion.ts",
+      "sha": "f74a37a1195141fb5f1530550d3f78a490a65d7a",
+      "size": 689
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/events.ts",
+      "sha": "4d421cd54a4a63c8d24ae40578624547598257d5",
+      "size": 5986
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/fronts.ts",
+      "sha": "90307ac7c427909baf6e3a37dcf0014cc4aa67ac",
+      "size": 2164
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/indicators.ts",
+      "sha": "d080dc09593e00d2c503a4a5bc0d06287131e6fa",
+      "size": 3990
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/mappers.ts",
+      "sha": "987045d221039c4d7e5d43bebe5f546d4a1033f5",
+      "size": 6224
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/members.ts",
+      "sha": "21f1d02d6708aecb8f4d444b60d94a2857628ce1",
+      "size": 4041
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/mine.ts",
+      "sha": "7329431e4f69e91208431d29cd3656aba089b180",
+      "size": 174
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/navigation.ts",
+      "sha": "40e1c023784a1f40c3bf50406d7354877a9e65b7",
+      "size": 894
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/order-queries.ts",
+      "sha": "811f49297b4cb8339a05c6cb3bbfed5204d0d5cf",
+      "size": 7265
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/organization.ts",
+      "sha": "f7d689a2d34926ee8c51215960661c29d2d528d4",
+      "size": 561
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/standalone-task.ts",
+      "sha": "81ff3b0a99ec518a9e1cab03f42ba35b98b90c24",
+      "size": 3199
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/task-due.ts",
+      "sha": "04a7bd236e3f5d5a5a271c6e1cd9e585d3ad5e3b",
+      "size": 1420
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/task-notes.ts",
+      "sha": "9039aaf5e895551cb83d482cb72169847135822f",
+      "size": 3252
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/template-dates.ts",
+      "sha": "550349c126f9f9d5bcc40a4d2dcda3e30b785376",
+      "size": 806
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/template-schema.ts",
+      "sha": "e4b9de0ccb8d72f620cd64aea9949670c5861a71",
+      "size": 5617
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/templates.ts",
+      "sha": "229ef71536834fea88dc1bffed358fbb5c369955",
+      "size": 4874
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/test-fixtures.ts",
+      "sha": "61616b113e07c1315c48cbf1ff589ea436a4b017",
+      "size": 750
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/timeline.ts",
+      "sha": "3c5f89aa84e9a983790c5f15485394d269bbfae9",
+      "size": 3043
+    },
+    {
+      "file": "src/lib/pedidos-tarefas/types.ts",
+      "sha": "5fef34964e74506bf71e37894a8d777ccabd6c3d",
+      "size": 1944
+    },
+    {
+      "file": "src/lib/sorting.ts",
+      "sha": "cedcebdc80adf232388eb9d2e822351de2446099",
+      "size": 1289
+    },
+    {
+      "file": "src/lib/storage.ts",
+      "sha": "a9cae92f326ed07f0712a5f6c6c720795826eb8c",
+      "size": 1271
+    },
+    {
+      "file": "src/lib/supabase-server.ts",
+      "sha": "bcadd2d475725028167312adfd30c54aed74b257",
+      "size": 1480
+    },
+    {
+      "file": "src/lib/supabase.ts",
+      "sha": "7c713c7f31cb8d0d9103d50208a1bc37d490bf3b",
+      "size": 532
+    },
+    {
+      "file": "src/lib/termografia/numbering.ts",
+      "sha": "51a180f266e35fb95c46bcf29c1a93dcc297226f",
+      "size": 209
+    },
+    {
+      "file": "src/lib/termografia/paths.ts",
+      "sha": "54f41ec5a5351de2868b6005055aeb1b4d2e233e",
+      "size": 1209
+    },
+    {
+      "file": "src/lib/termografia/report-actions.ts",
+      "sha": "de86fd3f6928e0564fa3626d7f3e9ed0df7877b7",
+      "size": 16043
+    },
+    {
+      "file": "src/lib/termografia/storage.ts",
+      "sha": "fa958a1fc477551ba72260fab90616de23d6cbb1",
+      "size": 9141
+    },
+    {
+      "file": "src/lib/termografia/types.ts",
+      "sha": "d072b27fcc87de8beb4ce75332d5a4a2c40c74f3",
+      "size": 5307
+    },
+    {
+      "file": "src/lib/termografia/validation.ts",
+      "sha": "4fd57c0a58bdcc64dda8243178673070f84c6313",
+      "size": 1413
+    },
+    {
+      "file": "src/lib/transformador/report-actions.ts",
+      "sha": "b67fdb59d12445bee4c2a919222db71fdc91521f",
+      "size": 3411
+    },
+    {
+      "file": "src/lib/transformer-calc.ts",
+      "sha": "944f5dad768e112736c30122260ceb46c54002fa",
+      "size": 14439
+    },
+    {
+      "file": "src/types/index.ts",
+      "sha": "2000d2a4681419124786bf87373022ca9e07e452",
+      "size": 1495
+    },
+    {
+      "file": "tsconfig.json",
+      "sha": "57031df00a6c319a0972372618e82da50b9afbf0",
+      "size": 704
+    },
+    {
+      "file": "next-env.d.ts",
+      "sha": "2cb600b486174654e684f490012a0ea2b2dbf2e1",
+      "size": 81
+    },
+    {
+      "file": "public/termografia/icon-192.png",
+      "sha": "f4754e4027941a777513b68d7f134a8e5245aa80",
+      "size": 4176
+    },
+    {
+      "file": "public/termografia/icon-512.png",
+      "sha": "8dd21d67638879dbf7c32efc77993f1cd29a5d0a",
+      "size": 14547
+    },
+    {
+      "file": "public/termografia/icon.svg",
+      "sha": "7c3d2e1cee4a9708c31d9d232d649cad96c6f809",
+      "size": 530
+    },
+    {
+      "file": "public/termografia/manifest.webmanifest",
+      "sha": "e959b0c79bd264fd5851f71580a197b94feaaa68",
+      "size": 506
+    },
+    {
+      "file": "public/termografia/sw.js",
+      "sha": "ee56be734163dfde4983d2bc65a6b9f933678311",
+      "size": 8121
+    },
+    {
+      "file": "scripts/build-termografia-offline.mjs",
+      "sha": "7a8dac746acbafaccdc05f46665c9d12c5c1a401",
+      "size": 5132
+    },
+    {
+      "file": "src/app/login/recovery.test.tsx",
+      "sha": "383c2ccaec8ca605f408fca6ea581e70b6af866a",
+      "size": 6037
+    },
+    {
+      "file": "src/app/termografia/layout.tsx",
+      "sha": "d6856a1048e956ee1c817f2a58741625bc84cdd3",
+      "size": 494
+    },
+    {
+      "file": "src/components/termografia/DigitalAnnotationEditor.tsx",
+      "sha": "fdfea6ffeacef5e7e69247b7b564fcf3eb14cab9",
+      "size": 5713
+    },
+    {
+      "file": "src/components/termografia/DigitalAnnotationOverlay.tsx",
+      "sha": "6e6b288f6a9bcf823605c13f5c737eac2ee073f6",
+      "size": 2368
+    },
+    {
+      "file": "src/components/termografia/FieldCollector.tsx",
+      "sha": "1ad77629351ecc7df1e4b0970da98f75c10a8664",
+      "size": 26302
+    },
+    {
+      "file": "src/components/termografia/FieldPhotos.tsx",
+      "sha": "f637a11d9291c7022546b57601e7723f4ca1e86a",
+      "size": 14802
+    },
+    {
+      "file": "src/components/termografia/FieldPrintReport.tsx",
+      "sha": "e95fed2736d0de8f902593876a147f165ed3ddd4",
+      "size": 5556
+    },
+    {
+      "file": "src/components/termografia/FieldReportPhotos.tsx",
+      "sha": "bc48d6b3b734b9835aeeffbd40ee511eacc2e097",
+      "size": 5070
+    },
+    {
+      "file": "src/components/termografia/FieldReportView.tsx",
+      "sha": "bcf7af195c35781a53b8c460e973ce6f3fce8c65",
+      "size": 4495
+    },
+    {
+      "file": "src/components/termografia/collectorNavigation.ts",
+      "sha": "0f2fb95097df5ae119858f2f7b3bb32c153145e5",
+      "size": 1282
+    },
+    {
+      "file": "src/components/termografia/collectorStyles.ts",
+      "sha": "934c875a2f2ac47155dbe38adf0748f06e6df7b0",
+      "size": 739
+    },
+    {
+      "file": "src/components/termografia/useFieldCollector.ts",
+      "sha": "c0ca05067109d5c0113d13d2cb888716adc7951f",
+      "size": 15262
+    },
+    {
+      "file": "src/components/termografia/useOfflinePreparation.ts",
+      "sha": "aa0912f3822870762568cbcd02e1be2814fb9e85",
+      "size": 2765
+    },
+    {
+      "file": "src/lib/termografia/backup-limits.ts",
+      "sha": "3e73998078f3943b104c6d1eb66d933a312b99f0",
+      "size": 6122
+    },
+    {
+      "file": "src/lib/termografia/backup.ts",
+      "sha": "19b2c278469e8870756f37b1dbd7b2aae63a2a55",
+      "size": 7693
+    },
+    {
+      "file": "src/lib/termografia/collection.ts",
+      "sha": "66ba5b1a26ea06f2ca6851a0ba75a02c33ccd0d8",
+      "size": 2331
+    },
+    {
+      "file": "src/lib/termografia/collector-session.ts",
+      "sha": "cd2974eeba7979dccf50ec392f98b76c60a623bb",
+      "size": 5220
+    },
+    {
+      "file": "src/lib/termografia/field-collection.ts",
+      "sha": "4d53ae7806054824557ef594ff4253c82f18d94a",
+      "size": 11278
+    },
+    {
+      "file": "src/lib/termografia/local-identity.ts",
+      "sha": "a2164852e7132faf56d022b56e0f2a8a19f36699",
+      "size": 3252
+    },
+    {
+      "file": "src/lib/termografia/offline-shell.ts",
+      "sha": "5a5748607453e8bece584497aa0caca77ce16232",
+      "size": 3177
+    },
+    {
+      "file": "src/lib/termografia/offline-store.ts",
+      "sha": "55a02e99334e9979aabd90233ba89627d4195a4d",
+      "size": 15118
+    },
+    {
+      "file": "src/lib/termografia/prepared-photo.ts",
+      "sha": "e2f8f12c548710418c6071f99a920d3dac0c8da5",
+      "size": 5493
+    },
+    {
+      "file": "src/lib/termografia/report-revision.ts",
+      "sha": "31af5dd6571922ec3f404af753ccc08fdd3f2646",
+      "size": 5519
+    },
+    {
+      "file": "src/lib/termografia/sync-field-collection.ts",
+      "sha": "36dcdc606a0b2eaac0efb4cf3daed4d7ed768a57",
+      "size": 14937
+    },
+    {
+      "file": "src/test/setup.ts",
+      "sha": "6e97cd2780d8602fe118c1f9672557b73b9b36ff",
+      "size": 44
+    },
+    {
+      "file": "vitest.config.ts",
+      "sha": "2242a87ab0c964e77fc8bf1c2fa7cee04c500cab",
+      "size": 420
+    },
+    {
+      "file": "src/components/termografia/BrazilianDateField.tsx",
+      "sha": "ec37a42c42409b06a091ea7ccf89e581e9b21330",
+      "size": 4368
+    },
+    {
+      "file": "public/termografia/fonts/OFL.txt",
+      "sha": "6df21cb5769df7196d49686a0c110c39010d0c23",
+      "size": 4508
+    },
+    {
+      "file": "public/termografia/fonts/open-sans-latin-400-normal.woff2",
+      "sha": "9432c99c4915ea17dea97eec0bbd0f2fa6ff0943",
+      "size": 18640
+    },
+    {
+      "file": "public/termografia/fonts/open-sans-latin-600-normal.woff2",
+      "sha": "85e192c12df96cc67090c4fdcb0308e64e37bca1",
+      "size": 18620
+    },
+    {
+      "file": "public/termografia/fonts/open-sans-latin-700-normal.woff2",
+      "sha": "823cbd915444024388ed94b5721df3eb959a66e4",
+      "size": 18204
+    },
+    {
+      "file": "public/termografia/report-logo.png",
+      "sha": "2107a4376ff7adbfbabd865be8119c8e31ed9f9e",
+      "size": 50836
+    },
+    {
+      "file": "src/components/termografia/DigitalPhotoCropper.tsx",
+      "sha": "4ef90620f1ecd50604ad1fb7d9e2aee24af319b9",
+      "size": 6713
+    },
+    {
+      "file": "src/components/termografia/PrintReportDocument.tsx",
+      "sha": "58eda28159eb1bb4c198b2d0acd25f9d8871eb1f",
+      "size": 29743
+    },
+    {
+      "file": "src/components/termografia/report-print-styles.ts",
+      "sha": "ba24ffcb28b360e0e0c546fcb9ef7d1e7a844184",
+      "size": 9843
+    },
+    {
+      "file": "src/lib/termografia/photo-crop.ts",
+      "sha": "80aa52085d0b6f3de8ff2bf85db585959a57b2da",
+      "size": 1713
+    },
+    {
+      "file": "src/lib/termografia/print-report.ts",
+      "sha": "19e8897b204c5a7abf6f38424a8350c09af4febf",
+      "size": 8167
+    },
+    {
+      "file": "src/components/contratos-locacoes/RentalAccessGate.tsx",
+      "sha": "23187bcdf1aa9b4d7fc0657a3f5d30216f70a5df",
+      "size": 2141
+    },
+    {
+      "file": "src/components/contratos-locacoes/RentalRouteAccess.tsx",
+      "sha": "4ced20adef993a44984be46166fb837e7ba752dd",
+      "size": 549
+    },
+    {
+      "file": "src/components/contratos-locacoes/RentalHubShortcut.tsx",
+      "sha": "7b7b0b420a1dc8fcef03162237df9447ce139bde",
+      "size": 1136
+    },
+    {
+      "file": "src/lib/contratos-locacoes/payment-errors.ts",
+      "sha": "143e6a5cbc187dd18e49a8571df742956a36bcaa",
+      "size": 127
+    },
+    {
+      "file": "scripts/verify-release-modules.mjs",
+      "sha": "da219827190aaaed2f3cbd9d0a6b1d7cada43952",
+      "size": 1670
+    },
+    {
+      "file": "scripts/verify-rental-environment.mjs",
+      "sha": "446a61555319bd5c2c408e0479b9ae58df61f2fc",
+      "size": 526
+    }
+  ],
+  "production": {
+    "id": "dpl_2V5KPeC3SoPPCJpS2ZCtbje4JiX6",
+    "url": "sistema-pedidos-radial-plshxwj4k-thogalego-4398s-projects.vercel.app",
+    "state": "READY",
+    "target": "production",
+    "aliases": [
+      "sistema-pedidos-radial.vercel.app",
+      "sistema-pedidos-radial-thogalego-4398s-projects.vercel.app"
+    ],
+    "commit": "2dca7105315ecef41deebb35512f2c88b9ef4733",
+    "domain": "https://sistema-pedidos-radial.vercel.app",
+    "sourceVerification": {
+      "expected": 264,
+      "remote": 264,
+      "matches": 264,
+      "mismatches": []
+    },
+    "http": [
+      {
+        "path": "/hub",
+        "status": 200,
+        "success": true,
+        "isError": false
+      },
+      {
+        "path": "/contratos-locacoes",
+        "status": 200,
+        "success": true,
+        "isError": false
+      },
+      {
+        "path": "/contratos-locacoes/ativos",
+        "status": 200,
+        "success": true,
+        "isError": false
+      },
+      {
+        "path": "/contratos-locacoes/contratos",
+        "status": 200,
+        "success": true,
+        "isError": false
+      },
+      {
+        "path": "/contratos-locacoes/cobrancas",
+        "status": 200,
+        "success": true,
+        "isError": false
+      },
+      {
+        "path": "/termografia",
+        "status": 200,
+        "success": true,
+        "isError": false
+      }
+    ],
+    "git": {
+      "branch": "codex/controle-locacoes",
+      "commit": "2dca7105315ecef41deebb35512f2c88b9ef4733",
+      "tree": "1253e3efa3a958d5eaa44166ac3ae074ecf6b2bf",
+      "pushVerified": true
+    },
+    "validation": {
+      "stagedGate": true,
+      "candidateTypeScript": true,
+      "candidateFocusedTests": 55,
+      "priorPreviewTests": 94,
+      "requiredRoutes": 11,
+      "environment": "IURQ",
+      "thermographyBaselineFiles": 50,
+      "authenticatedBrowserTest": false
+    },
+    "approvalReview": {
+      "initialProductionRejected": true,
+      "reason": "Identifiable professional/customer data in source",
+      "resolved": true,
+      "evidence": "Professional signature defaults were already in current production; same authenticated project and destination verified; retry accepted."
+    }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "id": "dpl_86m1D9R9vhoytDYVkW7aSKwGRwWP",
+  "url": "sistema-pedidos-radial-mbky0z6z8-thogalego-4398s-projects.vercel.app",
+  "state": "READY",
+  "target": null,
+  "aliases": [],
+  "sourceVerification": {
+    "expected": 263,
+    "remote": 263,
+    "matches": 263,
+    "mismatches": []
+  },
+  "http": [
+    {
+      "path": "/contratos-locacoes",
+      "keys": [
+        "success",
+        "status",
+        "statusText",
+        "text",
+        "headers"
+      ],
+      "status": 200,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/ativos",
+      "keys": [
+        "success",
+        "status",
+        "statusText",
+        "text",
+        "headers"
+      ],
+      "status": 200,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/contratos",
+      "keys": [
+        "success",
+        "status",
+        "statusText",
+        "text",
+        "headers"
+      ],
+      "status": 200,
+      "isError": false
+    },
+    {
+      "path": "/contratos-locacoes/cobrancas",
+      "keys": [
+        "success",
+        "status",
+        "statusText",
+        "text",
+        "headers"
+      ],
+      "status": 200,
+      "isError": false
+    },
+    {
+      "path": "/termografia",
+      "keys": [
+        "success",
+        "status",
+        "statusText",
+        "text",
+        "headers"
+      ],
+      "status": 200,
+      "isError": false
+    },
+    {
+      "path": "/api/contratos-locacoes/cobrancas/00000000-0000-0000-0000-000000000000/enviar",
+      "keys": [
+        "success",
+        "status",
+        "stage",
+        "code",
+        "shareLinkAction",
+        "blockedAt",
+        "redirectPath",
+        "info"
+      ],
+      "status": 401,
+      "isError": true
+    }
+  ],
+  "thermographySourceHashes": {
+    "matching": 50,
+    "total": 50
+  },
+  "validation": {
+    "vitest": 89,
+    "nodeTests": 5,
+    "environmentGuardChecks": 3,
+    "typescript": "passed workspace and R5",
+    "build": "passed on Vercel"
+  },
+  "scope": "PREVIEW_ONLY; primary alias unchanged; no commit/push",
+  "buildWarnings": [
+    "Two existing chart dimension warnings during prerender; build succeeded"
+  ],
+  "apiHttpVerification": "Inconclusive: fetch tool classified 401 after redirect as deployment_authentication_required. Not evidence of application API authentication."
+}
